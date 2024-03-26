@@ -5,7 +5,7 @@ import com.google.gson.annotations.SerializedName
 data class PresentationDefinition(
 
     @SerializedName("id") var id: String? = null,
-    @SerializedName("format") var format: VpFormatsSupported? = VpFormatsSupported(),
+    @SerializedName("format") var format: Map<String, Jwt>? = mapOf(),
     @SerializedName("input_descriptors") var inputDescriptors: ArrayList<InputDescriptors>? = arrayListOf()
 
 )
