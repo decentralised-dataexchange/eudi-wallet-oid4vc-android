@@ -83,4 +83,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.1")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.3.1")
 
+    implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
 }
