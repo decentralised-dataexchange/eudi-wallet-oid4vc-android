@@ -11,5 +11,6 @@ data class PresentationRequest(
     @SerializedName("scope") var scope: String? = null,
     @SerializedName("nonce") var nonce: String? = null,
     @SerializedName("request_uri") var requestUri: String? = null,
+    @SerializedName("response_uri") var responseUri: String? = null,
     @SerializedName("presentation_definition") var presentationDefinition: Any? = null
 )

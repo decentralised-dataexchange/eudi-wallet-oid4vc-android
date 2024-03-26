@@ -13,3 +13,8 @@ data class TokenResponse(
     @SerializedName("error") var error: String? = null,
     @SerializedName("error_description") var errorDescription: String? = null
 )
+
+data class WrappedTokenResponse(
+    var tokenResponse: TokenResponse? = null,
+    var errorResponse: ErrorResponse? = null,
+)

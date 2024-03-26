@@ -5,11 +5,13 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaData
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
-import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
+import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
+import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.google.gson.Gson
@@ -29,8 +31,10 @@ class IssueService : IssueServiceInterface {
 
     /**
      * To process the credential offer request
-     * @param data - will accept the full data which is scanned from the QR code or deep link
-     *                  The data can contain credential offer or credential offer uri
+     *
+     * @param data - will accept the full data which is scanned from the QR
+     *     code or deep link The data can contain credential offer or
+     *     credential offer uri
      * @return Credential Offer
      */
     override suspend fun resolveCredentialOffer(data: String?): CredentialOffer? {
@@ -56,14 +60,14 @@ class IssueService : IssueServiceInterface {
 
 
     /**
-     * To process the authorisation request
-     * The authorisation request is to grant access to the credential endpoint
+     * To process the authorisation request The authorisation request is to
+     * grant access to the credential endpoint
+     *
      * @param did - DID created for the issuance
      * @param subJwk - for singing the requests
      * @param credentialOffer - To build the authorisation request
      * @param codeVerifier - to build the authorisation request
      * @param authorisationEndPoint - to build the authorisation request
-     *
      * @return String - short-lived authorisation code
      */
     override suspend fun processAuthorisationRequest(
@@ -182,14 +186,15 @@ class IssueService : IssueServiceInterface {
      *
      * @param did
      * @param tokenEndPoint
-     * @param code - If the credential offer is pre authorised, then use the pre authorised code from the credential offer
-     *              else use the code from the previous function - processAuthorisationRequest
-     * @param codeVerifier - use the same code verifier used for processAuthorisationRequest
-     * @param isPreAuthorisedCodeFlow - boolean value to notify its a pre authorised request
-     *                                  if pre-authorized_code is present
-     * @param userPin - optional value, if the user_pin_required is true
-     *              PIN will be provided by the user
-     *
+     * @param code - If the credential offer is pre authorised, then use the
+     *     pre authorised code from the credential offer else use the code from
+     *     the previous function - processAuthorisationRequest
+     * @param codeVerifier - use the same code verifier used for
+     *     processAuthorisationRequest
+     * @param isPreAuthorisedCodeFlow - boolean value to notify its a pre
+     *     authorised request if pre-authorized_code is present
+     * @param userPin - optional value, if the user_pin_required is true PIN
+     *     will be provided by the user
      * @return Token response
      */
     override suspend fun processTokenRequest(
@@ -199,13 +204,13 @@ class IssueService : IssueServiceInterface {
         codeVerifier: String?,
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?
-    ): TokenResponse? {
+    ): WrappedTokenResponse? {
         val response = ApiManager.api.getService()?.getAccessTokenFromCode(
             tokenEndPoint ?: "",
             if (isPreAuthorisedCodeFlow == true) mapOf(
                 "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
                 "pre-authorized_code" to (code ?: ""),
-                "user_pin" to (userPin?:"")
+                "user_pin" to (userPin ?: "")
             )
             else mapOf(
                 "grant_type" to "authorization_code",
@@ -215,41 +220,33 @@ class IssueService : IssueServiceInterface {
             ),
         )
 
-        return if (response?.isSuccessful == true) {
-            response.body()
-        } else if ((response?.code() ?: 400) >= 400) {
-            try {
-                val jObjError = JSONObject(response?.errorBody()!!.string())
-                if (jObjError.has("error_description")) {
-                    TokenResponse(
-                        error = jObjError.getString("error"),
-                        errorDescription = jObjError.getString("error_description")
+        val tokenResponse = when {
+            response?.isSuccessful == true -> {
+                WrappedTokenResponse(
+                    tokenResponse = response.body()
+                )
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                try {
+                    WrappedTokenResponse(
+                        errorResponse = processError(response?.errorBody()?.string())
                     )
-                } else if (jObjError.has("errors")) {
-                    val errorList = JSONArray(jObjError.getString("errors"))
-                    TokenResponse(
-                        error = "Error",
-                        errorDescription = errorList.getJSONObject(0).getString("message")
-                    )
-                } else if (jObjError.has("error")) {
-                    TokenResponse(
-                        error = jObjError.getString("error"),
-                        errorDescription = jObjError.getString("error")
-                    )
-                } else {
+                } catch (e: Exception) {
                     null
                 }
-            } catch (e: Exception) {
+            }
+
+            else -> {
                 null
             }
-        } else {
-            null
         }
+        return tokenResponse
     }
 
     /**
-     * To process the credential, credentials can be issued in two ways,
-     *     intime and deferred
+     * To process the credential, credentials can be issued in two ways, intime
+     * and deferred
      *
      *     If its intime, then we will receive the credential as the response
      *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
@@ -261,7 +258,6 @@ class IssueService : IssueServiceInterface {
      * @param credentialOffer
      * @param credentialIssuerEndPoint
      * @param accessToken
-     *
      * @return credential response
      */
     override suspend fun processCredentialRequest(
@@ -272,23 +268,33 @@ class IssueService : IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
         accessToken: String?
-    ): CredentialResponse? {
-        val claimsSet =
-            JWTClaimsSet.Builder().issueTime(Date()).expirationTime(Date(Date().time + 86400))
-                .issuer(did).audience(credentialIssuerUrl).claim("nonce", nonce).build()
+    ): WrappedCredentialResponse? {
 
-        // Create JWT for ES256K alg
-        val jwsHeader =
-            JWSHeader.Builder(JWSAlgorithm.ES256).type(JOSEObjectType("openid4vci-proof+jwt"))
-                .keyID("$did#${did?.replace("did:key:", "")}").jwk(subJwk?.toPublicJWK()).build()
+        // Add claims
+        val claimsSet = JWTClaimsSet
+            .Builder()
+            .issueTime(Date())
+            .expirationTime(Date(Date().time + 86400))
+            .issuer(did)
+            .audience(credentialIssuerUrl)
+            .claim("nonce", nonce).build()
 
+        // Add header
+        val jwsHeader = JWSHeader
+            .Builder(JWSAlgorithm.ES256)
+            .type(JOSEObjectType("openid4vci-proof+jwt"))
+            .keyID("$did#${did?.replace("did:key:", "")}")
+            .jwk(subJwk?.toPublicJWK())
+            .build()
+
+
+        // Sign with private EC key
         val jwt = SignedJWT(
             jwsHeader, claimsSet
         )
-
-        // Sign with private EC key
         jwt.sign(ECDSASigner(subJwk))
 
+        // Construct credential request
         val body = CredentialRequest(
             types = credentialOffer?.credentials?.get(0)?.types,
             format = credentialOffer?.credentials?.get(0)?.format,
@@ -297,6 +303,7 @@ class IssueService : IssueServiceInterface {
                 jwt = jwt.serialize()
             )
         )
+        // API call
         val response = ApiManager.api.getService()?.getCredential(
             credentialIssuerEndPoint ?: "",
             "application/json",
@@ -304,67 +311,103 @@ class IssueService : IssueServiceInterface {
             body
         )
 
-        return if (response?.isSuccessful == true) {
-            response.body()
-        } else if ((response?.code() ?: 0) >= 400) {
-            try {
-                val jObjError = JSONObject(response?.errorBody()!!.string())
-                if (response.errorBody()!!.string()
-                        .contains(
-                            "Invalid Proof JWT: iss doesn't match the expected client_id",
-                            true
-                        )
-                ) {
-                    CredentialResponse(error = 1)
-                } else if (jObjError.has("error_description")) {
-                    CredentialResponse(
-                        error = -1,
-                        errorDescription = jObjError.getString("error_description")
+        val credentialResponse = when {
+            response?.isSuccessful == true -> {
+                WrappedCredentialResponse(
+                    credentialResponse = response.body()
+                )
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                try {
+                    WrappedCredentialResponse(
+                        errorResponse = processError(response?.errorBody()?.string())
                     )
-                } else if (jObjError.has("errors")) {
-                    val errorList = JSONArray(jObjError.getString("errors"))
-                    CredentialResponse(
-                        error = -1,
-                        errorDescription = errorList.getJSONObject(0).getString("message")
-                    )
-                } else if (jObjError.has("error")) {
-                    CredentialResponse(
-                        error = -1,
-                        errorDescription = jObjError.getString("error")
-                    )
-                } else {
+                } catch (e: Exception) {
                     null
                 }
-            } catch (e: Exception) {
+            }
+
+            else -> {
                 null
             }
-            null
-        } else {
+        }
+
+        return credentialResponse
+    }
+
+
+    fun processError(err: String?): ErrorResponse? {
+        // Known possibilities for error:
+        // 1. "Validation is failed"
+        // 2. {"error_description": "Validation is failed", }
+        // 3. {"errors": [{ "message": "Validation is failed" }]}
+        // 4. {"error": "Validation is failed"}
+        val jsonObject = try {
+            err?.let { JSONObject(it) }
+        } catch (e: Exception) {
             null
         }
+        val errorResponse = when {
+            err?.contains(
+                "Invalid Proof JWT: iss doesn't match the expected client_id",
+                true
+            ) == true -> {
+                ErrorResponse(error = 1, errorDescription = "DID is invalid")
+            }
+
+            jsonObject?.has("error_description") == true -> {
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = jsonObject.getString("error_description")
+                )
+            }
+
+            jsonObject?.has("errors") == true -> {
+                val errorList = JSONArray(jsonObject.getString("errors"))
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = errorList.getJSONObject(0).getString("message")
+                )
+            }
+
+            jsonObject?.has("error") == true -> {
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = jsonObject.getString("error")
+                )
+            }
+
+            else -> {
+                null
+            }
+        }
+        return errorResponse
+
     }
 
     /**
      * For issuance of the deferred credential.
-     * @param acceptanceToken - token which we got from credential request
-     * @param deferredCredentialEndPoint - end point to call the deferred credential
      *
+     * @param acceptanceToken - token which we got from credential request
+     * @param deferredCredentialEndPoint - end point to call the deferred
+     *     credential
      * @return Credential response
      */
     override suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?
-    ): CredentialResponse? {
+    ): WrappedCredentialResponse? {
         val response = ApiManager.api.getService()?.getDifferedCredential(
             deferredCredentialEndPoint ?: "",
             "Bearer $acceptanceToken",
-            CredentialRequest() //empty object
+            CredentialRequest() // empty object
         )
 
         return if (response?.isSuccessful == true
             && response.body()?.credential != null
         ) {
-            response.body()
+            WrappedCredentialResponse(credentialResponse = response.body())
         } else {
             null
         }

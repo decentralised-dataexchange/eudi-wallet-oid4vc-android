@@ -1,21 +1,26 @@
 package com.ewc.eudi_wallet_oidc_android.services.did
 
+import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.OctetKeyPair
+import com.nimbusds.jose.jwk.gen.OctetKeyPairGenerator
+import com.nimbusds.jose.util.Base64URL
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.security.SecureRandom
 import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECPublicKeySpec
 import java.security.spec.PKCS8EncodedKeySpec
-import com.mediaparkpk.base58android.Base58
-import java.security.SecureRandom
+import java.util.UUID
 
-class DIDService : DIDServiceInterface{
+
+class DIDService : DIDServiceInterface {
 
     /**
      * Generate a did:key:jcs-pub decentralised identifier.
@@ -25,7 +30,6 @@ class DIDService : DIDServiceInterface{
     override fun createDID(jwk: ECKey): String {
         val publicKey = jwk.toPublicJWK()
 
-        // Remove whitespaces from JSON string
         val compactJson =
             "{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"${publicKey?.x}\",\"y\":\"${publicKey?.y}\"}"
 
@@ -39,9 +43,7 @@ class DIDService : DIDServiceInterface{
         val multiBaseEncoded = multiBaseEncode(multiCodecBytes!!)
 
         // Prefix the string with "did:key"
-        val didKeyString = "did:key:z$multiBaseEncoded"
-
-        return didKeyString
+        return "did:key:z$multiBaseEncoded"
     }
 
     /**
@@ -71,7 +73,39 @@ class DIDService : DIDServiceInterface{
     }
 
     /**
+     * Generate JWK of curve Ed25519
+     *
+     *  @return JWK
+     */
+    override fun createED25519JWK(): OctetKeyPair? {
+        val jwk = OctetKeyPairGenerator(Curve.Ed25519)
+            .keyID(UUID.randomUUID().toString())
+            .generate()
+
+        return jwk
+    }
+
+    /**
+     * Generate DID for the ED25519
+     * @param privateKeyX - X value of the ED25519 jwk
+     *
+     * @return DID
+     */
+    override fun createDidED25519(privateKeyX: Base64URL): String {
+        val startArray = byteArrayOf(0xed.toByte(), 0x01)
+        val newArray = startArray + Base64URL(privateKeyX.toString()).decode()
+        // 3. base58 encode the prefixed public key bytes.
+        var encoded = Base58.encode(newArray)
+        // 4. prefix the output with ‘z’
+        encoded = "did:key:z$encoded"
+        return encoded
+    }
+
+    /**
      * Convert the PrivateKey to ECPrivateKey
+     * @param privateKey
+     *
+     * @return ECPrivateKey
      */
     private fun convertToECPrivateKey(privateKey: PrivateKey): ECPrivateKey? {
         return if (privateKey is ECPrivateKey) {
@@ -98,6 +132,9 @@ class DIDService : DIDServiceInterface{
 
     /**
      * Convert the PublicKey to ECPublicKey
+     * @param publicKey
+     *
+     * @return ECPublicKey
      */
     private fun convertToECPublicKey(publicKey: PublicKey): ECPublicKey? {
         return if (publicKey is ECPublicKey) {

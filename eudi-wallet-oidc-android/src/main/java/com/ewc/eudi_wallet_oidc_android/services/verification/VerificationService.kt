@@ -8,16 +8,25 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
+import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
+import com.google.gson.internal.LinkedTreeMap
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.shaded.json.parser.ParseException
+import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
+import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.SignedJWT
+import org.json.JSONObject
 import java.util.Date
 import java.util.UUID
+
 
 class VerificationService : VerificationServiceInterface {
 
@@ -44,6 +53,7 @@ class VerificationService : VerificationServiceInterface {
         val responseType = Uri.parse(data).getQueryParameter("response_type")
         val scope = Uri.parse(data).getQueryParameter("scope")
         val requestUri = Uri.parse(data).getQueryParameter("request_uri")
+        val responseUri = Uri.parse(data).getQueryParameter("response_uri")
         val responseMode = Uri.parse(data).getQueryParameter("response_mode")
 
         if (presentationDefinition != null) {
@@ -56,12 +66,14 @@ class VerificationService : VerificationServiceInterface {
                 responseMode = responseMode,
                 responseType = responseType,
                 scope = scope,
-                requestUri = requestUri
+                requestUri = requestUri,
+                responseUri = responseUri
             )
         } else if (data.startsWith("openid4vp")
             && !requestUri.isNullOrBlank()
         ) {
-            val response = ApiManager.api.getService()?.getPresentationDefinitionFromRequestUri(requestUri)
+            val response =
+                ApiManager.api.getService()?.getPresentationDefinitionFromRequestUri(requestUri)
             if (response?.isSuccessful == true) {
                 val split = response.body().toString().split(".")[1]
 
@@ -79,10 +91,31 @@ class VerificationService : VerificationServiceInterface {
             } else {
                 return null
             }
+        } else if (isValidJWT(data)) {
+            val split = data.split(".")
+            var payload: String? = null
+            if (split.size == 3) {
+                payload = split[1]
+                return Gson().fromJson(payload, PresentationRequest::class.java)
+            } else {
+                return null
+            }
         } else {
             return null
         }
     }
+
+    private fun isValidJWT(token: String): Boolean {
+        try {
+            // Parse the JWT token
+            val parsedJWT: JWT = JWTParser.parse(token)
+            return parsedJWT.jwtClaimsSet != null
+        } catch (e: ParseException) {
+            println("JWT parsing failed: ${e.message}")
+            return false
+        }
+    }
+
 
     /**
      * Authorisation response is sent by constructing the vp_token and presentation_submission values.
@@ -132,7 +165,7 @@ class VerificationService : VerificationServiceInterface {
         jwt.sign(ECDSASigner(subJwk))
 
         val response = ApiManager.api.getService()?.sendVPToken(
-            presentationRequest.redirectUri ?: "",
+            presentationRequest.responseUri?:presentationRequest.redirectUri ?: "",
             mapOf(
                 "vp_token" to jwt.serialize(),
                 "presentation_submission" to Gson().toJson(
@@ -151,21 +184,99 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
+    /**
+     * Returns all the list of credentials matching for all input descriptors
+     */
+    override suspend fun filterCredentials(
+        credentialList: List<String?>,
+        presentationDefinition: PresentationDefinition
+    ): List<List<String>> {
+        //list of credentials matched for all input descriptors
+        val response: MutableList<MutableList<String>> = mutableListOf()
+
+        var processedCredentials: List<String> = mutableListOf()
+        for (cred in credentialList) {
+            val split = cred?.split(".")
+
+
+            val jsonString = if ((cred?.split("~")?.size ?: 0) > 0)
+                SDJWTService().updateIssuerJwtWithDisclosures(cred)
+            else
+                Base64.decode(
+                    split?.get(1) ?: "",
+                    Base64.URL_SAFE
+                ).toString(charset("UTF-8"))
+
+            val json = JSONObject(jsonString?:"{}")
+
+            // todo known item, we are considering the path from only vc
+            processedCredentials =
+                processedCredentials + listOf(
+                    if (json.has("vc")) json.getJSONObject("vc").toString()
+                    else json.toString()
+                )
+        }
+
+        val pex = PresentationExchange()
+
+        presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
+            val filteredCredentialList: MutableList<String> = mutableListOf()
+            val inputDescriptor = Gson().toJson(inputDescriptors)
+
+            val matches: List<MatchedCredential> =
+                pex.matchCredentials(inputDescriptor, processedCredentials)
+
+            for (match in matches) {
+                filteredCredentialList.add(credentialList[match.index] ?: "")
+            }
+
+            response.add(filteredCredentialList)
+        }
+
+        return response
+    }
+
+    /**
+     * Processes the provided presentation definition and converts it into a PresentationDefinition object.
+     *
+     * @param presentationDefinition The presentation definition to be processed, can be of type PresentationDefinition,
+     * LinkedTreeMap<*, *> representing JSON structure, or a JSON string.
+     * @return The processed PresentationDefinition object.
+     * @throws IllegalArgumentException if the presentation definition cannot be processed.
+     */
+    override fun processPresentationDefinition(presentationDefinition: Any?): PresentationDefinition {
+        try {
+            return when (presentationDefinition) {
+                is PresentationDefinition -> presentationDefinition
+                is LinkedTreeMap<*, *> -> {
+                    val jsonString = Gson().toJson(presentationDefinition)
+                    Gson().fromJson(jsonString, PresentationDefinition::class.java)
+                }
+
+                is String -> Gson().fromJson(
+                    presentationDefinition,
+                    PresentationDefinition::class.java
+                )
+
+                else -> throw IllegalArgumentException("Invalid presentation definition format")
+            }
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Error processing presentation definition", e)
+        }
+    }
+
+    /**
+     * To generate the presentation submission from the presentation Request
+     */
     private fun createPresentationSubmission(
         presentationRequest: PresentationRequest
     ): PresentationSubmission? {
         val id = UUID.randomUUID().toString()
         val descriptorMap: ArrayList<DescriptorMap> = ArrayList()
 
-        var presentationDefinition: PresentationDefinition? = null
-        if (presentationRequest.presentationDefinition is PresentationDefinition)
-            presentationDefinition =
-                presentationRequest.presentationDefinition as PresentationDefinition
-        else
-            presentationDefinition = Gson().fromJson(
-                presentationRequest.presentationDefinition as String,
-                PresentationDefinition::class.java
-            )
+        var presentationDefinition: PresentationDefinition? =
+            processPresentationDefinition(presentationRequest.presentationDefinition)
+
         presentationDefinition?.inputDescriptors?.forEachIndexed { index, inputDescriptors ->
             val descriptor = DescriptorMap(
                 id = inputDescriptors.id,
