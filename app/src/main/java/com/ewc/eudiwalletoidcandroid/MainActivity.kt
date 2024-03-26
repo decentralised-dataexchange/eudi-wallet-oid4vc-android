@@ -9,6 +9,9 @@ import androidx.databinding.DataBindingUtil
 import androidx.lifecycle.ViewModelProvider
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudiwalletoidcandroid.databinding.ActivityMainBinding
+import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
+import com.google.gson.Gson
 import io.igrant.qrcode_scanner_android.qrcode.utils.QRScanner
 
 class MainActivity : AppCompatActivity() {
@@ -29,13 +32,20 @@ class MainActivity : AppCompatActivity() {
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         binding.viewModel = viewModel
         binding.lifecycleOwner = this
-        viewModel?.subJwk = DIDService().createJWK()
-        viewModel?.did = DIDService().createDID(viewModel?.subJwk!!)
 
         initClicks()
     }
 
     private fun initClicks() {
+        binding.btnCreateDID.setOnClickListener {
+            viewModel?.subJwk = DIDService().createJWK()
+            viewModel?.did = DIDService().createDID(viewModel?.subJwk!!)
+
+            viewModel?.displayText?.value = "Sub JWK : \n ${Gson().toJson(viewModel?.subJwk)}\n\n"
+            viewModel?.displayText?.value =
+                "${viewModel?.displayText?.value}Did : ${viewModel?.did}\n\n"
+        }
+
         binding.addCredential.setOnClickListener {
             binding.tvCredential.text = ""
             QRScanner().withLocale("en").start(
@@ -74,6 +84,9 @@ class MainActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         ""
                     }
+
+                    viewModel?.displayText?.value =
+                        "${viewModel?.displayText?.value}Scanned data : $url\n\n"
 
                     viewModel?.issueCredential(url ?: "")
                 }

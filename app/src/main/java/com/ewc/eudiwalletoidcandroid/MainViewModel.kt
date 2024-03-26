@@ -6,12 +6,16 @@ import androidx.lifecycle.ViewModel
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.discovery.DiscoveryService
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
+import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import com.google.gson.Gson
 import com.nimbusds.jose.jwk.ECKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +30,12 @@ class MainViewModel : ViewModel() {
 
     var isPreAuthorised = MutableLiveData<Boolean>(false)
 
+    var displayText = MutableLiveData<String?>("")
+
     var credentialJwt = MutableLiveData<String?>("")
 
     private lateinit var codeVerifier: String
-    private var tokenResponse: TokenResponse? = null
+    private var tokenResponse: WrappedTokenResponse? = null
     private var authConfig: AuthorisationServerWellKnownConfiguration? = null
     private var issuerConfig: IssuerWellKnownConfiguration? = null
     private var offerCredential: CredentialOffer? = null
@@ -48,14 +54,24 @@ class MainViewModel : ViewModel() {
 
             // Discovery
             issuerConfig =
-                DiscoveryService().getIssuerConfig(offerCredential?.credentialIssuer)
+                DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
+
             authConfig =
                 DiscoveryService().getAuthConfig(
-                    issuerConfig?.authorizationServer ?: issuerConfig?.issuer
+                    "${issuerConfig?.authorizationServer ?: issuerConfig?.issuer}/.well-known/openid-configuration"
                 )
 
             // Generating code verifier
             codeVerifier = CodeVerifierService().generateCodeVerifier()
+
+            withContext(Dispatchers.Main) {
+                displayText.value =
+                    "${displayText?.value}Issuer Config : \n${Gson().toJson(issuerConfig)}\n\n"
+                displayText.value =
+                    "${displayText.value}Auth Config : \n${Gson().toJson(authConfig)}\n\n"
+                displayText.value =
+                    "${displayText.value}Code verifier : \n$codeVerifier\n\n"
+            }
 
             if (offerCredential?.grants?.preAuthorizationCode?.preAuthorizedCode != null) {
                 // pre authorized code flow
@@ -107,20 +123,26 @@ class MainViewModel : ViewModel() {
             did,
             subJwk,
             issuerConfig?.credentialIssuer,
-            tokenResponse?.cNonce,
+            tokenResponse?.tokenResponse?.cNonce,
             offerCredential,
             issuerConfig?.credentialEndpoint,
-            tokenResponse?.accessToken
+            tokenResponse?.tokenResponse?.accessToken
         )
 
         withContext(Dispatchers.Main) {
-            if (credential?.credential != null) {
-                credentialJwt.value = credential.credential
+            if (credential?.credentialResponse != null) {
+                displayText.value =
+                    "${displayText.value}Token : \n${Gson().toJson(tokenResponse)}\n\n"
+                displayText.value =
+                    "${displayText.value}Credential : \n${Gson().toJson(credential)}\n\n"
+
+
+                credentialJwt.value = credential.credentialResponse?.credential
                 isLoading.value = false
             }
         }
 
-        fetchDeferredCredential(credential?.acceptanceToken)
+        fetchDeferredCredential(credential?.credentialResponse?.acceptanceToken)
     }
 
     // fetching deferred credential
@@ -136,11 +158,21 @@ class MainViewModel : ViewModel() {
                                 issuerConfig?.deferredCredentialEndpoint
                             )
 
-                        if (credential?.credential != null) {
+                        if (credential?.credentialResponse?.credential != null) {
 
                             withContext(Dispatchers.Main) {
-                                if (credential.credential != null) {
-                                    credentialJwt.value = credential.credential
+                                if (credential.credentialResponse?.credential != null) {
+
+                                    displayText.value =
+                                        "${displayText.value}Token : \n${Gson().toJson(tokenResponse)}\n\n"
+                                    displayText.value =
+                                        "${displayText.value}Credential : \n${
+                                            Gson().toJson(
+                                                credential
+                                            )
+                                        }\n\n"
+
+                                    credentialJwt.value = credential.credentialResponse?.credential
                                     isLoading.value = false
                                 }
                             }
@@ -167,7 +199,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun verifyCredential(url:String){
+    fun verifyCredential(url: String) {
         CoroutineScope(Dispatchers.Main).launch {
             val presentationRequest =
                 VerificationService().processAuthorisationRequest(url)
@@ -175,19 +207,86 @@ class MainViewModel : ViewModel() {
             val subJwk = DIDService().createJWK()
             val did = DIDService().createDID(subJwk)
 
-            val issuerConfig =
-                DiscoveryService().getIssuerConfig(presentationRequest?.clientId)
-            val authConfig =
-                DiscoveryService().getAuthConfig(issuerConfig?.authorizationServer)
+            withContext(Dispatchers.Main) {
+                displayText.value =
+                    "${displayText.value}Verification started\n\n"
+                displayText.value =
+                    "${displayText.value}Presentation Request : \n${
+                        Gson().toJson(
+                            presentationRequest
+                        )
+                    }\n\n"
+
+                displayText.value =
+                    "${displayText.value}Did : \n${did}\n\n"
+
+                displayText.value =
+                    "${displayText.value}private key : \n${Gson().toJson(subJwk)}\n\n"
+            }
+
 
             if (presentationRequest != null) {
-                val code = VerificationService().sendVPToken(
-                    did = did,
-                    subJwk = subJwk,
-                    presentationRequest = presentationRequest,
-                    credentialList = listOf(credentialJwt.value?:"")
+
+                val presentationDefinition =
+                    VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+
+                val allCredentials = listOf(credentialJwt.value)
+
+                val filteredCredentials = takeFirstElementInEachList(
+                    VerificationService().filterCredentials(
+                        allCredentials,
+                        presentationDefinition
+                    ),
+                    presentationDefinition.format?.containsKey("sd_jwt") == true,
+                    presentationRequest,
+                    subJwk
                 )
+
+                if (filteredCredentials.isNotEmpty()) {
+                    val code = VerificationService().sendVPToken(
+                        did = did,
+                        subJwk = subJwk,
+                        presentationRequest = presentationRequest,
+                        credentialList = filteredCredentials
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        displayText.value =
+                            "${displayText.value} ${if (code != null) "Verification success" else "Verification failed"}\n\n"
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        displayText.value =
+                            "${displayText.value}No valid credentials\n\n"
+                    }
+                }
             }
         }
+    }
+
+    //since we are doing selection of cards here, we pick the latest card
+    private fun takeFirstElementInEachList(
+        filterCredentials: List<List<String>>,
+        isSdJwt: Boolean,
+        presentationRequest: PresentationRequest,
+        subJwk: ECKey
+    ): List<String> {
+        val response: MutableList<String> = mutableListOf()
+        filterCredentials.forEach {
+            if (it.isNotEmpty())
+                if (isSdJwt)
+                    response.add(
+                        SDJWTService().createSDJWTR(
+                            it.first(),
+                            presentationRequest,
+                            subJwk
+                        ) ?: ""
+                    )
+                else {
+                    response.add(it.first())
+                }
+
+        }
+        return response
     }
 }
