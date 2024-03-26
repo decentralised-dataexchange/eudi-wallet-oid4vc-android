@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.did
 
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.OctetKeyPair
+import com.nimbusds.jose.util.Base64URL
 
 interface DIDServiceInterface {
 
@@ -19,4 +21,8 @@ interface DIDServiceInterface {
      * @return JWK
      */
     fun createJWK(seed: String? = null): ECKey
+
+    fun createED25519JWK(): OctetKeyPair?
+
+    fun createDidED25519(privateKeyX: Base64URL): String
 }

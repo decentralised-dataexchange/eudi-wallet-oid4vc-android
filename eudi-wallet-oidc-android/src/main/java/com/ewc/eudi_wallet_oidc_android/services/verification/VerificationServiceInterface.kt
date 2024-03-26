@@ -1,6 +1,11 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification
 
+import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
+import com.google.gson.Gson
+import com.google.gson.internal.LinkedTreeMap
 import com.nimbusds.jose.jwk.ECKey
 
 interface VerificationServiceInterface {
@@ -30,6 +35,20 @@ interface VerificationServiceInterface {
         did: String?,
         subJwk: ECKey?,
         presentationRequest: PresentationRequest,
-        credentialList:List<String>
-    ):String?
+        credentialList: List<String>
+    ): String?
+
+    /**
+     * To filter the credential using the input descriptors
+     * @param credentialList - list of all issued credentials
+     * @param presentationDefinition
+     *
+     * @return list of credentials filtered using the presentation definition
+     */
+    suspend fun filterCredentials(
+        credentialList: List<String?>,
+        presentationDefinition: PresentationDefinition
+    ): List<List<String>>
+
+    fun processPresentationDefinition(presentationDefinition: Any?): PresentationDefinition?
 }

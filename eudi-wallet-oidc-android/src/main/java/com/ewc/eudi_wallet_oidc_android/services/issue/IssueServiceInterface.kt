@@ -1,8 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
-import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
-import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.ECKey
 
 interface IssueServiceInterface {
@@ -25,7 +25,7 @@ interface IssueServiceInterface {
      * @param codeVerifier - to build the authorisation request
      * @param authorisationEndPoint - to build the authorisation request
      *
-     * @return String - short-lived authorisation code
+     * @return String - Uri with query parameter code with value short-lived authorisation code
      */
     suspend fun processAuthorisationRequest(
         did: String?,
@@ -57,7 +57,7 @@ interface IssueServiceInterface {
         codeVerifier: String?,
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?
-    ): TokenResponse?
+    ): WrappedTokenResponse?
 
     /**
      * To process the credential, credentials can be issued in two ways,
@@ -84,7 +84,7 @@ interface IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
         accessToken: String?
-    ): CredentialResponse?
+    ): WrappedCredentialResponse?
 
     /**
      * For issuance of the deferred credential.
@@ -96,5 +96,5 @@ interface IssueServiceInterface {
     suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?
-    ): CredentialResponse?
+    ): WrappedCredentialResponse?
 }
