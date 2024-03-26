@@ -1,16 +1,19 @@
 package com.ewc.eudiwalletoidcandroid
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.lifecycle.ViewModelProvider
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudiwalletoidcandroid.databinding.ActivityMainBinding
-import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
-import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
 import io.igrant.qrcode_scanner_android.qrcode.utils.QRScanner
 
@@ -47,18 +50,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.addCredential.setOnClickListener {
-            binding.tvCredential.text = ""
-            QRScanner().withLocale("en").start(
-                this,
-                REQUEST_CODE_SCAN_ISSUE
-            )
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.CAMERA
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.CAMERA),
+                    REQUEST_CODE_SCAN_ISSUE
+                )
+            } else {
+                issueCredential()
+            }
         }
 
         binding.verifyCredential.setOnClickListener {
-            QRScanner().withLocale("en").start(
-                this,
-                REQUEST_CODE_SCAN_VERIFY
-            )
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.CAMERA
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.CAMERA),
+                    REQUEST_CODE_SCAN_VERIFY
+                )
+            } else {
+                verifyCredential()
+            }
+
         }
 
         binding.verifyPin.setOnClickListener {
@@ -69,6 +90,47 @@ class MainActivity : AppCompatActivity() {
                 binding.verifyPin.visibility = View.GONE
                 binding.etPin.text.clear()
             }
+        }
+    }
+
+    private fun issueCredential() {
+        binding.tvCredential.text = ""
+        QRScanner().withLocale("en").start(
+            this,
+            REQUEST_CODE_SCAN_ISSUE
+        )
+    }
+
+    private fun verifyCredential() {
+        QRScanner().withLocale("en").start(
+            this,
+            REQUEST_CODE_SCAN_VERIFY
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            when (requestCode) {
+                REQUEST_CODE_SCAN_VERIFY -> {
+                    verifyCredential()
+                }
+
+                REQUEST_CODE_SCAN_ISSUE -> {
+                    issueCredential()
+                }
+            }
+        } else {
+            Toast.makeText(
+                this,
+                "Please give permission for camera to continue",
+                Toast.LENGTH_SHORT
+            )
         }
     }
 
