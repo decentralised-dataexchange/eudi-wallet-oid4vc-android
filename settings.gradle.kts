@@ -24,6 +24,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Eudi Wallet OIDC Android"
+rootProject.name = "eudi-wallet-oidc-android"
 include(":app")
 include(":eudi-wallet-oidc-android")
