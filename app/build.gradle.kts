@@ -36,17 +36,6 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
-    }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
 
     buildFeatures {
         dataBinding = true
@@ -84,4 +73,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.3.1")
 
     implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
+    implementation("org.slf4j:slf4j-api") {
+        version {
+            strictly("2.0.9")
+        }
+    }
 }

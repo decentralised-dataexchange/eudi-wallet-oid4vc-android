@@ -57,17 +57,27 @@ dependencies {
     implementation("com.jakewharton.retrofit:retrofit2-kotlin-coroutines-adapter:0.9.2")
 
     implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
+    implementation("org.slf4j:slf4j-api") {
+        version {
+            strictly("2.0.9")
+        }
+    }
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("Maven") {
-            groupId = "com.github.decentraliseddataexchange"
-            artifactId = "eudi-wallet-oidc-android"
-            version = "2024.3.1"
-            artifact("$buildDir/outputs/aar/eudi-wallet-oidc-android-release.aar")
+afterEvaluate {
+    publishing {
+        publications {
+            register<MavenPublication>("release") {
+                groupId = "com.github.decentraliseddataexchange"
+                artifactId = "eudi-wallet-oidc-android"
+                version = "2024.3.1"
+
+                afterEvaluate {
+                    from(components["release"])
+                }
+            }
         }
     }
 }
