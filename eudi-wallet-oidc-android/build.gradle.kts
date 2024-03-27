@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("maven-publish")
 }
 
 android {
@@ -58,4 +59,15 @@ dependencies {
     implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("Maven") {
+            groupId = "com.github.decentraliseddataexchange"
+            artifactId = "eudi-wallet-oidc-android"
+            version = "2024.3.1"
+            artifact("$buildDir/outputs/aar/eudi-wallet-oidc-android-release.aar")
+        }
+    }
 }
