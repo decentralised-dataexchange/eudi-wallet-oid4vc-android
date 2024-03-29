@@ -66,17 +66,16 @@ dependencies {
     implementation("com.google.crypto.tink:tink-android:1.7.0")
 }
 
-afterEvaluate {
-    publishing {
-        publications {
-            register<MavenPublication>("release") {
-                groupId = "com.github.decentraliseddataexchange"
-                artifactId = "eudi-wallet-oidc-android"
-                version = "2024.3.1"
 
-                afterEvaluate {
-                    from(components["release"])
-                }
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            groupId = "com.github.decentraliseddataexchange"
+            artifactId = "eudi-wallet-oidc-android"
+            version = "2024.3.1"
+
+            afterEvaluate {
+                from(components["release"])
             }
         }
     }
