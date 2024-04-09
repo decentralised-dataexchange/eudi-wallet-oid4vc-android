@@ -7,6 +7,7 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -155,7 +156,8 @@ class SDJWTService : SDJWTServiceInterface {
         val jsonObject = Gson().fromJson(jsonString, JsonObject::class.java)
 
         val hashList: MutableList<String> = mutableListOf()
-        val disclosures = getDisclosuresFromSDJWT(credential)
+        var disclosures = getDisclosuresFromSDJWT(credential)
+        disclosures = disclosures?.filter { it != null && it.isNotBlank() }
         disclosures?.forEach { encodedString ->
             try {
                 val hash = calculateSHA256Hash(encodedString)
@@ -185,8 +187,8 @@ class SDJWTService : SDJWTServiceInterface {
                 val sdList = jsonObject.getAsJsonArray("_sd")
 
                 hashList.forEachIndexed { index, hash ->
-                    val sdKey = sdList[index].asString
-                    if (hash == sdKey) {
+
+                    if (isStringPresentInJSONArray(sdList, hash)) {
                         try {
                             val disclosure = Base64.decode(
                                 disclosures[index],
@@ -210,6 +212,16 @@ class SDJWTService : SDJWTServiceInterface {
                 addDisclosuresToCredential(arrayElement, disclosures, hashList)
             }
         }
+    }
+
+    private fun isStringPresentInJSONArray(jsonArray: JsonArray, searchString: String): Boolean {
+        for (i in 0 until jsonArray.size()) {
+            val element = jsonArray.elementAt(i).asString
+            if (element == searchString) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun extractKeyValue(decodedString: String): Pair<String, String> {
