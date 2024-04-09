@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
+import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.ECKey
@@ -83,7 +84,8 @@ interface IssueServiceInterface {
         nonce: String?,
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
-        accessToken: String?
+        accessToken: String?,
+        format: String
     ): WrappedCredentialResponse?
 
     /**
@@ -97,4 +99,25 @@ interface IssueServiceInterface {
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?
     ): WrappedCredentialResponse?
+
+    /**
+     * Get format from IssuerWellKnownConfiguration
+     *
+     * @param issuerConfig
+     * @param type
+     */
+    fun getFormatFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): String?
+
+    /**
+     * Get types from credential offer
+     *
+     * @param credentialOffer
+     * @return
+     */
+    fun getTypesFromCredentialOffer(
+        credentialOffer: CredentialOffer?
+    ): ArrayList<String>
 }

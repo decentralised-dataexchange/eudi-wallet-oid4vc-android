@@ -14,7 +14,6 @@ data class AuthorisationServerWellKnownConfiguration(
     @SerializedName("response_modes_supported") var responseModesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("grant_types_supported") var grantTypesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("subject_types_supported") var subjectTypesSupported: ArrayList<String> = arrayListOf(),
-//    @SerializedName("id_token_signing_alg_values_supported") var idTokenSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("request_object_signing_alg_values_supported") var requestObjectSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("request_parameter_supported") var requestParameterSupported: Boolean? = null,
     @SerializedName("request_uri_parameter_supported") var requestUriParameterSupported: Boolean? = null,

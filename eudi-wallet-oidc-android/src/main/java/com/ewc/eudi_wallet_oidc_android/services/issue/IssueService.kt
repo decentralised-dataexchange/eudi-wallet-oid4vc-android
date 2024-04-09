@@ -4,11 +4,13 @@ import android.net.Uri
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaData
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
+import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV1
+import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV2
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
+import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
-import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
@@ -84,7 +86,7 @@ class IssueService : IssueServiceInterface {
         val authorisationDetails = Gson().toJson(
             arrayListOf(
                 AuthorizationDetails(
-                    types = credentialOffer?.credentials?.get(0)?.types,
+                    types = getTypesFromCredentialOffer(credentialOffer),
                     locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
                 )
             )
@@ -267,7 +269,8 @@ class IssueService : IssueServiceInterface {
         nonce: String?,
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
-        accessToken: String?
+        accessToken: String?,
+        format:String
     ): WrappedCredentialResponse? {
 
         // Add claims
@@ -296,8 +299,8 @@ class IssueService : IssueServiceInterface {
 
         // Construct credential request
         val body = CredentialRequest(
-            types = credentialOffer?.credentials?.get(0)?.types,
-            format = credentialOffer?.credentials?.get(0)?.format,
+            types = getTypesFromCredentialOffer(credentialOffer),
+            format = format,
             ProofV3(
                 proofType = "jwt",
                 jwt = jwt.serialize()
@@ -413,5 +416,79 @@ class IssueService : IssueServiceInterface {
         }
     }
 
+    /**
+     * Get format from IssuerWellKnownConfiguration
+     *
+     * @param issuerConfig
+     * @param type
+     */
+    override fun getFormatFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): String? {
+        var format: String = "jwt_vc"
+        val credentialOfferJsonString = Gson().toJson(issuerConfig)
+
+        val jsonObject = JSONObject(credentialOfferJsonString)
+
+        val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
+
+        when (credentialsSupported) {
+            is JSONObject -> {
+                val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
+                format = credentialSupported.getString("format")
+            }
+
+            is JSONArray -> {
+                for (i in 0 until credentialsSupported.length()) {
+                    val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+
+                    // Get the "types" JSONArray
+                    val typesArray = jsonObject.getJSONArray("types")
+
+                    // Check if the string is present in the "types" array
+                    for (j in 0 until typesArray.length()) {
+                        if (typesArray.getString(j) == type) {
+                            format = jsonObject.getString("format")
+                            break
+                        }
+                    }
+                }
+            }
+
+            else -> {
+                // Neither JSONObject nor JSONArray
+                println("Child is neither JSONObject nor JSONArray")
+            }
+        }
+
+        return format
+    }
+
+    /**
+     * Get types from credential offer
+     *
+     * @param credentialOffer
+     * @return
+     */
+    override fun getTypesFromCredentialOffer(credentialOffer: CredentialOffer?): ArrayList<String> {
+        var types: ArrayList<String> = ArrayList()
+        val credentialOfferJsonString = Gson().toJson(credentialOffer)
+        try {
+            try {
+                val credentialOfferV2 =
+                    Gson().fromJson(credentialOfferJsonString, CredentialOfferV2::class.java)
+                types = credentialOfferV2.credentials ?: ArrayList()
+            } catch (e: Exception) {
+                val credentOfferV1 =
+                    Gson().fromJson(credentialOfferJsonString, CredentialOfferV1::class.java)
+                types = credentOfferV1?.credentials?.get(0)?.types ?: ArrayList()
+            }
+        } catch (e: Exception) {
+
+        }
+
+        return types
+    }
 
 }
