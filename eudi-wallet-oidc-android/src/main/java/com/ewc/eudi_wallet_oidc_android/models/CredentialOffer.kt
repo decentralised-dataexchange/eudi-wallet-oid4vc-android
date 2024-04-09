@@ -3,11 +3,21 @@ package com.ewc.eudi_wallet_oidc_android.models
 import com.google.gson.annotations.SerializedName
 
 data class CredentialOffer(
+    @SerializedName("credential_issuer") var credentialIssuer: String? = null,
+    @SerializedName("credentials") var credentials: ArrayList<Any>? = null,
+    @SerializedName("grants") var grants: Grants? = null
+)
 
+data class CredentialOfferV1(
     @SerializedName("credential_issuer") var credentialIssuer: String? = null,
     @SerializedName("credentials") var credentials: ArrayList<Credentials>? = null,
     @SerializedName("grants") var grants: Grants? = null
+)
 
+data class CredentialOfferV2(
+    @SerializedName("credential_issuer") var credentialIssuer: String? = null,
+    @SerializedName("credentials") var credentials: ArrayList<String>? = null,
+    @SerializedName("grants") var grants: Grants? = null
 )
 
 data class Credentials(

@@ -119,6 +119,8 @@ class MainViewModel : ViewModel() {
     }
 
     private suspend fun getCredential() {
+        val types = IssueService().getTypesFromCredentialOffer(offerCredential)
+        val format = IssueService().getFormatFromIssuerConfig(issuerConfig, types.lastOrNull() ?:"")
         val credential = IssueService().processCredentialRequest(
             did,
             subJwk,
@@ -126,7 +128,8 @@ class MainViewModel : ViewModel() {
             tokenResponse?.tokenResponse?.cNonce,
             offerCredential,
             issuerConfig?.credentialEndpoint,
-            tokenResponse?.tokenResponse?.accessToken
+            tokenResponse?.tokenResponse?.accessToken,
+            format?:"jwt_vc"
         )
 
         withContext(Dispatchers.Main) {
