@@ -69,25 +69,22 @@ class VerificationService : VerificationServiceInterface {
                 requestUri = requestUri,
                 responseUri = responseUri
             )
-        } else if (data.startsWith("openid4vp")
-            && !requestUri.isNullOrBlank()
-        ) {
+        } else if (!requestUri.isNullOrBlank() || !responseUri.isNullOrBlank()) {
             val response =
-                ApiManager.api.getService()?.getPresentationDefinitionFromRequestUri(requestUri)
+                ApiManager.api.getService()
+                    ?.getPresentationDefinitionFromRequestUri(requestUri ?: responseUri ?: "")
             if (response?.isSuccessful == true) {
-                val split = response.body().toString().split(".")[1]
+                if (isValidJWT(response.body().toString())) {
 
-                val jsonString = Base64.decode(
-                    split,
-                    Base64.URL_SAFE
-                ).toString(charset("UTF-8"))
+                    val json = Gson().fromJson(
+                        parseJWTForPayload(response.body().toString()),
+                        PresentationRequest::class.java
+                    )
 
-                val json = Gson().fromJson(
-                    jsonString,
-                    PresentationRequest::class.java
-                )
-
-                return json
+                    return json
+                }else{
+                    return null
+                }
             } else {
                 return null
             }
@@ -108,14 +105,23 @@ class VerificationService : VerificationServiceInterface {
     private fun isValidJWT(token: String): Boolean {
         try {
             // Parse the JWT token
-            val parsedJWT: JWT = JWTParser.parse(token)
-            return parsedJWT.jwtClaimsSet != null
-        } catch (e: ParseException) {
+            val parsedJWT = SignedJWT.parse(token)
+            return parsedJWT.payload != null
+        } catch (e: Exception) {
             println("JWT parsing failed: ${e.message}")
             return false
         }
     }
 
+    @Throws(ParseException::class)
+    private fun parseJWTForPayload(accessToken: String): String {
+        try {
+            val decodedJWT = SignedJWT.parse(accessToken)
+            return decodedJWT.payload.toString()
+        } catch (e: ParseException) {
+            throw java.lang.Exception("Invalid token!")
+        }
+    }
 
     /**
      * Authorisation response is sent by constructing the vp_token and presentation_submission values.
@@ -165,7 +171,7 @@ class VerificationService : VerificationServiceInterface {
         jwt.sign(ECDSASigner(subJwk))
 
         val response = ApiManager.api.getService()?.sendVPToken(
-            presentationRequest.responseUri?:presentationRequest.redirectUri ?: "",
+            presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
             mapOf(
                 "vp_token" to jwt.serialize(),
                 "presentation_submission" to Gson().toJson(
@@ -207,7 +213,7 @@ class VerificationService : VerificationServiceInterface {
                     Base64.URL_SAFE
                 ).toString(charset("UTF-8"))
 
-            val json = JSONObject(jsonString?:"{}")
+            val json = JSONObject(jsonString ?: "{}")
 
             // todo known item, we are considering the path from only vc
             processedCredentials =
