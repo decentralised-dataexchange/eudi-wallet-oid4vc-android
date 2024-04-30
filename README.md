@@ -1,5 +1,5 @@
 <h1 align="center">
-    EWC - EUDI Wallet Android Libraries 
+    EUDI Wallet OpenID for Verifiable Credentials - Android SDK
 </h1>
 
 <p align="center">
