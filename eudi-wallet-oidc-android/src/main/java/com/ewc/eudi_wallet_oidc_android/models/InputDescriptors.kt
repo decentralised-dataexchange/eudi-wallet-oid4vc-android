@@ -11,6 +11,7 @@ data class InputDescriptors(
 
 data class Constraints(
 
+    @SerializedName("limit_disclosure") var limitDisclosure: String? = null,
     @SerializedName("fields") var fields: ArrayList<Fields>? = null
 
 )
