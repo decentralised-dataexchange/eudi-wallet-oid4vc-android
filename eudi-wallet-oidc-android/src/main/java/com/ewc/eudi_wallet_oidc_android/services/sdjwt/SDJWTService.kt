@@ -1,11 +1,9 @@
 package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
 import android.util.Base64
-import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
-import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -204,7 +202,17 @@ class SDJWTService : SDJWTServiceInterface {
                             // Extract key-value pair from the encodedString
                             val (decodedKey, decodedValue) = extractKeyValue(disclosure)
                             // Add key-value pair to jsonObject
-                            jsonObject.addProperty(decodedKey, decodedValue)
+                            // Check if decodedValue is an object
+                            if (decodedValue is JsonObject) {
+                                // If it's an object, add it directly
+                                jsonObject.add(decodedKey, decodedValue)
+                            } else if (decodedValue is JsonArray) {
+                                // If it's an object, add it directly
+                                jsonObject.add(decodedKey, decodedValue)
+                            } else {
+                                // Otherwise, add it as a property
+                                jsonObject.addProperty(decodedKey, decodedValue.toString())
+                            }
                         } catch (e: IllegalArgumentException) {
                             // Handle invalid base64-encoded strings
                         }
@@ -231,10 +239,10 @@ class SDJWTService : SDJWTServiceInterface {
         return false
     }
 
-    private fun extractKeyValue(decodedString: String): Pair<String, String> {
+    private fun extractKeyValue(decodedString: String): Pair<String, Any> {
         val jsonArray = JsonParser.parseString(decodedString).asJsonArray
         val key = jsonArray[1].asString
-        val value = jsonArray[2].asString
+        val value = jsonArray[2]
         return Pair(key, value)
     }
 
