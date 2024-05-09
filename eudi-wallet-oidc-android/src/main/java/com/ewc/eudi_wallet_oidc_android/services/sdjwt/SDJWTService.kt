@@ -65,37 +65,44 @@ class SDJWTService : SDJWTServiceInterface {
         subJwk: ECKey
     ): String? {
         try {
+            val presentationDefinition =
+                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
             val processedCredentialWithRequiredDisclosures =
                 processDisclosuresWithPresentationDefinition(
                     credential,
-                    VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+                    presentationDefinition
                 )
-            val iat = Date()
+            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
+                val iat = Date()
 
-            val claimsSet = JWTClaimsSet.Builder()
-                .audience(presentationRequest.clientId)
-                .issueTime(iat)
-                .claim("nonce", UUID.randomUUID().toString())
-                .claim(
-                    "sd_hash",
-                    SDJWTService().calculateSHA256Hash(processedCredentialWithRequiredDisclosures)
+                val claimsSet = JWTClaimsSet.Builder()
+                    .audience(presentationRequest.clientId)
+                    .issueTime(iat)
+                    .claim("nonce", UUID.randomUUID().toString())
+                    .claim(
+                        "sd_hash",
+                        SDJWTService().calculateSHA256Hash(
+                            processedCredentialWithRequiredDisclosures
+                        )
+                    )
+                    .build()
+
+                // Create JWT for ES256K alg
+                val jwsHeader = JWSHeader.Builder(JWSAlgorithm.ES256)
+                    .type(JOSEObjectType("kb_jwt"))
+                    .build()
+
+                val jwt = SignedJWT(
+                    jwsHeader,
+                    claimsSet
                 )
-                .build()
 
-            // Create JWT for ES256K alg
-            val jwsHeader = JWSHeader.Builder(JWSAlgorithm.ES256)
-                .type(JOSEObjectType("kb_jwt"))
-                .build()
+                // Sign with private EC key
+                jwt.sign(ECDSASigner(subJwk))
+                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
+            }
 
-            val jwt = SignedJWT(
-                jwsHeader,
-                claimsSet
-            )
-
-            // Sign with private EC key
-            jwt.sign(ECDSASigner(subJwk))
-
-            return jwt.serialize()
+            return processedCredentialWithRequiredDisclosures
         } catch (e: Exception) {
             throw IllegalArgumentException("Error creating SD-JWT-R", e)
         }
