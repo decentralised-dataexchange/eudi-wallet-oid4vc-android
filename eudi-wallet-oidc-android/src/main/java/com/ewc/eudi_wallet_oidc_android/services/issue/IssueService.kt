@@ -435,24 +435,30 @@ class IssueService : IssueServiceInterface {
 
         when (credentialsSupported) {
             is JSONObject -> {
-                val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
-                format = credentialSupported.getString("format")
+                try {
+                    val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
+                    format = credentialSupported.getString("format")
+                } catch (e: Exception) {
+                }
             }
 
             is JSONArray -> {
-                for (i in 0 until credentialsSupported.length()) {
-                    val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+                try {
+                    for (i in 0 until credentialsSupported.length()) {
+                        val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
 
-                    // Get the "types" JSONArray
-                    val typesArray = jsonObject.getJSONArray("types")
+                        // Get the "types" JSONArray
+                        val typesArray = jsonObject.getJSONArray("types")
 
-                    // Check if the string is present in the "types" array
-                    for (j in 0 until typesArray.length()) {
-                        if (typesArray.getString(j) == type) {
-                            format = jsonObject.getString("format")
-                            break
+                        // Check if the string is present in the "types" array
+                        for (j in 0 until typesArray.length()) {
+                            if (typesArray.getString(j) == type) {
+                                format = jsonObject.getString("format")
+                                break
+                            }
                         }
                     }
+                } catch (e: Exception) {
                 }
             }
 

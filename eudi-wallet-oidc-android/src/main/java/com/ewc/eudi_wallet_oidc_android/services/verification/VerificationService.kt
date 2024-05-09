@@ -82,7 +82,7 @@ class VerificationService : VerificationServiceInterface {
                     )
 
                     return json
-                }else{
+                } else {
                     return null
                 }
             } else {
@@ -194,10 +194,25 @@ class VerificationService : VerificationServiceInterface {
      * Returns all the list of credentials matching for all input descriptors
      */
     override suspend fun filterCredentials(
-        credentialList: List<String?>,
+        allCredentialList: List<String?>,
         presentationDefinition: PresentationDefinition
     ): List<List<String>> {
         //list of credentials matched for all input descriptors
+
+        val credentialList: ArrayList<String?> = arrayListOf()
+        for (item in allCredentialList) {
+            if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure != null && item?.contains(
+                    "~"
+                ) == true
+            )
+                credentialList.add(item)
+            else if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure == null && item?.contains(
+                    "~"
+                ) != true
+            )
+                credentialList.add(item)
+        }
+
         val response: MutableList<MutableList<String>> = mutableListOf()
 
         var processedCredentials: List<String> = mutableListOf()
