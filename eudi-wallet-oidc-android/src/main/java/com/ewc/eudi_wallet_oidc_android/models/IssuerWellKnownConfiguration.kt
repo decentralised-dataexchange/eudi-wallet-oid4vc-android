@@ -17,7 +17,8 @@ data class CredentialsSupported(
     @SerializedName("format") var format: String? = null,
     @SerializedName("types") var types: ArrayList<String> = arrayListOf(),
     @SerializedName("trust_framework") var trustFramework: TrustFramework? = TrustFramework(),
-    @SerializedName("display") var display: ArrayList<Display> = arrayListOf()
+    @SerializedName("display") var display: ArrayList<Display> = arrayListOf(),
+    @SerializedName("cryptographic_suites_supported") var cryptographicSuitesSupported: ArrayList<String> = arrayListOf()
 )
 
 data class Display(
