@@ -17,7 +17,10 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.crypto.Ed25519Signer
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.shaded.json.parser.ParseException
 import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
@@ -169,6 +172,79 @@ class VerificationService : VerificationServiceInterface {
 
         // Sign with private EC key
         jwt.sign(ECDSASigner(subJwk))
+
+        val response = ApiManager.api.getService()?.sendVPToken(
+            presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+            mapOf(
+                "vp_token" to jwt.serialize(),
+                "presentation_submission" to Gson().toJson(
+                    createPresentationSubmission(
+                        presentationRequest
+                    )
+                ),
+                "state" to (presentationRequest.state ?: "")
+            )
+        )
+
+        return if (response?.code() == 302 || response?.code() == 200) {
+            response.headers()["Location"] ?: "https://tid-wallet-poc.azurewebsites.net?code=1"
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Send VP token
+     *
+     * @param did
+     * @param subJwk
+     * @param presentationRequest
+     * @param credentialList
+     * @return
+     */
+    override suspend fun sendVPToken(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<String>
+    ): String? {
+        val iat = Date()
+        val jti = "urn:uuid:${UUID.randomUUID()}"
+        val claimsSet = JWTClaimsSet.Builder()
+            .audience(presentationRequest.clientId)
+            .issueTime(iat)
+            .expirationTime(Date(iat.time + 600000))
+            .issuer(did)
+            .jwtID(jti)
+            .notBeforeTime(iat)
+            .claim("nonce", presentationRequest.nonce)
+            .subject(did)
+            .claim(
+                "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                    hashMapOf(
+                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                        "holder" to did,
+                        "id" to jti,
+                        "type" to listOf("VerifiablePresentation"),
+                        "verifiableCredential" to credentialList
+                    )
+                )
+            ).build()
+
+        // Create JWT for ES256K alg
+        val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+            .type(JOSEObjectType("JWT"))
+            .keyID("$did#${did?.replace("did:key:", "")}")
+            .jwk(subJwk?.toPublicJWK())
+            .build()
+
+        val jwt = SignedJWT(
+            jwsHeader,
+            claimsSet
+        )
+
+        // Sign with private EC key
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
 
         val response = ApiManager.api.getService()?.sendVPToken(
             presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",

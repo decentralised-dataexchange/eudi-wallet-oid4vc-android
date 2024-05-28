@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.did
 
+import com.ewc.eudi_wallet_oidc_android.CryptographicAlgorithms
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.util.Base64URL
 
@@ -22,7 +24,57 @@ interface DIDServiceInterface {
      */
     fun createJWK(seed: String? = null): ECKey
 
-    fun createED25519JWK(): OctetKeyPair?
+    /**
+     * Create DID according to cryptographicAlgorithm
+     *
+     * @param jwk
+     * @param cryptographicAlgorithm
+     * @return
+     */
+    fun createDID(
+        jwk: JWK,
+        cryptographicAlgorithm: String? = CryptographicAlgorithms.ES256): String
 
-    fun createDidED25519(privateKeyX: Base64URL): String
+    /**
+     * Create JWK according to cryptographicAlgorithm
+     *
+     * @param seed
+     * @param cryptographicAlgorithm
+     * @return
+     */
+    fun createJWK(
+        seed: String? = null,
+        cryptographicAlgorithm: String? = CryptographicAlgorithms.ES256): JWK
+
+    /**
+     * Create ES256 JWK
+     *
+     * @param seed
+     * @return
+     */
+    fun createES256JWK(seed: String?): JWK
+
+    /**
+     * Create ES256 DID
+     *
+     * @param jwk
+     * @return
+     */
+    fun createES256DID(jwk: JWK): String
+
+    /**
+     * Create ED25519 JWK
+     *
+     * @param seed
+     * @return
+     */
+    fun createEdDSAJWK(seed: String?): JWK?
+
+    /**
+     * Generate DID for the ED25519
+     * @param privateKeyX - X value of the ED25519 jwk
+     *
+     * @return DID
+     */
+    fun createEdDSADID(privateKeyX: Base64URL): String
 }

@@ -1,8 +1,10 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import android.net.Uri
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaData
+import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV1
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV2
@@ -21,7 +23,10 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.crypto.Ed25519Signer
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.json.JSONArray
@@ -142,11 +147,92 @@ class IssueService : IssueServiceInterface {
         }
     }
 
+    /**
+     * To process the authorisation request The authorisation request is to
+     * grant access to the credential endpoint
+     *
+     * @param did - DID created for the issuance
+     * @param subJwk - for singing the requests
+     * @param credentialOffer - To build the authorisation request
+     * @param codeVerifier - to build the authorisation request
+     * @param authorisationEndPoint - to build the authorisation request
+     * @return String - short-lived authorisation code
+     */
+    override suspend fun processAuthorisationRequest(
+        did: String?,
+        subJwk: JWK?,
+        credentialOffer: CredentialOffer?,
+        codeVerifier: String,
+        authorisationEndPoint: String?
+    ): String? {
+        val responseType = "code"
+        val scope = "openid"
+        val state = UUID.randomUUID().toString()
+        val clientId = did
+        val authorisationDetails = Gson().toJson(
+            arrayListOf(
+                AuthorizationDetails(
+                    types = getTypesFromCredentialOffer(credentialOffer),
+                    locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
+                )
+            )
+        )
+
+        val redirectUri = "http://localhost:8080"
+        val nonce = UUID.randomUUID().toString()
+
+        val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
+        val codeChallengeMethod = "S256"
+        val clientMetadata = Gson().toJson(
+            ClientMetaData(
+                vpFormatsSupported = VpFormatsSupported(
+                    jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
+                ), responseTypesSupported = arrayListOf(
+                    "vp_token", "id_token"
+                ), authorizationEndpoint = redirectUri
+            )
+        )
+
+        val response = ApiManager.api.getService()?.processAuthorisationRequest(
+            authorisationEndPoint ?: "",
+            mapOf(
+                "response_type" to responseType,
+                "scope" to scope,
+                "state" to state,
+                "client_id" to (clientId ?: ""),
+                "authorization_details" to authorisationDetails,
+                "redirect_uri" to redirectUri,
+                "nonce" to nonce,
+                "code_challenge" to (codeChallenge ?: ""),
+                "code_challenge_method" to codeChallengeMethod,
+                "client_metadata" to clientMetadata,
+                "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
+            ),
+        )
+
+        val location: String? = if (response?.code() == 302) {
+            response.headers()["Location"]
+        } else {
+            null
+        }
+
+        return if (Uri.parse(location).getQueryParameter("code") != null) {
+            location
+        } else {
+            processAuthorisationRequestUsingIdToken(
+                did = did,
+                authorisationEndPoint = authorisationEndPoint,
+                location = location,
+                subJwk = subJwk
+            )
+        }
+    }
+
     private suspend fun processAuthorisationRequestUsingIdToken(
         did: String?,
         authorisationEndPoint: String?,
         location: String?,
-        subJwk: ECKey?
+        subJwk: JWK?
     ): String? {
         val claimsSet =
             JWTClaimsSet.Builder()
@@ -159,15 +245,17 @@ class IssueService : IssueServiceInterface {
                 .build()
 
         // Create JWT for ES256K alg
-        val jwsHeader = JWSHeader.Builder(JWSAlgorithm.ES256).type(JOSEObjectType.JWT)
-            .keyID("$did#${did?.replace("did:key:", "")}").jwk(subJwk?.toPublicJWK()).build()
+        val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+            .type(JOSEObjectType.JWT)
+            .keyID("$did#${did?.replace("did:key:", "")}")
+            .build()
 
         val jwt = SignedJWT(
             jwsHeader, claimsSet
         )
 
         // Sign with private EC key
-        jwt.sign(ECDSASigner(subJwk))
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(subJwk as ECKey))
 
         val response = ApiManager.api.getService()?.sendIdTokenForCode(
             url = Uri.parse(location).getQueryParameter("redirect_uri") ?: "",
@@ -301,7 +389,7 @@ class IssueService : IssueServiceInterface {
         val body = CredentialRequest(
             types = getTypesFromCredentialOffer(credentialOffer),
             format = format,
-            ProofV3(
+            proof = ProofV3(
                 proofType = "jwt",
                 jwt = jwt.serialize()
             )
@@ -339,6 +427,144 @@ class IssueService : IssueServiceInterface {
         return credentialResponse
     }
 
+    /**
+     * To process the credential, credentials can be issued in two ways,
+     *     intime and deferred
+     *
+     *     If its intime, then we will receive the credential as the response
+     *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
+     *
+     * @param did
+     * @param subJwk
+     * @param nonce
+     * @param credentialOffer
+     * @param issuerConfig
+     * @param accessToken
+     * @param format
+     *
+     * @return credential response
+     */
+    override suspend fun processCredentialRequest(
+        did: String?,
+        subJwk: JWK?,
+        nonce: String?,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
+        accessToken: String?,
+        format: String
+    ): WrappedCredentialResponse? {
+
+        // Add claims
+        val claimsSet = JWTClaimsSet
+            .Builder()
+            .issueTime(Date())
+            .expirationTime(Date(Date().time + 86400))
+            .issuer(did)
+            .audience(issuerConfig?.credentialIssuer ?: "")
+            .claim("nonce", nonce).build()
+
+        // Add header
+        val jwsHeader = JWSHeader
+            .Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+            .type(JOSEObjectType("openid4vci-proof+jwt"))
+            .keyID("$did#${did?.replace("did:key:", "")}")
+//            .jwk(subJwk?.toPublicJWK())
+            .build()
+
+
+        // Sign with private EC key
+        val jwt = SignedJWT(
+            jwsHeader, claimsSet
+        )
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(subJwk as ECKey))
+
+        // Construct credential request
+        val body = buildCredentialRequest(
+            credentialOffer = credentialOffer,
+            issuerConfig = issuerConfig,
+            format = format,
+            jwt = jwt.serialize()
+        )
+        // API call
+        val response = ApiManager.api.getService()?.getCredential(
+            issuerConfig?.credentialEndpoint ?: "",
+            "application/json",
+            "Bearer $accessToken",
+            body
+        )
+
+        val credentialResponse = when {
+            response?.isSuccessful == true -> {
+                WrappedCredentialResponse(
+                    credentialResponse = response.body()
+                )
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                try {
+                    WrappedCredentialResponse(
+                        errorResponse = processError(response?.errorBody()?.string())
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+
+            else -> {
+                null
+            }
+        }
+
+        return credentialResponse
+    }
+
+    private fun buildCredentialRequest(
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
+        format: String?,
+        jwt: String
+    ): CredentialRequest {
+
+        val gson = Gson()
+        var credentialDefinitionNeeded = false
+        try {
+            val credentialOfferV1 =
+                gson.fromJson(gson.toJson(credentialOffer), CredentialOfferV1::class.java)
+
+            if (credentialOfferV1?.credentials?.get(0)?.trustFramework == null)
+                credentialDefinitionNeeded = true
+
+        } catch (e: Exception) {
+            credentialDefinitionNeeded = true
+        }
+
+        if (credentialDefinitionNeeded) {
+            var types: ArrayList<String>? = getTypesFromCredentialOffer(credentialOffer)
+            try {
+                types = getTypesFromIssuerConfig(issuerConfig, type = types?.last())
+            } catch (e: Exception) {
+
+            }
+
+            return CredentialRequest(
+                credentialDefinition = CredentialDefinition(type = types),
+                format = format,
+                proof = ProofV3(
+                    proofType = "jwt",
+                    jwt = jwt
+                )
+            )
+        } else {
+            return CredentialRequest(
+                types = getTypesFromCredentialOffer(credentialOffer),
+                format = format,
+                proof = ProofV3(
+                    proofType = "jwt",
+                    jwt = jwt
+                )
+            )
+        }
+    }
 
     fun processError(err: String?): ErrorResponse? {
         // Known possibilities for error:
@@ -472,6 +698,73 @@ class IssueService : IssueServiceInterface {
     }
 
     /**
+     * Get types from IssuerWellKnownConfiguration
+     *
+     * @param issuerConfig
+     * @param type
+     */
+    override fun getTypesFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): ArrayList<String>? {
+        var types: ArrayList<String> = ArrayList()
+        val credentialOfferJsonString = Gson().toJson(issuerConfig)
+        val jsonObject = JSONObject(credentialOfferJsonString)
+
+        val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
+        when (credentialsSupported) {
+            is JSONObject -> {
+                try {
+                    val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
+                    val typeFromCredentialIssuer =
+                        credentialSupported.getJSONObject("credential_definition")
+                            .getJSONArray("type")
+                    for (i in 0 until typeFromCredentialIssuer.length()) {
+                        // Get each JSONObject from the JSONArray
+                        val type: String = typeFromCredentialIssuer.getString(i)
+                        types.add(type)
+                    }
+                } catch (e: Exception) {
+                }
+            }
+
+            is JSONArray -> {
+                try {
+                    for (i in 0 until credentialsSupported.length()) {
+                        val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+
+                        // Get the "types" JSONArray
+                        val typesArray = jsonObject.getJSONArray("types")
+
+                        // Check if the string is present in the "types" array
+                        for (j in 0 until typesArray.length()) {
+                            if (typesArray.getString(j) == type) {
+                                val typeFromCredentialIssuer =
+                                    jsonObject.getJSONObject("credential_definition")
+                                        .getJSONArray("type")
+                                for (i in 0 until typeFromCredentialIssuer.length()) {
+                                    // Get each JSONObject from the JSONArray
+                                    val type: String = typeFromCredentialIssuer.getString(i)
+                                    types.add(type)
+                                }
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+            }
+
+            else -> {
+                // Neither JSONObject nor JSONArray
+                println("Child is neither JSONObject nor JSONArray")
+            }
+        }
+
+        return types
+    }
+
+    /**
      * Get types from credential offer
      *
      * @param credentialOffer
@@ -497,4 +790,70 @@ class IssueService : IssueServiceInterface {
         return types
     }
 
+
+    /**
+     * Get cryptographicSuits from issuer config
+     *
+     * @param issuerConfig
+     * @param type
+     * @return
+     */
+    override fun getCryptoFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): ArrayList<String>? {
+        var types: ArrayList<String> = ArrayList()
+        val credentialOfferJsonString = Gson().toJson(issuerConfig)
+        val jsonObject = JSONObject(credentialOfferJsonString)
+
+        val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
+        when (credentialsSupported) {
+            is JSONObject -> {
+                try {
+                    val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
+                    val cryptographicSuitsSupported =
+                        credentialSupported.getJSONArray("cryptographic_suites_supported")
+                    for (i in 0 until cryptographicSuitsSupported.length()) {
+                        // Get each JSONObject from the JSONArray
+                        val type: String = cryptographicSuitsSupported.getString(i)
+                        types.add(type)
+                    }
+                } catch (e: Exception) {
+                }
+            }
+
+            is JSONArray -> {
+                try {
+                    for (i in 0 until credentialsSupported.length()) {
+                        val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+
+                        // Get the "types" JSONArray
+                        val typesArray = jsonObject.getJSONArray("types")
+
+                        // Check if the string is present in the "types" array
+                        for (j in 0 until typesArray.length()) {
+                            if (typesArray.getString(j) == type) {
+                                val cryptographicSuitsSupported =
+                                    jsonObject.getJSONArray("cryptographic_suites_supported")
+                                for (i in 0 until cryptographicSuitsSupported.length()) {
+                                    // Get each JSONObject from the JSONArray
+                                    val type: String = cryptographicSuitsSupported.getString(i)
+                                    types.add(type)
+                                }
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+            }
+
+            else -> {
+                // Neither JSONObject nor JSONArray
+                println("Child is neither JSONObject nor JSONArray")
+            }
+        }
+
+        return types
+    }
 }

@@ -13,7 +13,10 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.crypto.Ed25519Signer
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.json.JSONArray
@@ -97,6 +100,64 @@ class SDJWTService : SDJWTServiceInterface {
 
                 // Sign with private EC key
                 jwt.sign(ECDSASigner(subJwk))
+                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
+            }
+
+            return processedCredentialWithRequiredDisclosures
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Error creating SD-JWT-R", e)
+        }
+    }
+
+
+    /**
+     * Create SDJWT R
+     *
+     * @param credential
+     * @param presentationRequest
+     * @param subJwk
+     * @return
+     */
+    override fun createSDJWTR(
+        credential: String?,
+        presentationRequest: PresentationRequest,
+        subJwk: JWK
+    ): String? {
+        try {
+            val presentationDefinition =
+                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+            val processedCredentialWithRequiredDisclosures =
+                processDisclosuresWithPresentationDefinition(
+                    credential,
+                    presentationDefinition
+                )
+            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
+                val iat = Date()
+
+                val claimsSet = JWTClaimsSet.Builder()
+                    .audience(presentationRequest.clientId)
+                    .issueTime(iat)
+                    .claim("nonce", UUID.randomUUID().toString())
+                    .claim(
+                        "sd_hash",
+                        SDJWTService().calculateSHA256Hash(
+                            processedCredentialWithRequiredDisclosures
+                        )
+                    )
+                    .build()
+
+                // Create JWT for ES256K alg
+                val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+                    .type(JOSEObjectType("kb_jwt"))
+                    .build()
+
+                val jwt = SignedJWT(
+                    jwsHeader,
+                    claimsSet
+                )
+
+                // Sign with private EC key
+                jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
                 return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
             }
 

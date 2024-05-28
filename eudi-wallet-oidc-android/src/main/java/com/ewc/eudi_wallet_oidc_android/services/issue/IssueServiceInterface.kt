@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
 
 interface IssueServiceInterface {
 
@@ -31,6 +32,25 @@ interface IssueServiceInterface {
     suspend fun processAuthorisationRequest(
         did: String?,
         subJwk: ECKey?,
+        credentialOffer: CredentialOffer?,
+        codeVerifier: String,
+        authorisationEndPoint: String?
+    ): String?
+
+    /**
+     * To process the authorisation request
+     * The authorisation request is to grant access to the credential endpoint
+     * @param did - DID created for the issuance
+     * @param subJwk - for singing the requests
+     * @param credentialOffer - To build the authorisation request
+     * @param codeVerifier - to build the authorisation request
+     * @param authorisationEndPoint - to build the authorisation request
+     *
+     * @return String - Uri with query parameter code with value short-lived authorisation code
+     */
+    suspend fun processAuthorisationRequest(
+        did: String?,
+        subJwk: JWK?,
         credentialOffer: CredentialOffer?,
         codeVerifier: String,
         authorisationEndPoint: String?
@@ -74,6 +94,7 @@ interface IssueServiceInterface {
      * @param credentialOffer
      * @param credentialIssuerEndPoint
      * @param accessToken
+     * @param format
      *
      * @return credential response
      */
@@ -84,6 +105,33 @@ interface IssueServiceInterface {
         nonce: String?,
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
+        accessToken: String?,
+        format: String
+    ): WrappedCredentialResponse?
+
+    /**
+     * To process the credential, credentials can be issued in two ways,
+     *     intime and deferred
+     *
+     *     If its intime, then we will receive the credential as the response
+     *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
+     *
+     * @param did
+     * @param subJwk
+     * @param nonce
+     * @param credentialOffer
+     * @param issuerConfig
+     * @param accessToken
+     * @param format
+     *
+     * @return credential response
+     */
+    suspend fun processCredentialRequest(
+        did: String?,
+        subJwk: JWK?,
+        nonce: String?,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
         accessToken: String?,
         format: String
     ): WrappedCredentialResponse?
@@ -120,4 +168,28 @@ interface IssueServiceInterface {
     fun getTypesFromCredentialOffer(
         credentialOffer: CredentialOffer?
     ): ArrayList<String>
+
+    /**
+     * Get types from Issuer Config
+     *
+     * @param issuerConfig
+     * @param type
+     * @return
+     */
+    fun getTypesFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): ArrayList<String>?
+
+    /**
+     * Get types from Issuer Config
+     *
+     * @param issuerConfig
+     * @param type
+     * @return
+     */
+    fun getCryptoFromIssuerConfig(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?
+    ): ArrayList<String>?
 }
