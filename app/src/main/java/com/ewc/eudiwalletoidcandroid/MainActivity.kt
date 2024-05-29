@@ -40,14 +40,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initClicks() {
-        binding.btnCreateDID.setOnClickListener {
-            viewModel?.subJwk = DIDService().createJWK()
-            viewModel?.did = DIDService().createDID(viewModel?.subJwk!!)
-
-            viewModel?.displayText?.value = "Sub JWK : \n ${Gson().toJson(viewModel?.subJwk)}\n\n"
-            viewModel?.displayText?.value =
-                "${viewModel?.displayText?.value}Did : ${viewModel?.did}\n\n"
-        }
+//        binding.btnCreateDID.setOnClickListener {
+//            viewModel?.subJwk = DIDService().createJWK()
+//            viewModel?.did = DIDService().createDID(viewModel?.subJwk!!)
+//
+//            viewModel?.displayText?.value = "Sub JWK : \n ${Gson().toJson(viewModel?.subJwk)}\n\n"
+//            viewModel?.displayText?.value =
+//                "${viewModel?.displayText?.value}Did : ${viewModel?.did}\n\n"
+//        }
 
         binding.addCredential.setOnClickListener {
             if (ContextCompat.checkSelfPermission(
