@@ -382,7 +382,7 @@ class VerificationService : VerificationServiceInterface {
                 pathNested = PathNested(
                     id = inputDescriptors.id,
                     format = "jwt_vc",
-                    path = "$.verifiableCredential[$index]"
+                    path = "$.vp.verifiableCredential[$index]"
                 )
             )
             descriptorMap.add(descriptor)
