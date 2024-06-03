@@ -216,7 +216,8 @@ class IssueService : IssueServiceInterface {
             null
         }
 
-        return if (Uri.parse(location).getQueryParameter("code") != null) {
+        return if (Uri.parse(location).getQueryParameter("code") != null
+            || Uri.parse(location).getQueryParameter("presentation_definition") != null) {
             location
         } else {
             processAuthorisationRequestUsingIdToken(

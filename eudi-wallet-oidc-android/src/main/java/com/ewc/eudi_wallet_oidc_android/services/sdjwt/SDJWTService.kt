@@ -195,10 +195,14 @@ class SDJWTService : SDJWTServiceInterface {
 
             // Filter disclosures based on requested parameters
             disclosures?.forEach { disclosure ->
-                val list =
-                    JSONArray(Base64.decode(disclosure, Base64.URL_SAFE).toString(charset("UTF-8")))
-                if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
-                    issuedJwt = "$issuedJwt~$disclosure"
+                try {
+                    val list =
+                        JSONArray(Base64.decode(disclosure, Base64.URL_SAFE).toString(charset("UTF-8")))
+                    if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
+                        issuedJwt = "$issuedJwt~$disclosure"
+                    }
+                } catch (e: Exception) {
+
                 }
             }
 
