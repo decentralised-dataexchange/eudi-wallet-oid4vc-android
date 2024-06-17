@@ -179,7 +179,7 @@ interface IssueServiceInterface {
     fun getTypesFromIssuerConfig(
         issuerConfig: IssuerWellKnownConfiguration?,
         type: String?
-    ): ArrayList<String>?
+    ): Any?
 
     /**
      * Get types from Issuer Config

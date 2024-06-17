@@ -16,6 +16,8 @@ import com.ewc.eudi_wallet_oidc_android.models.ProofV3
 import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
+import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.google.gson.Gson
@@ -46,23 +48,28 @@ class IssueService : IssueServiceInterface {
      */
     override suspend fun resolveCredentialOffer(data: String?): CredentialOffer? {
         if (data.isNullOrBlank()) return null
-
-        val uri = Uri.parse(data)
-        val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
-        if (!credentialOfferUri.isNullOrBlank()) {
-            val response = ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
-            return if (response?.isSuccessful == true) {
-                response.body()
-            } else {
-                null
+        try {
+            val uri = Uri.parse(data)
+            val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
+            UrlUtils.validateUri(credentialOfferUri)
+            if (!credentialOfferUri.isNullOrBlank()) {
+                val response =
+                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
+                return if (response?.isSuccessful == true) {
+                    response.body()
+                } else {
+                    null
+                }
             }
-        }
 
-        val credentialOfferString = uri.getQueryParameter("credential_offer")
-        if (!credentialOfferString.isNullOrBlank()) {
-            return Gson().fromJson(credentialOfferString, CredentialOffer::class.java)
+            val credentialOfferString = uri.getQueryParameter("credential_offer")
+            if (!credentialOfferString.isNullOrBlank()) {
+                return Gson().fromJson(credentialOfferString, CredentialOffer::class.java)
+            }
+            return null
+        } catch (exc: UriValidationFailed) {
+            return null
         }
-        return null
     }
 
 
@@ -217,7 +224,8 @@ class IssueService : IssueServiceInterface {
         }
 
         return if (Uri.parse(location).getQueryParameter("code") != null
-            || Uri.parse(location).getQueryParameter("presentation_definition") != null) {
+            || Uri.parse(location).getQueryParameter("presentation_definition") != null
+        ) {
             location
         } else {
             processAuthorisationRequestUsingIdToken(
@@ -246,17 +254,22 @@ class IssueService : IssueServiceInterface {
                 .build()
 
         // Create JWT for ES256K alg
-        val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-            .type(JOSEObjectType.JWT)
-            .keyID("$did#${did?.replace("did:key:", "")}")
-            .build()
+        val jwsHeader =
+            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+                .type(JOSEObjectType.JWT)
+                .keyID("$did#${did?.replace("did:key:", "")}")
+                .build()
 
         val jwt = SignedJWT(
             jwsHeader, claimsSet
         )
 
         // Sign with private EC key
-        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(subJwk as ECKey))
+        jwt.sign(
+            if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(
+                subJwk as ECKey
+            )
+        )
 
         val response = ApiManager.api.getService()?.sendIdTokenForCode(
             url = Uri.parse(location).getQueryParameter("redirect_uri") ?: "",
@@ -359,7 +372,7 @@ class IssueService : IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         credentialIssuerEndPoint: String?,
         accessToken: String?,
-        format:String
+        format: String
     ): WrappedCredentialResponse? {
 
         // Add claims
@@ -477,7 +490,11 @@ class IssueService : IssueServiceInterface {
         val jwt = SignedJWT(
             jwsHeader, claimsSet
         )
-        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(subJwk as ECKey))
+        jwt.sign(
+            if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(
+                subJwk as ECKey
+            )
+        )
 
         // Construct credential request
         val body = buildCredentialRequest(
@@ -495,12 +512,6 @@ class IssueService : IssueServiceInterface {
         )
 
         val credentialResponse = when {
-            response?.isSuccessful == true -> {
-                WrappedCredentialResponse(
-                    credentialResponse = response.body()
-                )
-            }
-
             (response?.code() ?: 0) >= 400 -> {
                 try {
                     WrappedCredentialResponse(
@@ -509,6 +520,12 @@ class IssueService : IssueServiceInterface {
                 } catch (e: Exception) {
                     null
                 }
+            }
+
+            response?.isSuccessful == true -> {
+                WrappedCredentialResponse(
+                    credentialResponse = response.body()
+                )
             }
 
             else -> {
@@ -541,10 +558,31 @@ class IssueService : IssueServiceInterface {
 
         if (credentialDefinitionNeeded) {
             var types: ArrayList<String>? = getTypesFromCredentialOffer(credentialOffer)
-            try {
-                types = getTypesFromIssuerConfig(issuerConfig, type = types?.last())
-            } catch (e: Exception) {
+            when (val data = getTypesFromIssuerConfig(
+                issuerConfig,
+                type = if (types?.isNotEmpty() == true) types.last() else ""
+            )) {
+                is ArrayList<*> -> {
+                    return CredentialRequest(
+                        credentialDefinition = CredentialDefinition(type = data as ArrayList<String>),
+                        format = format,
+                        proof = ProofV3(
+                            proofType = "jwt",
+                            jwt = jwt
+                        )
+                    )
+                }
 
+                is String -> {
+                    return CredentialRequest(
+                        vct = data as String,
+                        format = format,
+                        proof = ProofV3(
+                            proofType = "jwt",
+                            jwt = jwt
+                        )
+                    )
+                }
             }
 
             return CredentialRequest(
@@ -707,7 +745,7 @@ class IssueService : IssueServiceInterface {
     override fun getTypesFromIssuerConfig(
         issuerConfig: IssuerWellKnownConfiguration?,
         type: String?
-    ): ArrayList<String>? {
+    ): Any? {
         var types: ArrayList<String> = ArrayList()
         val credentialOfferJsonString = Gson().toJson(issuerConfig)
         val jsonObject = JSONObject(credentialOfferJsonString)
@@ -717,13 +755,22 @@ class IssueService : IssueServiceInterface {
             is JSONObject -> {
                 try {
                     val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
-                    val typeFromCredentialIssuer =
-                        credentialSupported.getJSONObject("credential_definition")
-                            .getJSONArray("type")
-                    for (i in 0 until typeFromCredentialIssuer.length()) {
-                        // Get each JSONObject from the JSONArray
-                        val type: String = typeFromCredentialIssuer.getString(i)
-                        types.add(type)
+                    val format =
+                        if (credentialSupported.has("format")) credentialSupported.getString("format") else ""
+
+                    if (format == "vc+sd-jwt") {
+                        return credentialSupported.getJSONObject("credential_definition")
+                            .getString("vct")
+                    } else {
+                        val typeFromCredentialIssuer: JSONArray =
+                            credentialSupported.getJSONObject("credential_definition")
+                                .getJSONArray("type")
+                        for (i in 0 until typeFromCredentialIssuer.length()) {
+                            // Get each JSONObject from the JSONArray
+                            val type: String = typeFromCredentialIssuer.getString(i)
+                            types.add(type)
+                        }
+                        return types
                     }
                 } catch (e: Exception) {
                 }
@@ -740,13 +787,22 @@ class IssueService : IssueServiceInterface {
                         // Check if the string is present in the "types" array
                         for (j in 0 until typesArray.length()) {
                             if (typesArray.getString(j) == type) {
-                                val typeFromCredentialIssuer =
-                                    jsonObject.getJSONObject("credential_definition")
-                                        .getJSONArray("type")
-                                for (i in 0 until typeFromCredentialIssuer.length()) {
-                                    // Get each JSONObject from the JSONArray
-                                    val type: String = typeFromCredentialIssuer.getString(i)
-                                    types.add(type)
+                                val format =
+                                    if (jsonObject.has("format")) jsonObject.getString("format") else ""
+
+                                if (format == "vc+sd-jwt") {
+                                    return jsonObject.getJSONObject("credential_definition")
+                                        .getString("vct")
+                                } else {
+                                    val typeFromCredentialIssuer: JSONArray =
+                                        jsonObject.getJSONObject("credential_definition")
+                                            .getJSONArray("type")
+                                    for (i in 0 until typeFromCredentialIssuer.length()) {
+                                        // Get each JSONObject from the JSONArray
+                                        val type: String = typeFromCredentialIssuer.getString(i)
+                                        types.add(type)
+                                    }
+                                    return types
                                 }
                                 break
                             }
