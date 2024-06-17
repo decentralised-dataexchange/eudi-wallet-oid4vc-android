@@ -150,7 +150,7 @@ class MainActivity : AppCompatActivity() {
                     viewModel?.displayText?.value =
                         "${viewModel?.displayText?.value}Scanned data : $url\n\n"
 
-                    viewModel?.issueCredential(url ?: "")
+                    viewModel?.issueCredential(url ?: "",this)
                 }
 
                 REQUEST_CODE_SCAN_VERIFY -> {

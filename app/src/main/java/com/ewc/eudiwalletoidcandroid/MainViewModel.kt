@@ -1,6 +1,8 @@
 package com.ewc.eudiwalletoidcandroid
 
+import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.ewc.eudi_wallet_oidc_android.CryptographicAlgorithms
@@ -51,48 +53,37 @@ class MainViewModel : ViewModel() {
         isLoading.value = false
     }
 
-    fun issueCredential(url: String) {
+    fun issueCredential(url: String,context:Context) {
         isLoading.value = true
         CoroutineScope(Dispatchers.Main).launch {
             // Resolving credential offer
             offerCredential = IssueService().resolveCredentialOffer(url)
 
-            // Discovery
-            issuerConfig =
-                DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
-
-            authConfig =
-                DiscoveryService().getAuthConfig(
-                    "${issuerConfig?.authorizationServer 
-                        ?: issuerConfig?.authorizationServers?.get(0
-                        )?: issuerConfig?.issuer}/.well-known/openid-configuration"
-                )
-            types = IssueService().getTypesFromCredentialOffer(offerCredential)
-            format =
-                IssueService().getFormatFromIssuerConfig(issuerConfig, types.lastOrNull() ?: "")
-
-            val cryptoSupported = IssueService().getCryptoFromIssuerConfig(
-                issuerConfig,
-                types.lastOrNull() ?: "ES256"
+            val wrappedResponse = DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
+            if (wrappedResponse.issuerConfig != null) {
+                // Handle successful response
+                issuerConfig = wrappedResponse.issuerConfig
+            } else {
+                displayErrorMessage(context, wrappedResponse.errorResponse?.errorDescription)
+                return@launch
+            }
+            val wrappedAuthResponse = DiscoveryService().getAuthConfig(
+                "${issuerConfig?.authorizationServer ?: issuerConfig?.issuer}/.well-known/openid-configuration"
             )
+            if(wrappedAuthResponse.authConfig !=null){
+                // Handle successful response
+                authConfig = wrappedAuthResponse.authConfig
+            }
+            else{
+                displayErrorMessage(context, wrappedAuthResponse.errorResponse?.errorDescription)
+                return@launch
+            }
 
-            subJwk = DIDService().createJWK(
-                null,
-                cryptoSupported?.lastOrNull() ?: CryptographicAlgorithms.ES256
-            )
-            did = DIDService().createDID(
-                subJwk,
-                cryptoSupported?.lastOrNull() ?: CryptographicAlgorithms.ES256
-            )
-            // Generating code verifier
             codeVerifier = CodeVerifierService().generateCodeVerifier()
 
             withContext(Dispatchers.Main) {
-                displayText.value = "Sub JWK : \n ${Gson().toJson(subJwk)}\n\n"
                 displayText.value =
-                    "${displayText.value}Did : $did\n\n"
-                displayText.value =
-                    "${displayText.value}Issuer Config : \n${Gson().toJson(issuerConfig)}\n\n"
+                    "${displayText?.value}Issuer Config : \n${Gson().toJson(issuerConfig)}\n\n"
                 displayText.value =
                     "${displayText.value}Auth Config : \n${Gson().toJson(authConfig)}\n\n"
                 displayText.value =
@@ -121,7 +112,7 @@ class MainViewModel : ViewModel() {
                 // Process Authorisation request
                 val authResponse = IssueService().processAuthorisationRequest(
                     did,
-                    subJwk as ECKey,
+                    subJwk,
                     offerCredential,
                     codeVerifier,
                     authConfig?.authorizationEndpoint
@@ -142,6 +133,12 @@ class MainViewModel : ViewModel() {
             }
 
         }
+    }
+
+    private fun displayErrorMessage(context: Context, errorMessage: String?) {
+        val messageToShow = errorMessage?.takeIf { it.isNotBlank() } ?: "Unknown error"
+        Toast.makeText(context, messageToShow, Toast.LENGTH_SHORT).show()
+        isLoading.value = false
     }
 
     private suspend fun getCredential() {
