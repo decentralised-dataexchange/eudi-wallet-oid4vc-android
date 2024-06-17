@@ -378,7 +378,7 @@ class VerificationService : VerificationServiceInterface {
             val descriptor = DescriptorMap(
                 id = inputDescriptors.id,
                 path = "$",
-                format = presentationDefinition.format?.keys?.first(),
+                format = presentationDefinition.format?.keys?.firstOrNull()?:"jwt_vp",
                 pathNested = PathNested(
                     id = inputDescriptors.id,
                     format = "jwt_vc",
