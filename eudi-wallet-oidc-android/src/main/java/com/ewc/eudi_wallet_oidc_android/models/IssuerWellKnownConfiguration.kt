@@ -35,3 +35,7 @@ data class Image(
     @SerializedName("url") var url: String? = null,
     @SerializedName("alt_text") var altText: String? = null
 )
+data class WrappedIssuerConfigResponse(
+    var issuerConfig: IssuerWellKnownConfiguration? = null,
+    var errorResponse: ErrorResponse? = null
+)
