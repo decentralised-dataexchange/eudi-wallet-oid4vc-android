@@ -9,6 +9,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV1
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV2
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
+import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
@@ -95,15 +96,7 @@ class IssueService : IssueServiceInterface {
         val scope = "openid"
         val state = UUID.randomUUID().toString()
         val clientId = did
-        val authorisationDetails = Gson().toJson(
-            arrayListOf(
-                AuthorizationDetails(
-                    types = getTypesFromCredentialOffer(credentialOffer),
-                    locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                )
-            )
-        )
-
+        val authorisationDetails = buildAuthorizationRequest(credentialOffer)
         val redirectUri = "http://localhost:8080"
         val nonce = UUID.randomUUID().toString()
 
@@ -176,14 +169,7 @@ class IssueService : IssueServiceInterface {
         val scope = "openid"
         val state = UUID.randomUUID().toString()
         val clientId = did
-        val authorisationDetails = Gson().toJson(
-            arrayListOf(
-                AuthorizationDetails(
-                    types = getTypesFromCredentialOffer(credentialOffer),
-                    locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                )
-            )
-        )
+        val authorisationDetails = buildAuthorizationRequest(credentialOffer)
 
         val redirectUri = "http://localhost:8080"
         val nonce = UUID.randomUUID().toString()
@@ -282,6 +268,45 @@ class IssueService : IssueServiceInterface {
             response.headers()["Location"]
         } else {
             null
+        }
+    }
+
+    private  fun buildAuthorizationRequest(credentialOffer: CredentialOffer?):String{
+        val gson = Gson()
+        var credentialDefinitionNeeded = false
+        try {
+            val credentialOfferV1 =
+                gson.fromJson(gson.toJson(credentialOffer), CredentialOfferV1::class.java)
+
+            if (credentialOfferV1?.credentials?.get(0)?.trustFramework == null)
+                credentialDefinitionNeeded = true
+
+        } catch (e: Exception) {
+            credentialDefinitionNeeded = true
+        }
+        if (credentialDefinitionNeeded) {
+            return   gson.toJson(
+                arrayListOf(
+                    AuthorizationDetails(
+                        format = "jwt_vc_json",
+                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
+                        credentialDefinition = CredentialTypeDefinition(
+                            type = getTypesFromCredentialOffer(credentialOffer)
+                        )
+                    )
+                )
+            )
+
+        }else{
+            return   gson.toJson(
+                arrayListOf(
+                    AuthorizationDetails(
+                        format = "jwt_vc",
+                        types = getTypesFromCredentialOffer(credentialOffer),
+                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
+                    )
+                )
+            )
         }
     }
 
