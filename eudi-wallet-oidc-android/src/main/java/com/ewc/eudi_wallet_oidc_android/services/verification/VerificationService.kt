@@ -295,24 +295,43 @@ class VerificationService : VerificationServiceInterface {
         allCredentialList: List<String?>,
         presentationDefinition: PresentationDefinition
     ): List<List<String>> {
-        //list of credentials matched for all input descriptors
+        val response: MutableList<MutableList<String>> = mutableListOf()
+        val pex = PresentationExchange()
 
-        val credentialList: ArrayList<String?> = arrayListOf()
-        for (item in allCredentialList) {
-            if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure != null && item?.contains(
-                    "~"
-                ) == true
-            )
-                credentialList.add(item)
-            else if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure == null && item?.contains(
-                    "~"
-                ) != true
-            )
-                credentialList.add(item)
+        presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
+            val credentialList = splitCredentialsBySdJWT(allCredentialList, inputDescriptors.constraints?.limitDisclosure != null)
+            val processedCredentials = processCredentialsToJsonString(credentialList)
+            val filteredCredentialList: MutableList<String> = mutableListOf()
+            val inputDescriptor = Gson().toJson(inputDescriptors)
+
+            val matches: List<MatchedCredential> =
+                pex.matchCredentials(inputDescriptor, processedCredentials)
+
+            for (match in matches) {
+                filteredCredentialList.add(credentialList[match.index] ?: "")
+            }
+
+            response.add(filteredCredentialList)
         }
 
-        val response: MutableList<MutableList<String>> = mutableListOf()
+        return response
+    }
 
+    private fun splitCredentialsBySdJWT(
+        allCredentials: List<String?>,
+        isSdJwt: Boolean
+    ): ArrayList<String?> {
+        val filteredCredentials: ArrayList<String?> = arrayListOf()
+        for (item in allCredentials) {
+            if (isSdJwt && item?.contains("~") == true)
+                filteredCredentials.add(item)
+            else if (!isSdJwt && item?.contains("~") != null)
+                filteredCredentials.add(item)
+        }
+        return filteredCredentials
+    }
+
+    private fun processCredentialsToJsonString(credentialList: ArrayList<String?>):List<String>{
         var processedCredentials: List<String> = mutableListOf()
         for (cred in credentialList) {
             val split = cred?.split(".")
@@ -335,24 +354,7 @@ class VerificationService : VerificationServiceInterface {
                     else json.toString()
                 )
         }
-
-        val pex = PresentationExchange()
-
-        presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
-            val filteredCredentialList: MutableList<String> = mutableListOf()
-            val inputDescriptor = Gson().toJson(inputDescriptors)
-
-            val matches: List<MatchedCredential> =
-                pex.matchCredentials(inputDescriptor, processedCredentials)
-
-            for (match in matches) {
-                filteredCredentialList.add(credentialList[match.index] ?: "")
-            }
-
-            response.add(filteredCredentialList)
-        }
-
-        return response
+        return processedCredentials
     }
 
     /**
