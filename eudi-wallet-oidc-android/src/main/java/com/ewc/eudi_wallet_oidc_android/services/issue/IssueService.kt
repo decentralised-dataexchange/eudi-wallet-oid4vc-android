@@ -33,6 +33,7 @@ import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.Date
 import java.util.UUID
@@ -204,12 +205,18 @@ class IssueService : IssueServiceInterface {
         )
 
         val location: String? = if (response?.code() == 302) {
-            response.headers()["Location"]
+            if (response.headers()["Location"]?.contains("error") == true || response.headers()["Location"]?.contains("error_description") == true) {
+                response.headers()["Location"]
+            } else {
+                response.headers()["Location"]
+            }
         } else {
             null
         }
 
-        return if (Uri.parse(location).getQueryParameter("code") != null
+        return if(Uri.parse(location).getQueryParameter("error") != null) {
+            location
+        }else if (Uri.parse(location).getQueryParameter("code") != null
             || Uri.parse(location).getQueryParameter("presentation_definition") != null
         ) {
             location
@@ -636,6 +643,7 @@ class IssueService : IssueServiceInterface {
         // 2. {"error_description": "Validation is failed", }
         // 3. {"errors": [{ "message": "Validation is failed" }]}
         // 4. {"error": "Validation is failed"}
+        // 5. {"detail": "VC token expired"}
         val jsonObject = try {
             err?.let { JSONObject(it) }
         } catch (e: Exception) {
@@ -668,6 +676,13 @@ class IssueService : IssueServiceInterface {
                 ErrorResponse(
                     error = -1,
                     errorDescription = jsonObject.getString("error")
+                )
+            }
+
+            jsonObject?.has("detail") == true -> {
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = jsonObject.getString("detail")
                 )
             }
 
@@ -772,75 +787,87 @@ class IssueService : IssueServiceInterface {
         type: String?
     ): Any? {
         var types: ArrayList<String> = ArrayList()
-        val credentialOfferJsonString = Gson().toJson(issuerConfig)
-        val jsonObject = JSONObject(credentialOfferJsonString)
-
-        val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
-        when (credentialsSupported) {
-            is JSONObject -> {
-                try {
-                    val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
-                    val format =
-                        if (credentialSupported.has("format")) credentialSupported.getString("format") else ""
-
-                    if (format == "vc+sd-jwt") {
-                        return credentialSupported.getJSONObject("credential_definition")
-                            .getString("vct")
-                    } else {
-                        val typeFromCredentialIssuer: JSONArray =
-                            credentialSupported.getJSONObject("credential_definition")
-                                .getJSONArray("type")
-                        for (i in 0 until typeFromCredentialIssuer.length()) {
-                            // Get each JSONObject from the JSONArray
-                            val type: String = typeFromCredentialIssuer.getString(i)
-                            types.add(type)
-                        }
-                        return types
-                    }
-                } catch (e: Exception) {
-                }
+        // Check if issuerConfig is null
+        if (issuerConfig == null) {
+            return null
+        }
+        try {
+            val credentialOfferJsonString = Gson().toJson(issuerConfig)
+            // Check if credentialOfferJsonString is null or empty
+            if (credentialOfferJsonString.isNullOrEmpty()) {
+                return null
             }
+            val jsonObject = JSONObject(credentialOfferJsonString)
 
-            is JSONArray -> {
-                try {
-                    for (i in 0 until credentialsSupported.length()) {
-                        val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+            val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
+            when (credentialsSupported) {
+                is JSONObject -> {
+                    try {
+                        val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
+                        val format =
+                            if (credentialSupported.has("format")) credentialSupported.getString("format") else ""
 
-                        // Get the "types" JSONArray
-                        val typesArray = jsonObject.getJSONArray("types")
+                        if (format == "vc+sd-jwt") {
+                            return credentialSupported.getJSONObject("credential_definition")
+                                .getString("vct")
+                        } else {
+                            val typeFromCredentialIssuer: JSONArray =
+                                credentialSupported.getJSONObject("credential_definition")
+                                    .getJSONArray("type")
+                            for (i in 0 until typeFromCredentialIssuer.length()) {
+                                // Get each JSONObject from the JSONArray
+                                val type: String = typeFromCredentialIssuer.getString(i)
+                                types.add(type)
+                            }
+                            return types
+                        }
+                    } catch (e: Exception) {
+                    }
+                }
 
-                        // Check if the string is present in the "types" array
-                        for (j in 0 until typesArray.length()) {
-                            if (typesArray.getString(j) == type) {
-                                val format =
-                                    if (jsonObject.has("format")) jsonObject.getString("format") else ""
+                is JSONArray -> {
+                    try {
+                        for (i in 0 until credentialsSupported.length()) {
+                            val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
 
-                                if (format == "vc+sd-jwt") {
-                                    return jsonObject.getJSONObject("credential_definition")
-                                        .getString("vct")
-                                } else {
-                                    val typeFromCredentialIssuer: JSONArray =
-                                        jsonObject.getJSONObject("credential_definition")
-                                            .getJSONArray("type")
-                                    for (i in 0 until typeFromCredentialIssuer.length()) {
-                                        // Get each JSONObject from the JSONArray
-                                        val type: String = typeFromCredentialIssuer.getString(i)
-                                        types.add(type)
+                            // Get the "types" JSONArray
+                            val typesArray = jsonObject.getJSONArray("types")
+
+                            // Check if the string is present in the "types" array
+                            for (j in 0 until typesArray.length()) {
+                                if (typesArray.getString(j) == type) {
+                                    val format =
+                                        if (jsonObject.has("format")) jsonObject.getString("format") else ""
+
+                                    if (format == "vc+sd-jwt") {
+                                        return jsonObject.getJSONObject("credential_definition")
+                                            .getString("vct")
+                                    } else {
+                                        val typeFromCredentialIssuer: JSONArray =
+                                            jsonObject.getJSONObject("credential_definition")
+                                                .getJSONArray("type")
+                                        for (i in 0 until typeFromCredentialIssuer.length()) {
+                                            // Get each JSONObject from the JSONArray
+                                            val type: String = typeFromCredentialIssuer.getString(i)
+                                            types.add(type)
+                                        }
+                                        return types
                                     }
-                                    return types
+                                    break
                                 }
-                                break
                             }
                         }
+                    } catch (e: Exception) {
                     }
-                } catch (e: Exception) {
+                }
+
+                else -> {
+                    // Neither JSONObject nor JSONArray
+                    println("Child is neither JSONObject nor JSONArray")
                 }
             }
-
-            else -> {
-                // Neither JSONObject nor JSONArray
-                println("Child is neither JSONObject nor JSONArray")
-            }
+        }catch (e: JSONException){
+            Log.e("getTypesFromIssuerConfig", "Error parsing JSON", e)
         }
 
         return types

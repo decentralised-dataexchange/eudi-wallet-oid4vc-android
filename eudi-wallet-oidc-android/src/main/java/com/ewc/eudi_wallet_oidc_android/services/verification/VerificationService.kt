@@ -3,10 +3,14 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 import android.net.Uri
 import android.util.Base64
 import com.ewc.eudi_wallet_oidc_android.models.DescriptorMap
+import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PathNested
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
+import com.ewc.eudi_wallet_oidc_android.models.VPTokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -26,6 +30,7 @@ import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.SignedJWT
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Date
 import java.util.UUID
@@ -207,7 +212,7 @@ class VerificationService : VerificationServiceInterface {
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
         credentialList: List<String>
-    ): String? {
+    ): WrappedVpTokenResponse? {
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"
         val claimsSet = JWTClaimsSet.Builder()
@@ -232,11 +237,12 @@ class VerificationService : VerificationServiceInterface {
             ).build()
 
         // Create JWT for ES256K alg
-        val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-            .type(JOSEObjectType("JWT"))
-            .keyID("$did#${did?.replace("did:key:", "")}")
-            .jwk(subJwk?.toPublicJWK())
-            .build()
+        val jwsHeader =
+            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+                .type(JOSEObjectType("JWT"))
+                .keyID("$did#${did?.replace("did:key:", "")}")
+                .jwk(subJwk?.toPublicJWK())
+                .build()
 
         val jwt = SignedJWT(
             jwsHeader,
@@ -259,11 +265,27 @@ class VerificationService : VerificationServiceInterface {
             )
         )
 
-        return if (response?.code() == 302 || response?.code() == 200) {
-            response.headers()["Location"] ?: "https://tid-wallet-poc.azurewebsites.net?code=1"
-        } else {
-            null
+        val tokenResponse = when {
+            response?.code() == 302 || response?.code() == 200 -> {
+                WrappedVpTokenResponse(
+                    vpTokenResponse = VPTokenResponse(
+                        location = response.headers()["Location"]
+                            ?: "https://www.example.com?code=1"
+                    )
+                )
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                WrappedVpTokenResponse(
+                    errorResponse = IssueService().processError(response?.errorBody()?.string())
+                )
+            }
+
+            else -> {
+                null
+            }
         }
+        return tokenResponse
     }
 
     /**
@@ -378,7 +400,7 @@ class VerificationService : VerificationServiceInterface {
             val descriptor = DescriptorMap(
                 id = inputDescriptors.id,
                 path = "$",
-                format = presentationDefinition.format?.keys?.firstOrNull()?:"jwt_vp",
+                format = presentationDefinition.format?.keys?.firstOrNull() ?: "jwt_vp",
                 pathNested = PathNested(
                     id = inputDescriptors.id,
                     format = "jwt_vc",
