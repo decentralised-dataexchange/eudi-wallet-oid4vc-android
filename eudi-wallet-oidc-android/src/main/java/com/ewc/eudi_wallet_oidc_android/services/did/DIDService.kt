@@ -8,6 +8,7 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.gen.OctetKeyPairGenerator
 import com.nimbusds.jose.util.Base64URL
+import com.nimbusds.jose.util.JSONObjectUtils
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -202,6 +203,41 @@ class DIDService : DIDServiceInterface {
         // 4. prefix the output with ‘z’
         encoded = "did:key:z$encoded"
         return encoded
+    }
+
+    /**
+     * Converts a DID string to a JWK (JSON Web Key).
+     * @param did - Decentralized Identifier (DID) string
+     * @return JWK object
+     * @throws IllegalArgumentException if the DID format is invalid, decoding fails, or JSON parsing errors occur
+     */
+    override fun convertDIDToJWK(did: String): JWK {
+        val multiCodecBytes = try {
+            Base58.decode(did)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Base58 decoding failed", e)
+        }
+
+        // Check the length of the decoded bytes
+        if (multiCodecBytes.size <= 3) {
+            throw IllegalArgumentException("Decoded bytes are too short to contain valid JSON")
+        }
+
+        // Decode JSON content
+        val compactJson =
+            String(multiCodecBytes.copyOfRange(3, multiCodecBytes.size), StandardCharsets.UTF_8)
+
+        // Parse JSON to retrieve x and y values
+        val jsonObject = JSONObjectUtils.parse(compactJson)
+        val x = jsonObject.get("x") as String
+        val y = jsonObject.get("y") as String
+
+        // Create ECKey using Curve.P_256 (or appropriate curve)
+        val ecKey = ECKey.Builder(Curve.P_256, Base64URL.from(x), Base64URL.from(y))
+            .build()
+
+        // Return as JWK
+        return ecKey
     }
 
     /**

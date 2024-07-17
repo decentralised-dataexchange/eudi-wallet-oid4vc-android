@@ -77,4 +77,12 @@ interface DIDServiceInterface {
      * @return DID
      */
     fun createEdDSADID(privateKeyX: Base64URL): String
+
+    /**
+     * Converts a DID string to a JWK (JSON Web Key).
+     * @param did - Decentralized Identifier (DID) string
+     * @return JWK object
+     * @throws IllegalArgumentException if the DID format is invalid or conversion fails
+     */
+    fun convertDIDToJWK(did:String):JWK
 }

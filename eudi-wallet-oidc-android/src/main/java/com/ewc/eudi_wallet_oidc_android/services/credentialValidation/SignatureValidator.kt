@@ -1,0 +1,175 @@
+package com.ewc.eudi_wallet_oidc_android.services.credentialValidation
+
+import com.ewc.eudi_wallet_oidc_android.models.JwkKey
+import com.ewc.eudi_wallet_oidc_android.models.JwksResponse
+import com.ewc.eudi_wallet_oidc_android.services.exceptions.SignatureException
+import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
+import com.google.gson.Gson
+import com.nimbusds.jose.JWSObject
+import com.nimbusds.jose.crypto.ECDSAVerifier
+import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.util.Base64URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.URL
+
+class SignatureValidator {
+
+    /**
+     * Validates the signature of a JWT using a JWK fetched either from
+     *    Kid or JWKS URI present in Authorisation configuration.
+     *
+     * @param jwt
+     * @param jwksUri
+     * @return
+     *
+     * Throws SignatureException if validation fails
+     */
+    @Throws(SignatureException::class)
+    suspend fun validateSignature(jwt: String?,jwksUri:String?=null): Boolean {
+        return try {
+            jwt?.let {
+                val jwsObject = JWSObject.parse(jwt)
+                val header = jwsObject.header
+                val kid = header.keyID
+                // Check the format of kid and process accordingly
+                val response = if (kid.startsWith("did:key:z")) {
+                    processJWKFromKID(kid)
+                } else {
+                    processJWKFromJwksUri(kid,jwksUri)
+                }
+                if (response != null) {
+                    val isSignatureValid = verifyJwtSignature(jwt, response.toJSONString())
+                    isSignatureValid
+                } else {
+                    throw SignatureException("Invalid signature")
+                }
+            } ?:  throw SignatureException("Invalid signature")
+        } catch (e: IllegalArgumentException) {
+            throw SignatureException("Invalid signature")
+        }
+    }
+
+
+    /**
+     * Processes a JWK from a DID
+     *
+     * @param did
+     * @return
+     */
+    private fun processJWKFromKID(did: String?): JWK? {
+        try {
+            if (did == null || !did.startsWith("did:key:z")) {
+                throw IllegalArgumentException("Invalid DID format")
+            }
+            // Extract the multiBaseEncoded part
+            val multiBaseEncoded = if (did.contains("#")) {
+                did.split("#")[0].substring("did:key:z".length)
+            } else {
+                did.substring("did:key:z".length)
+            }
+            // Call convertDIDToJWK function from DIDService
+            return DIDService().convertDIDToJWK(multiBaseEncoded)
+        } catch (e: IllegalArgumentException) {
+            // Handle specific exception if needed
+            throw IllegalArgumentException("Error converting DID to JWK", e)
+        } catch (e: Exception) {
+            // Handle other exceptions
+            throw IllegalArgumentException("Error converting DID to JWK", e)
+        }
+
+    }
+
+
+    /**
+     * Verifies the signature of a JWT using a JWK provided as JSON.
+     *
+     * @param jwt
+     * @param jwkJson
+     * @return
+     */
+    @Throws(IllegalArgumentException::class)
+    private fun verifyJwtSignature(jwt: String, jwkJson: String): Boolean {
+        try {
+            // Parse the JWK from JSON
+            val jwk = ECKey.parse(jwkJson)
+
+            // Create a JWS object from the JWT string
+            val jwsObject = JWSObject.parse(jwt)
+
+            // Create a JWS verifier with the EC key
+            val verifier = ECDSAVerifier(jwk)
+
+            // Verify the JWS signature
+            return jwsObject.verify(verifier)
+        } catch (e: Exception) {
+            // Handle exceptions appropriately
+            e.printStackTrace()
+            throw IllegalArgumentException("Invalid signature")
+        }
+    }
+
+
+    /**
+     * Processes a JWK from a JWKS (JSON Web Key Set) URI.
+     *
+     * @param kid
+     * @param jwksUri
+     * @return
+     */
+    private suspend fun processJWKFromJwksUri(kid: String?, jwksUri:String?): JWK? {
+        if (jwksUri != null) {
+            val jwkKey = fetchJwks(jwksUri =jwksUri, kid = kid)
+            return convertToJWK(jwkKey)
+        }
+        return null
+    }
+
+
+    /**
+     * Converts a JwkKey object to a JWK (JSON Web Key).
+     *
+     * @param jwkKey
+     * @return
+     */
+    private fun convertToJWK(jwkKey: JwkKey?): JWK? {
+        return jwkKey?.let {
+            ECKey.Builder(Curve.P_256, Base64URL.from(it.x), Base64URL.from(it.y))
+                .keyID(it.kid)
+                .build()
+        }
+    }
+
+
+    /**
+     * Fetches a JwkKey object from a specified JWKS (JSON Web Key Set) URI.
+     *
+     * @param jwksUri
+     * @param kid
+     * @return
+     */
+    private suspend fun fetchJwks(jwksUri: String, kid: String?): JwkKey? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL(jwksUri)
+                val json = url.readText()
+                // Parse JSON into JwksResponse object
+                val jwksResponse =  Gson().fromJson(json, JwksResponse::class.java)
+
+                // Find the JWK with "use" = "sig"
+                var jwkKey = jwksResponse.keys.firstOrNull { it.use == "sig" }
+
+                // If no "sig" key is found, find by kid
+                if (jwkKey == null && kid != null) {
+                    jwkKey = jwksResponse.keys.firstOrNull { it.kid == kid }
+                }
+                return@withContext jwkKey
+            } catch (e: Exception) {
+                println(e.toString())
+                return@withContext null
+            }
+        }
+    }
+}
