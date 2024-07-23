@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfi
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
+import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import okhttp3.ResponseBody
@@ -74,4 +75,7 @@ interface ApiService {
         @Url url: String,
         @FieldMap map: Map<String, String>
     ): Response<ResponseBody>
+
+    @GET
+    suspend fun ebsiDIDResolver(@Url url: String): Response<DIDDocument>
 }
