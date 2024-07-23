@@ -20,7 +20,13 @@ class ExpiryValidator {
         return try {
             val signedJWT = SignedJWT.parse(jwt)
             val expirationTime = signedJWT.jwtClaimsSet.expirationTime
-            expirationTime?.before(Date()) ?: throw ExpiryException("JWT token expired")
+
+            // return if expiry not present in the JWT
+            if (expirationTime == null){
+                return false
+            }
+            expirationTime.before(Date()) ?: throw ExpiryException("JWT token expired")
+
         } catch (e: ParseException) {
             throw ExpiryException("JWT token expired", e)
         }
