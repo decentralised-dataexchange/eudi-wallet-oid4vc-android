@@ -34,6 +34,7 @@ data class Filter(
 
 data class Contains(
 
-    @SerializedName("const") var const: String? = null
-
+    @SerializedName("const") var const: String? = null,
+    @SerializedName("pattern") var pattern: String? = null,
+    @SerializedName("type") var type: String? = null
 )

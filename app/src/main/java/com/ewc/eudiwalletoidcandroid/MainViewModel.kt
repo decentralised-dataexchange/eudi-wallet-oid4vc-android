@@ -1,8 +1,11 @@
 package com.ewc.eudiwalletoidcandroid
 
+import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.ewc.eudi_wallet_oidc_android.CryptographicAlgorithms
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
@@ -17,15 +20,19 @@ import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.google.gson.Gson
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.ArrayList
 import java.util.Timer
 import java.util.TimerTask
 
 class MainViewModel : ViewModel() {
 
+    private var format: String? = null
+    private var types: ArrayList<String> = arrayListOf()
     var isLoading = MutableLiveData<Boolean>(false)
 
     var isPreAuthorised = MutableLiveData<Boolean>(false)
@@ -40,28 +47,38 @@ class MainViewModel : ViewModel() {
     private var issuerConfig: IssuerWellKnownConfiguration? = null
     private var offerCredential: CredentialOffer? = null
     lateinit var did: String
-    lateinit var subJwk: ECKey
+    lateinit var subJwk: JWK
 
     init {
         isLoading.value = false
     }
 
-    fun issueCredential(url: String) {
+    fun issueCredential(url: String,context:Context) {
         isLoading.value = true
         CoroutineScope(Dispatchers.Main).launch {
             // Resolving credential offer
             offerCredential = IssueService().resolveCredentialOffer(url)
 
-            // Discovery
-            issuerConfig =
-                DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
+            val wrappedResponse = DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
+            if (wrappedResponse.issuerConfig != null) {
+                // Handle successful response
+                issuerConfig = wrappedResponse.issuerConfig
+            } else {
+                displayErrorMessage(context, wrappedResponse.errorResponse?.errorDescription)
+                return@launch
+            }
+            val wrappedAuthResponse = DiscoveryService().getAuthConfig(
+                "${issuerConfig?.authorizationServer ?: issuerConfig?.issuer}/.well-known/openid-configuration"
+            )
+            if(wrappedAuthResponse.authConfig !=null){
+                // Handle successful response
+                authConfig = wrappedAuthResponse.authConfig
+            }
+            else{
+                displayErrorMessage(context, wrappedAuthResponse.errorResponse?.errorDescription)
+                return@launch
+            }
 
-            authConfig =
-                DiscoveryService().getAuthConfig(
-                    "${issuerConfig?.authorizationServer ?: issuerConfig?.issuer}/.well-known/openid-configuration"
-                )
-
-            // Generating code verifier
             codeVerifier = CodeVerifierService().generateCodeVerifier()
 
             withContext(Dispatchers.Main) {
@@ -118,18 +135,22 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    private fun displayErrorMessage(context: Context, errorMessage: String?) {
+        val messageToShow = errorMessage?.takeIf { it.isNotBlank() } ?: "Unknown error"
+        Toast.makeText(context, messageToShow, Toast.LENGTH_SHORT).show()
+        isLoading.value = false
+    }
+
     private suspend fun getCredential() {
-        val types = IssueService().getTypesFromCredentialOffer(offerCredential)
-        val format = IssueService().getFormatFromIssuerConfig(issuerConfig, types.lastOrNull() ?:"")
+
         val credential = IssueService().processCredentialRequest(
             did,
             subJwk,
-            issuerConfig?.credentialIssuer,
             tokenResponse?.tokenResponse?.cNonce,
             offerCredential,
-            issuerConfig?.credentialEndpoint,
+            issuerConfig,
             tokenResponse?.tokenResponse?.accessToken,
-            format?:"jwt_vc"
+            format ?: "jwt_vc"
         )
 
         withContext(Dispatchers.Main) {

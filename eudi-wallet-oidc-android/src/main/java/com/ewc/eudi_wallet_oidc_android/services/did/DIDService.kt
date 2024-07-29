@@ -1,11 +1,14 @@
 package com.ewc.eudi_wallet_oidc_android.services.did
 
+import com.ewc.eudi_wallet_oidc_android.CryptographicAlgorithms
 import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.gen.OctetKeyPairGenerator
 import com.nimbusds.jose.util.Base64URL
+import com.nimbusds.jose.util.JSONObjectUtils
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -73,11 +76,112 @@ class DIDService : DIDServiceInterface {
     }
 
     /**
-     * Generate JWK of curve Ed25519
+     * Create DID according to cryptographicAlgorithm
      *
-     *  @return JWK
+     * @param jwk
+     * @param cryptographicAlgorithm
+     * @return
      */
-    override fun createED25519JWK(): OctetKeyPair? {
+    override fun createDID(jwk: JWK, cryptographicAlgorithm: String?): String {
+        when (cryptographicAlgorithm) {
+            CryptographicAlgorithms.ES256 -> {
+                return createES256DID(jwk)
+            }
+
+            CryptographicAlgorithms.EdDSA -> {
+                return createEdDSADID((jwk as OctetKeyPair).x)
+            }
+
+            else -> {
+                return createES256DID(jwk)
+            }
+        }
+    }
+
+    /**
+     * Create JWK according to cryptographicAlgorithm
+     *
+     * @param seed
+     * @param cryptographicAlgorithm
+     * @return
+     */
+    override fun createJWK(seed: String?, cryptographicAlgorithm: String?): JWK {
+        when (cryptographicAlgorithm) {
+            CryptographicAlgorithms.ES256 -> {
+                return createES256JWK(seed)
+            }
+
+            CryptographicAlgorithms.EdDSA -> {
+                return createEdDSAJWK(seed)
+            }
+
+            else -> {
+                return createES256JWK(seed)
+            }
+        }
+    }
+
+
+    /**
+     * Create ES256 JWK
+     *
+     * @param seed
+     * @return
+     */
+    override fun createES256JWK(seed: String?): JWK {
+        val keyPairGenerator = KeyPairGenerator.getInstance("EC")
+        if (seed != null) {
+            val seedBytes = seed.toByteArray(StandardCharsets.UTF_8)
+            keyPairGenerator.initialize(256, SecureRandom(seedBytes))
+        } else {
+            keyPairGenerator.initialize(256)
+        }
+        val keyPair: KeyPair = keyPairGenerator.generateKeyPair()
+
+        val publicKey = convertToECPublicKey(keyPair.public)
+        val privateKey = convertToECPrivateKey(keyPair.private)
+
+        val ecKey = ECKey.Builder(Curve.P_256, publicKey)
+            .privateKey(privateKey).build()
+
+        return ecKey
+    }
+
+
+    /**
+     * Create ES256 DID
+     *
+     * @param jwk
+     * @return
+     */
+    override fun createES256DID(jwk: JWK): String {
+        val ecKey = jwk as ECKey
+        val publicKey = ecKey.toPublicJWK()
+
+        val compactJson =
+            "{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"${publicKey?.x}\",\"y\":\"${publicKey?.y}\"}"
+
+        // UTF-8 encode the string
+        val encodedBytes: ByteArray? = compactJson.toByteArray(StandardCharsets.UTF_8)
+
+        // Add multiCodec byte
+        val multiCodecBytes = addMultiCodecByte(encodedBytes)
+
+        // Apply multiBase base58-btc encoding
+        val multiBaseEncoded = multiBaseEncode(multiCodecBytes!!)
+
+        // Prefix the string with "did:key"
+        return "did:key:z$multiBaseEncoded"
+    }
+
+
+    /**
+     * Create ED25519 JWK
+     *
+     * @param seed
+     * @return
+     */
+    override fun createEdDSAJWK(seed: String?): JWK {
         val jwk = OctetKeyPairGenerator(Curve.Ed25519)
             .keyID(UUID.randomUUID().toString())
             .generate()
@@ -91,7 +195,7 @@ class DIDService : DIDServiceInterface {
      *
      * @return DID
      */
-    override fun createDidED25519(privateKeyX: Base64URL): String {
+    override fun createEdDSADID(privateKeyX: Base64URL): String {
         val startArray = byteArrayOf(0xed.toByte(), 0x01)
         val newArray = startArray + Base64URL(privateKeyX.toString()).decode()
         // 3. base58 encode the prefixed public key bytes.
@@ -99,6 +203,41 @@ class DIDService : DIDServiceInterface {
         // 4. prefix the output with ‘z’
         encoded = "did:key:z$encoded"
         return encoded
+    }
+
+    /**
+     * Converts a DID string to a JWK (JSON Web Key).
+     * @param did - Decentralized Identifier (DID) string
+     * @return JWK object
+     * @throws IllegalArgumentException if the DID format is invalid, decoding fails, or JSON parsing errors occur
+     */
+    override fun convertDIDToJWK(did: String): JWK {
+        val multiCodecBytes = try {
+            Base58.decode(did)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Base58 decoding failed", e)
+        }
+
+        // Check the length of the decoded bytes
+        if (multiCodecBytes.size <= 3) {
+            throw IllegalArgumentException("Decoded bytes are too short to contain valid JSON")
+        }
+
+        // Decode JSON content
+        val compactJson =
+            String(multiCodecBytes.copyOfRange(3, multiCodecBytes.size), StandardCharsets.UTF_8)
+
+        // Parse JSON to retrieve x and y values
+        val jsonObject = JSONObjectUtils.parse(compactJson)
+        val x = jsonObject.get("x") as String
+        val y = jsonObject.get("y") as String
+
+        // Create ECKey using Curve.P_256 (or appropriate curve)
+        val ecKey = ECKey.Builder(Curve.P_256, Base64URL.from(x), Base64URL.from(y))
+            .build()
+
+        // Return as JWK
+        return ecKey
     }
 
     /**

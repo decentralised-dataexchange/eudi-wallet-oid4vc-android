@@ -45,3 +45,7 @@ data class Jwt(
     @SerializedName("alg") var alg: ArrayList<String> = arrayListOf()
 
 )
+data class WrappedAuthConfigResponse(
+    var authConfig: AuthorisationServerWellKnownConfiguration? = null,
+    var errorResponse: ErrorResponse? = null
+)

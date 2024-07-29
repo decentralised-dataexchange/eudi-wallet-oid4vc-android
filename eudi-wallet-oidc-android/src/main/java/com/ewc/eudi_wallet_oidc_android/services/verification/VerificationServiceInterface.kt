@@ -2,11 +2,13 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
 import com.google.gson.internal.LinkedTreeMap
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
 
 interface VerificationServiceInterface {
 
@@ -37,6 +39,23 @@ interface VerificationServiceInterface {
         presentationRequest: PresentationRequest,
         credentialList: List<String>
     ): String?
+
+
+    /**
+     * Send VP token
+     *
+     * @param did
+     * @param subJwk
+     * @param presentationRequest
+     * @param credentialList
+     * @return
+     */
+    suspend fun sendVPToken(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<String>
+    ): WrappedVpTokenResponse?
 
     /**
      * To filter the credential using the input descriptors

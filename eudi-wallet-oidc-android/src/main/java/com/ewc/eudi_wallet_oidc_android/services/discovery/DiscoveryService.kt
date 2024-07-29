@@ -1,7 +1,10 @@
 package com.ewc.eudi_wallet_oidc_android.services.discovery
 
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.WrappedAuthConfigResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedIssuerConfigResponse
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
@@ -12,31 +15,31 @@ class DiscoveryService : DiscoveryServiceInterface {
      * To fetch the Issue configuration
      *
      * @param credentialIssuerWellKnownURI
-     * @return IssuerWellKnownConfiguration
+     * @return WrappedIssuerConfigResponse
      */
-    override suspend fun getIssuerConfig(credentialIssuerWellKnownURI: String?): IssuerWellKnownConfiguration? {
+    override suspend fun getIssuerConfig(credentialIssuerWellKnownURI: String?): WrappedIssuerConfigResponse {
         try {
             UrlUtils.validateUri(credentialIssuerWellKnownURI)
             val response =
                 ApiManager.api.getService()
                     ?.fetchIssuerConfig("$credentialIssuerWellKnownURI")
             return if (response?.isSuccessful == true) {
-                response.body()
+                WrappedIssuerConfigResponse(issuerConfig = response.body(), errorResponse = null)
             } else {
-                null
+                WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
             }
         } catch (exc: UriValidationFailed) {
-            return null
+            return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
         }
     }
 
     /**
-     * To fetch the authorisation server configuration
+     * To fetch the authorization server configuration
      *
      * @param authorisationServerWellKnownURI
-     * @return AuthorisationServerWellKnownConfiguration
+     * @return WrappedAuthConfigResponse
      */
-    override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): AuthorisationServerWellKnownConfiguration? {
+    override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): WrappedAuthConfigResponse {
         try {
             UrlUtils.validateUri(authorisationServerWellKnownURI)
 
@@ -44,12 +47,12 @@ class DiscoveryService : DiscoveryServiceInterface {
                 ApiManager.api.getService()
                     ?.fetchAuthConfig("$authorisationServerWellKnownURI")
             return if (response?.isSuccessful == true) {
-                response.body()
+                WrappedAuthConfigResponse(authConfig = response.body(), errorResponse = null)
             } else {
-                null
+                WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
             }
         } catch (exc: UriValidationFailed) {
-            return null
+            return WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
         }
     }
 }

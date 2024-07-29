@@ -3,10 +3,14 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 import android.net.Uri
 import android.util.Base64
 import com.ewc.eudi_wallet_oidc_android.models.DescriptorMap
+import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PathNested
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
+import com.ewc.eudi_wallet_oidc_android.models.VPTokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -17,12 +21,16 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
+import com.nimbusds.jose.crypto.Ed25519Signer
 import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.shaded.json.parser.ParseException
 import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.SignedJWT
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Date
 import java.util.UUID
@@ -191,30 +199,139 @@ class VerificationService : VerificationServiceInterface {
     }
 
     /**
+     * Send VP token
+     *
+     * @param did
+     * @param subJwk
+     * @param presentationRequest
+     * @param credentialList
+     * @return
+     */
+    override suspend fun sendVPToken(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<String>
+    ): WrappedVpTokenResponse? {
+        val iat = Date()
+        val jti = "urn:uuid:${UUID.randomUUID()}"
+        val claimsSet = JWTClaimsSet.Builder()
+            .audience(presentationRequest.clientId)
+            .issueTime(iat)
+            .expirationTime(Date(iat.time + 600000))
+            .issuer(did)
+            .jwtID(jti)
+            .notBeforeTime(iat)
+            .claim("nonce", presentationRequest.nonce)
+            .subject(did)
+            .claim(
+                "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                    hashMapOf(
+                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                        "holder" to did,
+                        "id" to jti,
+                        "type" to listOf("VerifiablePresentation"),
+                        "verifiableCredential" to credentialList
+                    )
+                )
+            ).build()
+
+        // Create JWT for ES256K alg
+        val jwsHeader =
+            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+                .type(JOSEObjectType("JWT"))
+                .keyID("$did#${did?.replace("did:key:", "")}")
+                .jwk(subJwk?.toPublicJWK())
+                .build()
+
+        val jwt = SignedJWT(
+            jwsHeader,
+            claimsSet
+        )
+
+        // Sign with private EC key
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
+
+        val response = ApiManager.api.getService()?.sendVPToken(
+            presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+            mapOf(
+                "vp_token" to jwt.serialize(),
+                "presentation_submission" to Gson().toJson(
+                    createPresentationSubmission(
+                        presentationRequest
+                    )
+                ),
+                "state" to (presentationRequest.state ?: "")
+            )
+        )
+
+        val tokenResponse = when {
+            response?.code() == 302 || response?.code() == 200 -> {
+                WrappedVpTokenResponse(
+                    vpTokenResponse = VPTokenResponse(
+                        location = response.headers()["Location"]
+                            ?: "https://www.example.com?code=1"
+                    )
+                )
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                WrappedVpTokenResponse(
+                    errorResponse = IssueService().processError(response?.errorBody()?.string())
+                )
+            }
+
+            else -> {
+                null
+            }
+        }
+        return tokenResponse
+    }
+
+    /**
      * Returns all the list of credentials matching for all input descriptors
      */
     override suspend fun filterCredentials(
         allCredentialList: List<String?>,
         presentationDefinition: PresentationDefinition
     ): List<List<String>> {
-        //list of credentials matched for all input descriptors
+        val response: MutableList<MutableList<String>> = mutableListOf()
+        val pex = PresentationExchange()
 
-        val credentialList: ArrayList<String?> = arrayListOf()
-        for (item in allCredentialList) {
-            if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure != null && item?.contains(
-                    "~"
-                ) == true
-            )
-                credentialList.add(item)
-            else if (presentationDefinition.inputDescriptors?.get(0)?.constraints?.limitDisclosure == null && item?.contains(
-                    "~"
-                ) != true
-            )
-                credentialList.add(item)
+        presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
+            val credentialList = splitCredentialsBySdJWT(allCredentialList, inputDescriptors.constraints?.limitDisclosure != null)
+            val processedCredentials = processCredentialsToJsonString(credentialList)
+            val filteredCredentialList: MutableList<String> = mutableListOf()
+            val inputDescriptor = Gson().toJson(inputDescriptors)
+
+            val matches: List<MatchedCredential> =
+                pex.matchCredentials(inputDescriptor, processedCredentials)
+
+            for (match in matches) {
+                filteredCredentialList.add(credentialList[match.index] ?: "")
+            }
+
+            response.add(filteredCredentialList)
         }
 
-        val response: MutableList<MutableList<String>> = mutableListOf()
+        return response
+    }
 
+    private fun splitCredentialsBySdJWT(
+        allCredentials: List<String?>,
+        isSdJwt: Boolean
+    ): ArrayList<String?> {
+        val filteredCredentials: ArrayList<String?> = arrayListOf()
+        for (item in allCredentials) {
+            if (isSdJwt && item?.contains("~") == true)
+                filteredCredentials.add(item)
+            else if (!isSdJwt && item?.contains("~") == false)
+                filteredCredentials.add(item)
+        }
+        return filteredCredentials
+    }
+
+    private fun processCredentialsToJsonString(credentialList: ArrayList<String?>):List<String>{
         var processedCredentials: List<String> = mutableListOf()
         for (cred in credentialList) {
             val split = cred?.split(".")
@@ -237,24 +354,7 @@ class VerificationService : VerificationServiceInterface {
                     else json.toString()
                 )
         }
-
-        val pex = PresentationExchange()
-
-        presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
-            val filteredCredentialList: MutableList<String> = mutableListOf()
-            val inputDescriptor = Gson().toJson(inputDescriptors)
-
-            val matches: List<MatchedCredential> =
-                pex.matchCredentials(inputDescriptor, processedCredentials)
-
-            for (match in matches) {
-                filteredCredentialList.add(credentialList[match.index] ?: "")
-            }
-
-            response.add(filteredCredentialList)
-        }
-
-        return response
+        return processedCredentials
     }
 
     /**
@@ -302,11 +402,11 @@ class VerificationService : VerificationServiceInterface {
             val descriptor = DescriptorMap(
                 id = inputDescriptors.id,
                 path = "$",
-                format = presentationDefinition.format?.keys?.first(),
+                format = presentationDefinition.format?.keys?.firstOrNull() ?: "jwt_vp",
                 pathNested = PathNested(
                     id = inputDescriptors.id,
                     format = "jwt_vc",
-                    path = "$.verifiableCredential[$index]"
+                    path = "$.vp.verifiableCredential[$index]"
                 )
             )
             descriptorMap.add(descriptor)
