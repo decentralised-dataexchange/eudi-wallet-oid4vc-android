@@ -325,7 +325,7 @@ class VerificationService : VerificationServiceInterface {
         for (item in allCredentials) {
             if (isSdJwt && item?.contains("~") == true)
                 filteredCredentials.add(item)
-            else if (!isSdJwt && item?.contains("~") != null)
+            else if (!isSdJwt && item?.contains("~") == false)
                 filteredCredentials.add(item)
         }
         return filteredCredentials
