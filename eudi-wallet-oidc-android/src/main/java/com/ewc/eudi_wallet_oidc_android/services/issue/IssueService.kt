@@ -216,10 +216,15 @@ class IssueService : IssueServiceInterface {
             null
         }
 
+
+
         return if(location != null && Uri.parse(location).getQueryParameter("error") != null) {
             location
         }else if (location != null && Uri.parse(location).getQueryParameter("code") != null
             || Uri.parse(location).getQueryParameter("presentation_definition") != null
+            || (Uri.parse(location).getQueryParameter("request_uri") != null &&
+                    Uri.parse(location).getQueryParameter("response_type") == null &&
+                    Uri.parse(location).getQueryParameter("state") == null)
         ) {
             location
         } else {
