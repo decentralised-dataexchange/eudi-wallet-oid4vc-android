@@ -203,7 +203,9 @@ class IssueService : IssueServiceInterface {
                 "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
             ),
         )
-
+        if (response?.code() == 502) {
+            throw Exception("Unexpected error. Please try again.")
+        }
         val location: String? = if (response?.code() == 302) {
             if (response.headers()["Location"]?.contains("error") == true || response.headers()["Location"]?.contains("error_description") == true) {
                 response.headers()["Location"]
@@ -214,9 +216,9 @@ class IssueService : IssueServiceInterface {
             null
         }
 
-        return if(Uri.parse(location).getQueryParameter("error") != null) {
+        return if(location != null && Uri.parse(location).getQueryParameter("error") != null) {
             location
-        }else if (Uri.parse(location).getQueryParameter("code") != null
+        }else if (location != null && Uri.parse(location).getQueryParameter("code") != null
             || Uri.parse(location).getQueryParameter("presentation_definition") != null
         ) {
             location
