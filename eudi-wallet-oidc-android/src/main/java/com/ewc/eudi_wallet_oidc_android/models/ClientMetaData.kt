@@ -2,7 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.models
 
 import com.google.gson.annotations.SerializedName
 
-data class ClientMetaData(
+data class ClientMetaDataas(
 
     @SerializedName("vp_formats_supported") var vpFormatsSupported: VpFormatsSupported? = VpFormatsSupported(
         jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
