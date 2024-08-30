@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import android.net.Uri
 import android.util.Base64
+import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDetails
 import com.ewc.eudi_wallet_oidc_android.models.DescriptorMap
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PathNested
@@ -63,6 +64,13 @@ class VerificationService : VerificationServiceInterface {
         val requestUri = Uri.parse(data).getQueryParameter("request_uri")
         val responseUri = Uri.parse(data).getQueryParameter("response_uri")
         val responseMode = Uri.parse(data).getQueryParameter("response_mode")
+        val clientMetadataJson = Uri.parse(data).getQueryParameter("client_metadata")
+
+        val clientMetadetails: ClientMetaDetails? = if (!clientMetadataJson.isNullOrBlank()) {
+            Gson().fromJson(clientMetadataJson, ClientMetaDetails::class.java)
+        } else {
+            null
+        }
 
         if (presentationDefinition != null) {
             return PresentationRequest(
@@ -75,7 +83,9 @@ class VerificationService : VerificationServiceInterface {
                 responseType = responseType,
                 scope = scope,
                 requestUri = requestUri,
-                responseUri = responseUri
+                responseUri = responseUri,
+                clientMetaDetails = clientMetadetails
+
             )
         } else if (!requestUri.isNullOrBlank() || !responseUri.isNullOrBlank()) {
             val response =
@@ -267,12 +277,37 @@ class VerificationService : VerificationServiceInterface {
 
         val tokenResponse = when {
             response?.code() == 302 || response?.code() == 200 -> {
-                WrappedVpTokenResponse(
-                    vpTokenResponse = VPTokenResponse(
-                        location = response.headers()["Location"]
-                            ?: "https://www.example.com?code=1"
+//                WrappedVpTokenResponse(
+//                    vpTokenResponse = VPTokenResponse(
+//                        location = response.headers()["Location"]
+//                            ?: "https://www.example.com?code=1"
+//                    )
+//                )
+                val locationHeader = response.headers()["Location"]
+                if (locationHeader?.contains("error=") == true) {
+                    // Parse the error from the location header
+                    val errorParams = locationHeader.substringAfter("?").split("&").associate {
+                        val (key, value) = it.split("=")
+                        key to value
+                    }
+
+                    WrappedVpTokenResponse(
+                        errorResponse = ErrorResponse(
+                            error = when (errorParams["error"]) {
+                                "invalid_request" -> 400
+                                else -> null
+                            },
+                            errorDescription = errorParams["error_description"]
+                        )
                     )
-                )
+                } else {
+                    WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location = locationHeader ?: "https://www.example.com?code=1"
+                        )
+                    )
+                }
+
             }
 
             (response?.code() ?: 0) >= 400 -> {
