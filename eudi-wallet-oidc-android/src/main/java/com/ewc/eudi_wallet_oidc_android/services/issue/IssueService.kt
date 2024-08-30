@@ -3,7 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue
 import android.net.Uri
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
-import com.ewc.eudi_wallet_oidc_android.models.ClientMetaData
+import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDataas
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOfferV1
@@ -104,7 +104,7 @@ class IssueService : IssueServiceInterface {
         val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
         val codeChallengeMethod = "S256"
         val clientMetadata = Gson().toJson(
-            ClientMetaData(
+            ClientMetaDataas(
                 vpFormatsSupported = VpFormatsSupported(
                     jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
                 ), responseTypesSupported = arrayListOf(
@@ -178,7 +178,7 @@ class IssueService : IssueServiceInterface {
         val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
         val codeChallengeMethod = "S256"
         val clientMetadata = Gson().toJson(
-            ClientMetaData(
+            ClientMetaDataas(
                 vpFormatsSupported = VpFormatsSupported(
                     jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
                 ), responseTypesSupported = arrayListOf(
