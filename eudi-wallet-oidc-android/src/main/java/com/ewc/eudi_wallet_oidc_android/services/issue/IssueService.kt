@@ -74,80 +74,6 @@ class IssueService : IssueServiceInterface {
         }
     }
 
-
-    /**
-     * To process the authorisation request The authorisation request is to
-     * grant access to the credential endpoint
-     *
-     * @param did - DID created for the issuance
-     * @param subJwk - for singing the requests
-     * @param credentialOffer - To build the authorisation request
-     * @param codeVerifier - to build the authorisation request
-     * @param authorisationEndPoint - to build the authorisation request
-     * @return String - short-lived authorisation code
-     */
-    override suspend fun processAuthorisationRequest(
-        did: String?,
-        subJwk: ECKey?,
-        credentialOffer: CredentialOffer?,
-        codeVerifier: String,
-        authorisationEndPoint: String?
-    ): String? {
-        val responseType = "code"
-        val scope = "openid"
-        val state = UUID.randomUUID().toString()
-        val clientId = did
-        val authorisationDetails = buildAuthorizationRequest(credentialOffer)
-        val redirectUri = "http://localhost:8080"
-        val nonce = UUID.randomUUID().toString()
-
-        val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
-        val codeChallengeMethod = "S256"
-        val clientMetadata = Gson().toJson(
-            ClientMetaDataas(
-                vpFormatsSupported = VpFormatsSupported(
-                    jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
-                ), responseTypesSupported = arrayListOf(
-                    "vp_token", "id_token"
-                ), authorizationEndpoint = redirectUri
-            )
-        )
-
-        val response = ApiManager.api.getService()?.processAuthorisationRequest(
-            authorisationEndPoint ?: "",
-            mapOf(
-                "response_type" to responseType,
-                "scope" to scope,
-                "state" to state,
-                "client_id" to (clientId ?: ""),
-                "authorization_details" to authorisationDetails,
-                "redirect_uri" to redirectUri,
-                "nonce" to nonce,
-                "code_challenge" to (codeChallenge ?: ""),
-                "code_challenge_method" to codeChallengeMethod,
-                "client_metadata" to clientMetadata,
-                "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-            ),
-        )
-
-        val location: String? = if (response?.code() == 302) {
-            response.headers()["Location"]
-        } else {
-            null
-        }
-
-        return if (Uri.parse(location).getQueryParameter("code") != null) {
-            location
-        } else {
-            processAuthorisationRequestUsingIdToken(
-                did = did,
-                authorisationEndPoint = authorisationEndPoint,
-                location = location,
-                subJwk = subJwk
-            )
-        }
-    }
-
     /**
      * To process the authorisation request The authorisation request is to
      * grant access to the credential endpoint
@@ -164,20 +90,25 @@ class IssueService : IssueServiceInterface {
         subJwk: JWK?,
         credentialOffer: CredentialOffer?,
         codeVerifier: String,
-        authorisationEndPoint: String?
+        authorisationEndPoint: String?,
+        format: String?,
     ): String? {
         val responseType = "code"
-        val scope = "openid"
+        val types = getTypesFromCredentialOffer(credentialOffer)
+        val scope = if (format == "mso_mdoc") { "${types.firstOrNull() ?: ""} openid" } else { "openid" }
+        val doctype = if (format == "mso_mdoc") "org.iso.18013.5.1.mDL" else null
+        // val doctype = if (format == "mso_mdoc") "${types.firstOrNull()}" else null
+
         val state = UUID.randomUUID().toString()
         val clientId = did
-        val authorisationDetails = buildAuthorizationRequest(credentialOffer)
+        val authorisationDetails = buildAuthorizationRequest(credentialOffer, format, doctype)
 
         val redirectUri = "http://localhost:8080"
         val nonce = UUID.randomUUID().toString()
 
         val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
         val codeChallengeMethod = "S256"
-        val clientMetadata = Gson().toJson(
+        val clientMetadata =  if (format == "mso_mdoc") "" else Gson().toJson(
             ClientMetaDataas(
                 vpFormatsSupported = VpFormatsSupported(
                     jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
@@ -191,7 +122,7 @@ class IssueService : IssueServiceInterface {
             authorisationEndPoint ?: "",
             mapOf(
                 "response_type" to responseType,
-                "scope" to scope,
+                "scope" to scope.trim(),
                 "state" to state,
                 "client_id" to (clientId ?: ""),
                 "authorization_details" to authorisationDetails,
@@ -215,8 +146,6 @@ class IssueService : IssueServiceInterface {
         } else {
             null
         }
-
-
 
         return if(location != null && Uri.parse(location).getQueryParameter("error") != null) {
             location
@@ -285,7 +214,7 @@ class IssueService : IssueServiceInterface {
         }
     }
 
-    private  fun buildAuthorizationRequest(credentialOffer: CredentialOffer?):String{
+    private  fun buildAuthorizationRequest(credentialOffer: CredentialOffer?, format: String?,doctype:String?):String{
         val gson = Gson()
         var credentialDefinitionNeeded = false
         try {
@@ -298,30 +227,43 @@ class IssueService : IssueServiceInterface {
         } catch (e: Exception) {
             credentialDefinitionNeeded = true
         }
-        if (credentialDefinitionNeeded) {
+        if (format == "mso_mdoc"){
             return   gson.toJson(
                 arrayListOf(
                     AuthorizationDetails(
-                        format = "jwt_vc_json",
-                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
-                        credentialDefinition = CredentialTypeDefinition(
-                            type = getTypesFromCredentialOffer(credentialOffer)
-                        )
-                    )
-                )
-            )
-
-        }else{
-            return   gson.toJson(
-                arrayListOf(
-                    AuthorizationDetails(
-                        format = "jwt_vc",
-                        types = getTypesFromCredentialOffer(credentialOffer),
+                        format =  format ,
+                        doctype = doctype,
                         locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
                     )
                 )
             )
+        }else{
+            if (credentialDefinitionNeeded) {
+                return   gson.toJson(
+                    arrayListOf(
+                        AuthorizationDetails(
+                            format =  "jwt_vc_json",
+                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
+                            credentialDefinition = CredentialTypeDefinition(
+                                type = getTypesFromCredentialOffer(credentialOffer)
+                            )
+                        )
+                    )
+                )
+
+            }else{
+                return   gson.toJson(
+                    arrayListOf(
+                        AuthorizationDetails(
+                            format =  "jwt_vc",
+                            types = getTypesFromCredentialOffer(credentialOffer),
+                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
+                        )
+                    )
+                )
+            }
         }
+
     }
 
     /**
@@ -388,99 +330,6 @@ class IssueService : IssueServiceInterface {
     }
 
     /**
-     * To process the credential, credentials can be issued in two ways, intime
-     * and deferred
-     *
-     *     If its intime, then we will receive the credential as the response
-     *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
-     *
-     * @param did
-     * @param subJwk
-     * @param credentialIssuerUrl
-     * @param nonce
-     * @param credentialOffer
-     * @param credentialIssuerEndPoint
-     * @param accessToken
-     * @return credential response
-     */
-    override suspend fun processCredentialRequest(
-        did: String?,
-        subJwk: ECKey?,
-        credentialIssuerUrl: String?,
-        nonce: String?,
-        credentialOffer: CredentialOffer?,
-        credentialIssuerEndPoint: String?,
-        accessToken: String?,
-        format: String
-    ): WrappedCredentialResponse? {
-
-        // Add claims
-        val claimsSet = JWTClaimsSet
-            .Builder()
-            .issueTime(Date())
-            .expirationTime(Date(Date().time + 86400))
-            .issuer(did)
-            .audience(credentialIssuerUrl)
-            .claim("nonce", nonce).build()
-
-        // Add header
-        val jwsHeader = JWSHeader
-            .Builder(JWSAlgorithm.ES256)
-            .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .keyID("$did#${did?.replace("did:key:", "")}")
-            .jwk(subJwk?.toPublicJWK())
-            .build()
-
-
-        // Sign with private EC key
-        val jwt = SignedJWT(
-            jwsHeader, claimsSet
-        )
-        jwt.sign(ECDSASigner(subJwk))
-
-        // Construct credential request
-        val body = CredentialRequest(
-            types = getTypesFromCredentialOffer(credentialOffer),
-            format = format,
-            proof = ProofV3(
-                proofType = "jwt",
-                jwt = jwt.serialize()
-            )
-        )
-        // API call
-        val response = ApiManager.api.getService()?.getCredential(
-            credentialIssuerEndPoint ?: "",
-            "application/json",
-            "Bearer $accessToken",
-            body
-        )
-
-        val credentialResponse = when {
-            response?.isSuccessful == true -> {
-                WrappedCredentialResponse(
-                    credentialResponse = response.body()
-                )
-            }
-
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedCredentialResponse(
-                        errorResponse = processError(response?.errorBody()?.string())
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-            }
-
-            else -> {
-                null
-            }
-        }
-
-        return credentialResponse
-    }
-
-    /**
      * To process the credential, credentials can be issued in two ways,
      *     intime and deferred
      *
@@ -506,6 +355,7 @@ class IssueService : IssueServiceInterface {
         accessToken: String?,
         format: String
     ): WrappedCredentialResponse? {
+        val doctype = if (format == "mso_mdoc") "org.iso.18013.5.1.mDL" else null
 
         // Add claims
         val claimsSet = JWTClaimsSet
@@ -540,6 +390,7 @@ class IssueService : IssueServiceInterface {
             credentialOffer = credentialOffer,
             issuerConfig = issuerConfig,
             format = format,
+            doctype = doctype ,
             jwt = jwt.serialize()
         )
         // API call
@@ -579,7 +430,8 @@ class IssueService : IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
         format: String?,
-        jwt: String
+        jwt: String,
+        doctype: String?
     ): CredentialRequest {
 
         val gson = Gson()
@@ -594,54 +446,67 @@ class IssueService : IssueServiceInterface {
         } catch (e: Exception) {
             credentialDefinitionNeeded = true
         }
-
-        if (credentialDefinitionNeeded) {
-            var types: ArrayList<String>? = getTypesFromCredentialOffer(credentialOffer)
-            when (val data = getTypesFromIssuerConfig(
-                issuerConfig,
-                type = if (types?.isNotEmpty() == true) types.last() else ""
-            )) {
-                is ArrayList<*> -> {
-                    return CredentialRequest(
-                        credentialDefinition = CredentialDefinition(type = data as ArrayList<String>),
-                        format = format,
-                        proof = ProofV3(
-                            proofType = "jwt",
-                            jwt = jwt
-                        )
-                    )
-                }
-
-                is String -> {
-                    return CredentialRequest(
-                        vct = data as String,
-                        format = format,
-                        proof = ProofV3(
-                            proofType = "jwt",
-                            jwt = jwt
-                        )
-                    )
-                }
-            }
-
+        if (format == "mso_mdoc"){
             return CredentialRequest(
-                credentialDefinition = CredentialDefinition(type = types),
                 format = format,
-                proof = ProofV3(
-                    proofType = "jwt",
-                    jwt = jwt
-                )
-            )
-        } else {
-            return CredentialRequest(
-                types = getTypesFromCredentialOffer(credentialOffer),
-                format = format,
+                doctype = doctype,
                 proof = ProofV3(
                     proofType = "jwt",
                     jwt = jwt
                 )
             )
         }
+        else{
+            if (credentialDefinitionNeeded) {
+                var types: ArrayList<String>? = getTypesFromCredentialOffer(credentialOffer)
+                when (val data = getTypesFromIssuerConfig(
+                    issuerConfig,
+                    type = if (types?.isNotEmpty() == true) types.last() else ""
+                )) {
+                    is ArrayList<*> -> {
+                        return CredentialRequest(
+                            credentialDefinition = CredentialDefinition(type = data as ArrayList<String>),
+                            format = format,
+                            proof = ProofV3(
+                                proofType = "jwt",
+                                jwt = jwt
+                            )
+                        )
+                    }
+
+                    is String -> {
+                        return CredentialRequest(
+                            vct = data as String,
+                            format = format,
+                            proof = ProofV3(
+                                proofType = "jwt",
+                                jwt = jwt
+                            )
+                        )
+                    }
+                }
+
+                return CredentialRequest(
+                    credentialDefinition = CredentialDefinition(type = types),
+                    format = format,
+                    proof = ProofV3(
+                        proofType = "jwt",
+                        jwt = jwt
+                    )
+                )
+            } else {
+                return CredentialRequest(
+                    types = getTypesFromCredentialOffer(credentialOffer),
+                    format = format,
+                    proof = ProofV3(
+                        proofType = "jwt",
+                        jwt = jwt
+                    )
+                )
+            }
+        }
+
+
     }
 
     fun processError(err: String?): ErrorResponse? {

@@ -9,6 +9,7 @@ data class CredentialRequest(
     @SerializedName("credential_definition") var credentialDefinition: CredentialDefinition? = null,
     @SerializedName("vct") var vct: String? = null,
     @SerializedName("format") var format: String? = null,
+    @SerializedName("doctype") var doctype: String? = null,
     @SerializedName("proof") var proof: ProofV3? = null
 
 )

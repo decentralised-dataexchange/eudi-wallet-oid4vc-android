@@ -11,5 +11,7 @@ interface CredentialValidatorInterface {
      * Returns true if the JWT is valid; otherwise, throws IllegalArgumentException with appropriate messages.
      */
     @Throws(IllegalArgumentException::class)
-    suspend fun  validateCredential(jwt: String?,jwksUri:String?):Boolean
+    suspend fun  validateCredential(jwt: String?,
+                                    jwksUri:String?,
+                                    format: String?):Boolean
 }

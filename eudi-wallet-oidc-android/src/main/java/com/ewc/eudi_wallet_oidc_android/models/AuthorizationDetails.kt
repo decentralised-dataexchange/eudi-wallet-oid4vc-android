@@ -9,6 +9,7 @@ data class AuthorizationDetails(
 
     @SerializedName("type") var type: String? = "openid_credential",
     @SerializedName("format") var format: String? = null,
+    @SerializedName("doctype") var doctype: String? = null,
     @SerializedName("types") var types: ArrayList<String>? = arrayListOf(),
     @SerializedName("locations") var locations: ArrayList<String>? = arrayListOf(),
     @SerializedName("credential_definition") var credentialDefinition: CredentialTypeDefinition? = CredentialTypeDefinition()
