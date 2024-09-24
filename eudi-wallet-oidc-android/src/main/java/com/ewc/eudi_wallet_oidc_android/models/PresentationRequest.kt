@@ -1,7 +1,5 @@
 package com.ewc.eudi_wallet_oidc_android.models
-
 import com.google.gson.annotations.SerializedName
-
 data class ClientMetaDetails(
     @SerializedName("client_name") var clientName: String? = null,
     @SerializedName("cover_uri") var coverUri: String? = null,
@@ -20,5 +18,5 @@ data class PresentationRequest(
     @SerializedName("request_uri") var requestUri: String? = null,
     @SerializedName("response_uri") var responseUri: String? = null,
     @SerializedName("presentation_definition") var presentationDefinition: Any? = null,
-    @SerializedName("client_metadata") var clientMetaDetails: ClientMetaDetails? = null
+    @SerializedName("client_metadata") var clientMetaDetails: Any? = null
 )
