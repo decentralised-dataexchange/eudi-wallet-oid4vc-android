@@ -72,10 +72,24 @@ class SignatureValidator {
                 throw IllegalArgumentException("Invalid DID format")
             }
 
-            // Fetch the DID document from the API
-            val response:Response<DIDDocument> = ApiManager.api.getService()?.ebsiDIDResolver(
+            val service = ApiManager.api.getService() ?: throw IllegalStateException("API service not available")
+
+            // First attempt with conformance API
+            var response: Response<DIDDocument>? = service.ebsiDIDResolver(
                 "https://api-conformance.ebsi.eu/did-registry/v5/identifiers/$did"
-            ) ?: throw IllegalStateException("API service not available")
+            )
+
+            // If the conformance API call is not successful, attempt the pilot API
+            if (response == null || !response.isSuccessful) {
+                response = service.ebsiDIDResolver(
+                    "https://api-pilot.ebsi.eu/did-registry/v5/identifiers/$did"
+                )
+            }
+
+            // If the second API call also fails, throw an exception
+            if (response == null || !response.isSuccessful) {
+                throw IllegalStateException("Failed to fetch DID Document from both endpoints")
+            }
 
             // Extract the P-256 JWK from the JSON response
             val didDocument = response.body() ?: throw IllegalStateException("Empty response body")
@@ -86,6 +100,7 @@ class SignatureValidator {
             null
         }
     }
+
     private fun extractJWK(didDocument: DIDDocument): ECKey? {
         return try {
             // Iterate through each verification method
