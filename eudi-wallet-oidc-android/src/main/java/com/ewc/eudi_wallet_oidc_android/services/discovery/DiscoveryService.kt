@@ -18,11 +18,15 @@ class DiscoveryService : DiscoveryServiceInterface {
      * @return WrappedIssuerConfigResponse
      */
     override suspend fun getIssuerConfig(credentialIssuerWellKnownURI: String?): WrappedIssuerConfigResponse {
+        var credentialIssuer = credentialIssuerWellKnownURI?.replace("/.well-known/openid-credential-issuer","")
+        credentialIssuer = removeTrailingSlash(credentialIssuer)
+        credentialIssuer = "$credentialIssuer/.well-known/openid-credential-issuer"
+
         try {
-            UrlUtils.validateUri(credentialIssuerWellKnownURI)
+            UrlUtils.validateUri(credentialIssuer)
             val response =
                 ApiManager.api.getService()
-                    ?.fetchIssuerConfig("$credentialIssuerWellKnownURI")
+                    ?.fetchIssuerConfig("$credentialIssuer")
             return if (response?.isSuccessful == true) {
                 WrappedIssuerConfigResponse(issuerConfig = response.body(), errorResponse = null)
             } else {
@@ -32,7 +36,13 @@ class DiscoveryService : DiscoveryServiceInterface {
             return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
         }
     }
-
+    private fun removeTrailingSlash(input: String?): String? {
+        return if (input?.endsWith("/")==true) {
+            input?.dropLast(1) // Removes the last character
+        } else {
+            input
+        }
+    }
     /**
      * To fetch the authorization server configuration
      *
@@ -40,12 +50,15 @@ class DiscoveryService : DiscoveryServiceInterface {
      * @return WrappedAuthConfigResponse
      */
     override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): WrappedAuthConfigResponse {
+        var authorizationServer = authorisationServerWellKnownURI?.replace("/.well-known/openid-configuration","")
+        authorizationServer = removeTrailingSlash(authorizationServer)
+        authorizationServer = "$authorizationServer/.well-known/openid-configuration"
         try {
-            UrlUtils.validateUri(authorisationServerWellKnownURI)
+            UrlUtils.validateUri(authorizationServer)
 
             val response =
                 ApiManager.api.getService()
-                    ?.fetchAuthConfig("$authorisationServerWellKnownURI")
+                    ?.fetchAuthConfig("$authorizationServer")
             return if (response?.isSuccessful == true) {
                 WrappedAuthConfigResponse(authConfig = response.body(), errorResponse = null)
             } else {

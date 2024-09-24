@@ -31,29 +31,11 @@ interface IssueServiceInterface {
      */
     suspend fun processAuthorisationRequest(
         did: String?,
-        subJwk: ECKey?,
-        credentialOffer: CredentialOffer?,
-        codeVerifier: String,
-        authorisationEndPoint: String?
-    ): String?
-
-    /**
-     * To process the authorisation request
-     * The authorisation request is to grant access to the credential endpoint
-     * @param did - DID created for the issuance
-     * @param subJwk - for singing the requests
-     * @param credentialOffer - To build the authorisation request
-     * @param codeVerifier - to build the authorisation request
-     * @param authorisationEndPoint - to build the authorisation request
-     *
-     * @return String - Uri with query parameter code with value short-lived authorisation code
-     */
-    suspend fun processAuthorisationRequest(
-        did: String?,
         subJwk: JWK?,
         credentialOffer: CredentialOffer?,
         codeVerifier: String,
-        authorisationEndPoint: String?
+        authorisationEndPoint: String?,
+        format: String? = "jwt_vc_json"
     ): String?
 
     /**
@@ -79,35 +61,6 @@ interface IssueServiceInterface {
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?
     ): WrappedTokenResponse?
-
-    /**
-     * To process the credential, credentials can be issued in two ways,
-     *     intime and deferred
-     *
-     *     If its intime, then we will receive the credential as the response
-     *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
-     *
-     * @param did
-     * @param subJwk
-     * @param credentialIssuerUrl
-     * @param nonce
-     * @param credentialOffer
-     * @param credentialIssuerEndPoint
-     * @param accessToken
-     * @param format
-     *
-     * @return credential response
-     */
-    suspend fun processCredentialRequest(
-        did: String?,
-        subJwk: ECKey?,
-        credentialIssuerUrl: String?,
-        nonce: String?,
-        credentialOffer: CredentialOffer?,
-        credentialIssuerEndPoint: String?,
-        accessToken: String?,
-        format: String
-    ): WrappedCredentialResponse?
 
     /**
      * To process the credential, credentials can be issued in two ways,

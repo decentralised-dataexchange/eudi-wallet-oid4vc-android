@@ -64,6 +64,7 @@ dependencies {
     }
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
+    implementation("co.nstant.in:cbor:0.9")
 }
 
 

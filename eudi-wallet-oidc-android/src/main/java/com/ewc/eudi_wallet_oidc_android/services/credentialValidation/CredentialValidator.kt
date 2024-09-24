@@ -15,7 +15,11 @@ class CredentialValidator:CredentialValidatorInterface {
      * Returns true if the JWT is valid; otherwise, throws IllegalArgumentException with appropriate messages.
      */
     @Throws(IllegalArgumentException::class)
-    override suspend fun validateCredential(jwt: String?, jwksUri: String?): Boolean {
+    override suspend fun validateCredential(jwt: String?,
+                                            jwksUri: String?,
+                                            format: String?): Boolean {
+        if (format == "mso_mdoc")
+            return true
         try {
             // Check if the JWT has expired
             ExpiryValidator().isJwtExpired(jwt = jwt)
