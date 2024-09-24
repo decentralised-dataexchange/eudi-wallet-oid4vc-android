@@ -20,6 +20,23 @@ data class CredentialsSupported(
     @SerializedName("display") var display: ArrayList<Display> = arrayListOf(),
     @SerializedName("cryptographic_suites_supported") var cryptographicSuitesSupported: ArrayList<String> = arrayListOf()
 )
+data class CredentialDetails(
+    @SerializedName("format") val format: String? = null,
+    @SerializedName("scope") val scope: String? = null,
+    @SerializedName("cryptographic_binding_methods_supported") val cryptographicBindingMethodsSupported: List<String>? = null,
+    @SerializedName("cryptographic_suites_supported") val cryptographicSuitesSupported: List<String>? = null,
+    @SerializedName("display") val display: List<CredentialDisplay>? = null,
+    @SerializedName("credential_definition") val  credentialDefinition: Any? = null
+)
+data class CredentialDisplay(
+    @SerializedName("name") var name: String? = null,
+    @SerializedName("locale") var locale: String? = null,
+    @SerializedName("logo") var logo: Image? = null,
+    @SerializedName("description") var description: String? = null,
+    @SerializedName("background_color") var backgroundColor: String? = null,
+    @SerializedName("background_image") var backgroundImage: Image? = null,
+    @SerializedName("text_color") var textColor: String? = null
+)
 
 data class Display(
     @SerializedName("name") var name: String? = null,
