@@ -6,6 +6,7 @@ data class InputDescriptors(
 
     @SerializedName("id") var id: String? = null,
     @SerializedName("name") var name: String? = null,
+    @SerializedName("format") var format: Map<String, Jwt>? = mapOf(),
     @SerializedName("constraints") var constraints: Constraints? = null
 
 )
