@@ -21,6 +21,7 @@ import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.google.gson.Gson
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -92,16 +93,14 @@ class IssueService : IssueServiceInterface {
         codeVerifier: String,
         authorisationEndPoint: String?,
         format: String?,
+        docType: String?
     ): String? {
         val responseType = "code"
         val types = getTypesFromCredentialOffer(credentialOffer)
         val scope = if (format == "mso_mdoc") { "${types.firstOrNull() ?: ""} openid" } else { "openid" }
-        val doctype = if (format == "mso_mdoc") "org.iso.18013.5.1.mDL" else null
-        // val doctype = if (format == "mso_mdoc") "${types.firstOrNull()}" else null
-
         val state = UUID.randomUUID().toString()
         val clientId = did
-        val authorisationDetails = buildAuthorizationRequest(credentialOffer, format, doctype)
+        val authorisationDetails = buildAuthorizationRequest(credentialOffer, format, docType)
 
         val redirectUri = "http://localhost:8080"
         val nonce = UUID.randomUUID().toString()
@@ -227,7 +226,7 @@ class IssueService : IssueServiceInterface {
         } catch (e: Exception) {
             credentialDefinitionNeeded = true
         }
-        if (format == "mso_mdoc"){
+        if (format == "mso_mdoc" && doctype != null){
             return   gson.toJson(
                 arrayListOf(
                     AuthorizationDetails(

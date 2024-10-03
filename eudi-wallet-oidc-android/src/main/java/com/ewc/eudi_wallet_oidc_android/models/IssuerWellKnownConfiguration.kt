@@ -26,6 +26,7 @@ data class CredentialDetails(
     @SerializedName("cryptographic_binding_methods_supported") val cryptographicBindingMethodsSupported: List<String>? = null,
     @SerializedName("cryptographic_suites_supported") val cryptographicSuitesSupported: List<String>? = null,
     @SerializedName("display") val display: List<CredentialDisplay>? = null,
+    @SerializedName("doctype") val doctype: String? = null,
     @SerializedName("credential_definition") val  credentialDefinition: Any? = null
 )
 data class CredentialDisplay(

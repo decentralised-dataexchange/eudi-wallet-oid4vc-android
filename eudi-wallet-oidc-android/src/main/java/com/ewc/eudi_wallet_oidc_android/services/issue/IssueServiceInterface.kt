@@ -35,7 +35,8 @@ interface IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         codeVerifier: String,
         authorisationEndPoint: String?,
-        format: String? = "jwt_vc_json"
+        format: String? = "jwt_vc_json",
+        docType: String? =null
     ): String?
 
     /**

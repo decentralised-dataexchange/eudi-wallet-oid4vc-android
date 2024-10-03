@@ -2,22 +2,28 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDetails
 import com.ewc.eudi_wallet_oidc_android.models.DescriptorMap
+import com.ewc.eudi_wallet_oidc_android.models.DescriptorMapMdoc
+import com.ewc.eudi_wallet_oidc_android.models.Document
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
+import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
 import com.ewc.eudi_wallet_oidc_android.models.PathNested
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
+import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmissionMdoc
 import com.ewc.eudi_wallet_oidc_android.models.VPTokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
+import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
-import com.google.gson.JsonObject
 import com.google.gson.internal.LinkedTreeMap
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -28,11 +34,8 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.shaded.json.parser.ParseException
-import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
-import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.SignedJWT
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Date
 import java.util.UUID
@@ -194,7 +197,6 @@ class VerificationService : VerificationServiceInterface {
             jwsHeader,
             claimsSet
         )
-
         // Sign with private EC key
         jwt.sign(ECDSASigner(subJwk))
 
@@ -233,53 +235,34 @@ class VerificationService : VerificationServiceInterface {
         presentationRequest: PresentationRequest,
         credentialList: List<String>
     ): WrappedVpTokenResponse? {
-        val iat = Date()
-        val jti = "urn:uuid:${UUID.randomUUID()}"
-        val claimsSet = JWTClaimsSet.Builder()
-            .audience(presentationRequest.clientId)
-            .issueTime(iat)
-            .expirationTime(Date(iat.time + 600000))
-            .issuer(did)
-            .jwtID(jti)
-            .notBeforeTime(iat)
-            .claim("nonce", presentationRequest.nonce)
-            .subject(did)
-            .claim(
-                "vp", com.nimbusds.jose.shaded.json.JSONObject(
-                    hashMapOf(
-                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
-                        "holder" to did,
-                        "id" to jti,
-                        "type" to listOf("VerifiablePresentation"),
-                        "verifiableCredential" to credentialList
-                    )
-                )
-            ).build()
 
-        // Create JWT for ES256K alg
-        val jwsHeader =
-            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-                .type(JOSEObjectType("JWT"))
-                .keyID("$did#${did?.replace("did:key:", "")}")
-                .jwk(subJwk?.toPublicJWK())
-                .build()
+        val presentationDefinition=   processPresentationDefinition(presentationRequest.presentationDefinition)
+        val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
+            ?: presentationDefinition.inputDescriptors
+                ?.flatMap { it.format?.toList() ?: emptyList() }
+                ?.toMap()
 
-        val jwt = SignedJWT(
-            jwsHeader,
-            claimsSet
-        )
-
-        // Sign with private EC key
-        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
+        val vpToken = if (formatMap?.containsKey("mso_mdoc") == true) {
+            mdocVpToken(credentialList,presentationRequest)
+        } else {
+            vpToken(presentationRequest, did, credentialList,subJwk )
+        }
+        val presentationSubmission = if (formatMap?.containsKey("mso_mdoc") == true){
+            createMdocPresentationSubmission(
+                presentationRequest
+            )
+        }else{
+            createPresentationSubmission(
+                presentationRequest
+            )
+        }
 
         val response = ApiManager.api.getService()?.sendVPToken(
             presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
             mapOf(
-                "vp_token" to jwt.serialize(),
+                "vp_token" to vpToken,
                 "presentation_submission" to Gson().toJson(
-                    createPresentationSubmission(
-                        presentationRequest
-                    )
+                    presentationSubmission
                 ),
                 "state" to (presentationRequest.state ?: "")
             )
@@ -287,12 +270,6 @@ class VerificationService : VerificationServiceInterface {
 
         val tokenResponse = when {
             response?.code() == 302 || response?.code() == 200 -> {
-//                WrappedVpTokenResponse(
-//                    vpTokenResponse = VPTokenResponse(
-//                        location = response.headers()["Location"]
-//                            ?: "https://www.example.com?code=1"
-//                    )
-//                )
                 val locationHeader = response.headers()["Location"]
                 if (locationHeader?.contains("error=") == true) {
                     // Parse the error from the location header
@@ -333,6 +310,115 @@ class VerificationService : VerificationServiceInterface {
         return tokenResponse
     }
 
+    private fun vpToken(
+        presentationRequest: PresentationRequest,
+        did: String?,
+        credentialList: List<String>,
+        subJwk: JWK?,
+
+        ): String {
+
+        val iat = Date()
+        val jti = "urn:uuid:${UUID.randomUUID()}"
+        val claimsSet = JWTClaimsSet.Builder()
+            .audience(presentationRequest.clientId)
+            .issueTime(iat)
+            .expirationTime(Date(iat.time + 600000))
+            .issuer(did)
+            .jwtID(jti)
+            .notBeforeTime(iat)
+            .claim("nonce", presentationRequest.nonce)
+            .subject(did)
+            .claim(
+                "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                    hashMapOf(
+                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                        "holder" to did,
+                        "id" to jti,
+                        "type" to listOf("VerifiablePresentation"),
+                        "verifiableCredential" to credentialList
+                    )
+                )
+            ).build()
+
+        // Create JWT for ES256K alg
+        val jwsHeader =
+            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+                .type(JOSEObjectType("JWT"))
+                .keyID("$did#${did?.replace("did:key:", "")}")
+                .jwk(subJwk?.toPublicJWK())
+                .build()
+
+        val jwt = SignedJWT(
+            jwsHeader,
+            claimsSet
+        )
+
+        // Sign with private EC key
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
+        return jwt.serialize()
+    }
+    private fun mdocVpToken(credentialList: List<String>, presentationRequest: PresentationRequest): String {
+        // Validate input
+        if (credentialList.isEmpty()) {
+            throw IllegalArgumentException("Credential list cannot be empty")
+        }
+        return try {
+            // Extract presentation definition once, as it doesn't change for different credentials
+            val presentationDefinition = VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+
+            // Create a list to hold documents
+            val documentList = mutableListOf<Document>()
+
+            // Iterate over each credential
+            for (credential in credentialList) {
+                // Extract issuer authentication, docType, and namespaces for each credential
+                val issuerAuth = CborUtils.processExtractIssuerAuth(listOf(credential))
+                val docType = CborUtils.extractDocTypeFromIssuerAuth(listOf(credential))
+                val nameSpaces = CborUtils.processExtractNameSpaces(listOf(credential), presentationRequest)
+
+
+                // Create IssuerSigned object for this credential
+                val issuerSigned = IssuerSigned(
+                    nameSpaces = nameSpaces,
+                    issuerAuth = issuerAuth
+                )
+
+                // For each input descriptor, create corresponding documents
+                presentationDefinition.inputDescriptors?.forEach { inputDescriptor ->
+                    val fieldSize = inputDescriptor.constraints?.fields?.size ?: 0
+
+                    // Create documents based on the number of fields
+                    repeat(fieldSize) {
+                        documentList.add(
+                            Document(
+                                docType = docType ?: "",
+                                issuerSigned = issuerSigned,
+                                deviceSigned = null
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Create VpToken object
+            val generatedVpToken = VpToken(
+                version = "1.0",
+                documents = documentList,
+                status = 0
+            )
+
+            // Encode to CBOR
+            val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
+
+            Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP)
+
+        } catch (e: Exception) {
+            Log.e("TAG", "Error generating VP token: ${e.message}")
+            throw e // Re-throw or handle it according to your needs
+        }
+    }
+
     /**
      * Returns all the list of credentials matching for all input descriptors
      */
@@ -344,8 +430,26 @@ class VerificationService : VerificationServiceInterface {
         val pex = PresentationExchange()
 
         presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
-            val credentialList = splitCredentialsBySdJWT(allCredentialList, inputDescriptors.constraints?.limitDisclosure != null)
-            val processedCredentials = processCredentialsToJsonString(credentialList)
+            // Retrieve formatMap from presentationDefinition or from inputDescriptors
+            val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
+                ?: presentationDefinition.inputDescriptors
+                    ?.flatMap { it.format?.toList() ?: emptyList() }
+                    ?.toMap()
+
+            // Initialize processed credentials and credentialList
+            var processedCredentials: List<String> = emptyList()
+            var credentialList: ArrayList<String?> = arrayListOf()
+
+            if (formatMap != null) {
+                if (formatMap.containsKey("mso_mdoc")) {
+                    credentialList = ArrayList(allCredentialList)
+                    processedCredentials = CborUtils.processMdocCredentialToJsonString(allCredentialList) ?: emptyList()
+                } else {
+                    credentialList = splitCredentialsBySdJWT(allCredentialList, inputDescriptors.constraints?.limitDisclosure != null)
+                    processedCredentials = processCredentialsToJsonString(credentialList)
+                }
+            }
+
             val filteredCredentialList: MutableList<String> = mutableListOf()
             val inputDescriptor = Gson().toJson(inputDescriptors)
 
@@ -361,6 +465,7 @@ class VerificationService : VerificationServiceInterface {
 
         return response
     }
+
 
     private fun splitCredentialsBySdJWT(
         allCredentials: List<String?>,
@@ -458,6 +563,31 @@ class VerificationService : VerificationServiceInterface {
         }
 
         val presentationSubmission = PresentationSubmission(
+            id = id,
+            definitionId = presentationDefinition?.id,
+            descriptorMap = descriptorMap
+        )
+        return presentationSubmission
+    }
+    private fun createMdocPresentationSubmission(
+        presentationRequest: PresentationRequest
+    ): PresentationSubmissionMdoc? {
+        val id = UUID.randomUUID().toString()
+        val descriptorMap: ArrayList<DescriptorMapMdoc> = ArrayList()
+
+        var presentationDefinition: PresentationDefinition? =
+            processPresentationDefinition(presentationRequest.presentationDefinition)
+
+        presentationDefinition?.inputDescriptors?.forEachIndexed { index, inputDescriptors ->
+            val descriptor = DescriptorMapMdoc(
+                id = inputDescriptors.id,
+                path = "$",
+                format = "mso_mdoc"
+            )
+            descriptorMap.add(descriptor)
+        }
+
+        val presentationSubmission = PresentationSubmissionMdoc(
             id = id,
             definitionId = presentationDefinition?.id,
             descriptorMap = descriptorMap
