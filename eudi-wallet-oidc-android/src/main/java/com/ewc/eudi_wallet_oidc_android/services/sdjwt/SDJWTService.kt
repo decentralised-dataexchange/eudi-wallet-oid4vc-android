@@ -246,6 +246,37 @@ class SDJWTService : SDJWTServiceInterface {
         return Gson().toJson(jsonObject)
     }
 
+    fun updateIssuerJwtWithDisclosuresForFiltering(credential: String?): String? {
+        val split = credential?.split(".")
+
+        val jsonString = Base64.decode(
+            split?.get(1) ?: "",
+            Base64.URL_SAFE
+        ).toString(charset("UTF-8"))
+
+        val jsonObject = Gson().fromJson(jsonString, JsonObject::class.java)
+
+        val hashList: MutableList<String> = mutableListOf()
+        var disclosures = getDisclosuresFromSDJWT(credential)
+        disclosures = disclosures?.filter { it != null && it.isNotBlank() }
+        disclosures?.forEach { encodedString ->
+            try {
+                val hash = calculateSHA256Hash(encodedString)
+                if (hash != null) {
+                    hashList.add(hash)
+                }
+            } catch (e: IllegalArgumentException) {
+            }
+        }
+
+        addDisclosuresToCredentialForFiltering(
+            jsonObject,
+            disclosures ?: listOf(),
+            hashList
+        )
+        return Gson().toJson(jsonObject)
+    }
+
     private fun addDisclosuresToCredential(
         jsonElement: JsonElement,
         disclosures: List<String>,
@@ -290,6 +321,45 @@ class SDJWTService : SDJWTServiceInterface {
         } else if (jsonElement.isJsonArray) {
             jsonElement.asJsonArray.forEach { arrayElement ->
                 addDisclosuresToCredential(arrayElement, disclosures, hashList)
+            }
+        }
+    }
+
+    private fun addDisclosuresToCredentialForFiltering(
+        jsonElement: JsonElement,
+        disclosures: List<String>,
+        hashList: MutableList<String>
+    ) {
+        if (jsonElement.isJsonObject) {
+            val jsonObject = jsonElement.asJsonObject
+            if (jsonObject.has("_sd")) {
+                val sdList = jsonObject.getAsJsonArray("_sd")
+
+                hashList.forEachIndexed { index, hash ->
+
+                    if (isStringPresentInJSONArray(sdList, hash)) {
+                        try {
+                            val disclosure = Base64.decode(
+                                disclosures[index],
+                                Base64.URL_SAFE
+                            ).toString(charset("UTF-8"))
+                            // Extract key-value pair from the encodedString
+                            val (decodedKey, decodedValue) = extractKeyValue(disclosure)
+
+                            jsonObject.addProperty(decodedKey, disclosure)
+
+                        } catch (e: IllegalArgumentException) {
+                            // Handle invalid base64-encoded strings
+                        }
+                    }
+                }
+            }
+            jsonObject.entrySet().forEach { (_, value) ->
+                addDisclosuresToCredentialForFiltering(value, disclosures, hashList)
+            }
+        } else if (jsonElement.isJsonArray) {
+            jsonElement.asJsonArray.forEach { arrayElement ->
+                addDisclosuresToCredentialForFiltering(arrayElement, disclosures, hashList)
             }
         }
     }

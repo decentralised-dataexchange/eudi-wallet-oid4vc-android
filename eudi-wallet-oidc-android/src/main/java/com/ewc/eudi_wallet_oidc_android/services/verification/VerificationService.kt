@@ -488,7 +488,7 @@ class VerificationService : VerificationServiceInterface {
 
 
             val jsonString = if ((cred?.split("~")?.size ?: 0) > 0)
-                SDJWTService().updateIssuerJwtWithDisclosures(cred)
+                SDJWTService().updateIssuerJwtWithDisclosuresForFiltering(cred)
             else
                 Base64.decode(
                     split?.get(1) ?: "",
