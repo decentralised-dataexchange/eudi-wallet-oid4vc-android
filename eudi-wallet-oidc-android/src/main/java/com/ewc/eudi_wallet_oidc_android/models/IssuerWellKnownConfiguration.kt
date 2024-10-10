@@ -1,7 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.models
 
 import com.ewc.eudi_wallet_oidc_android.models.v1.IssuerWellKnownConfigurationV1
-import com.ewc.eudi_wallet_oidc_android.models.v2.Claims
 import com.ewc.eudi_wallet_oidc_android.models.v2.IssuerWellKnownConfigurationV2
 import com.google.gson.annotations.SerializedName
 
@@ -54,7 +53,6 @@ data class CredentialDetails(
     @SerializedName("doctype") val doctype: String? = null,
     @SerializedName("credential_definition") val  credentialDefinition: Any? = null,
     @SerializedName("vct") var vct: String? = null,
-    @SerializedName("claims") var claims: Claims? = null
 )
 data class CredentialDisplay(
     @SerializedName("name") var name: String? = null,
