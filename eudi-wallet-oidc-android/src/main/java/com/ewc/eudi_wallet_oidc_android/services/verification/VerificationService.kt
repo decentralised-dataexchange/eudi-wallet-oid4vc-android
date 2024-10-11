@@ -62,6 +62,7 @@ class VerificationService : VerificationServiceInterface {
         val nonce = Uri.parse(data).getQueryParameter("nonce")
         val presentationDefinition =
             Uri.parse(data).getQueryParameter("presentation_definition")
+        val presentationDefinitionUri = Uri.parse(data).getQueryParameter("presentation_definition_uri")
         val responseType = Uri.parse(data).getQueryParameter("response_type")
         val scope = Uri.parse(data).getQueryParameter("scope")
         val requestUri = Uri.parse(data).getQueryParameter("request_uri")
@@ -80,6 +81,23 @@ class VerificationService : VerificationServiceInterface {
                 redirectUri = redirectUri,
                 nonce = nonce,
                 presentationDefinition = presentationDefinition,
+                presentationDefinitionUri = presentationDefinitionUri,
+                responseMode = responseMode,
+                responseType = responseType,
+                scope = scope,
+                requestUri = requestUri,
+                responseUri = responseUri,
+                clientMetaDetails = clientMetadetails
+            )
+        } else if (presentationDefinitionUri != null) {
+            val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(presentationDefinitionUri)
+            return PresentationRequest(
+                clientId = clientId,
+                state = state,
+                redirectUri = redirectUri,
+                nonce = nonce,
+                presentationDefinition = resolvedPresentationDefinition,
+                presentationDefinitionUri = presentationDefinitionUri,
                 responseMode = responseMode,
                 responseType = responseType,
                 scope = scope,
@@ -100,6 +118,10 @@ class VerificationService : VerificationServiceInterface {
                         responseString,
                         PresentationRequest::class.java
                     )
+                    if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()){
+                        val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                        json.presentationDefinition = resolvedPresentationDefinition
+                    }
                     return json
                 }else{
                     if (isValidJWT(responseString?:"")) {
@@ -107,12 +129,20 @@ class VerificationService : VerificationServiceInterface {
                             parseJWTForPayload(responseString?:"{}"),
                             PresentationRequest::class.java
                         )
+                        if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()){
+                            val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                            json.presentationDefinition = resolvedPresentationDefinition
+                        }
                         return json
                     }else{
                         val json = gson.fromJson(
                             responseString?:"{}",
                             PresentationRequest::class.java
                         )
+                        if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()){
+                            val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                            json.presentationDefinition = resolvedPresentationDefinition
+                        }
                         return json
                     }
                 }
@@ -127,6 +157,43 @@ class VerificationService : VerificationServiceInterface {
                 return Gson().fromJson(payload, PresentationRequest::class.java)
             } else {
                 return null
+            }
+        } else {
+            return null
+        }
+    }
+
+    private suspend fun getPresentationDefinitionFromDefinitionUri(presentationDefinitionUri:String?):PresentationDefinition?{
+        if (presentationDefinitionUri.isNullOrBlank())
+            return null
+
+        val response =
+            ApiManager.api.getService()
+                ?.getPresentationDefinitionFromPresentationDefinitionUri(presentationDefinitionUri ?: "")
+        if (response?.isSuccessful == true) {
+            val contentType = response.headers()["Content-Type"]
+            val responseString = response.body()?.string()
+            val gson = Gson()
+            if (contentType?.contains("application/json") == true) {
+                val json = gson.fromJson(
+                    responseString,
+                    PresentationDefinition::class.java
+                )
+                return json
+            }else{
+                if (isValidJWT(responseString?:"")) {
+                    val json = gson.fromJson(
+                        parseJWTForPayload(responseString?:"{}"),
+                        PresentationDefinition::class.java
+                    )
+                    return json
+                }else{
+                    val json = gson.fromJson(
+                        responseString?:"{}",
+                        PresentationDefinition::class.java
+                    )
+                    return json
+                }
             }
         } else {
             return null

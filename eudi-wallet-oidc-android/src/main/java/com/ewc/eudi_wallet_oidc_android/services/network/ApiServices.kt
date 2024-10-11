@@ -6,6 +6,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.ParResponse
+import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import okhttp3.ResponseBody
@@ -81,6 +82,9 @@ interface ApiService {
 
     @GET
     suspend fun getPresentationDefinitionFromRequestUri(@Url url: String): Response<ResponseBody>
+
+    @GET
+    suspend fun getPresentationDefinitionFromPresentationDefinitionUri(@Url url: String): Response<ResponseBody>
 
     @FormUrlEncoded
     @POST("")
