@@ -1068,4 +1068,34 @@ class IssueService : IssueServiceInterface {
 
         return types
     }
+
+    override fun isCredentialMetaDataAvailable(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?,
+        version: Int?
+    ): Boolean {
+        try {
+            val credentialOfferJsonString = Gson().toJson(issuerConfig)
+            // Check if credentialOfferJsonString is null or empty
+            if (credentialOfferJsonString.isNullOrEmpty()) {
+                return false
+            }
+            val jsonObject = JSONObject(credentialOfferJsonString)
+
+            val credentialsSupported: Any =
+                jsonObject.opt("credentials_supported") ?: return false
+            when (credentialsSupported) {
+                is JSONObject -> {
+                    try {
+                        return credentialsSupported.has(type ?: "")
+                    } catch (e: Exception) {
+                        return false
+                    }
+                }
+            }
+        } catch (e: Exception) {
+
+        }
+        return false
+    }
 }
