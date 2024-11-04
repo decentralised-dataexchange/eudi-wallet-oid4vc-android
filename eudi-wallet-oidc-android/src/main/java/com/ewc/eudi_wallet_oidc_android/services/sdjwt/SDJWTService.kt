@@ -295,19 +295,25 @@ class SDJWTService : SDJWTServiceInterface {
                                 disclosures[index],
                                 Base64.URL_SAFE
                             ).toString(charset("UTF-8"))
-                            // Extract key-value pair from the encodedString
                             val (decodedKey, decodedValue) = extractKeyValue(disclosure)
-                            // Add key-value pair to jsonObject
-                            // Check if decodedValue is an object
+                            // Convert decodedValue to string first
+                            val decodedValueStr = decodedValue.toString()
+
+                            // Check if the string has extra quotes and trim
+                            val trimmedValue = if (decodedValueStr.startsWith("\"") && decodedValueStr.endsWith("\"")) {
+                                decodedValueStr.trim('"')
+                            } else {
+                                decodedValueStr // Keep it as is if no extra quotes
+                            }
                             if (decodedValue is JsonObject) {
                                 // If it's an object, add it directly
                                 jsonObject.add(decodedKey, decodedValue)
                             } else if (decodedValue is JsonArray) {
-                                // If it's an object, add it directly
+                                // If it's an array, add it directly
                                 jsonObject.add(decodedKey, decodedValue)
                             } else {
                                 // Otherwise, add it as a property
-                                jsonObject.addProperty(decodedKey, decodedValue.toString())
+                                jsonObject.addProperty(decodedKey, trimmedValue)
                             }
                         } catch (e: IllegalArgumentException) {
                             // Handle invalid base64-encoded strings
