@@ -21,6 +21,8 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
+import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
+import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
@@ -56,6 +58,9 @@ class VerificationService : VerificationServiceInterface {
     override suspend fun processAuthorisationRequest(data: String?): PresentationRequest? {
         if (data.isNullOrBlank())
             return null
+
+        val gson = Gson()
+
         val clientId = Uri.parse(data).getQueryParameter("client_id")
         val state = Uri.parse(data).getQueryParameter("state")
         val redirectUri = Uri.parse(data).getQueryParameter("redirect_uri")
@@ -68,14 +73,15 @@ class VerificationService : VerificationServiceInterface {
         val requestUri = Uri.parse(data).getQueryParameter("request_uri")
         val responseUri = Uri.parse(data).getQueryParameter("response_uri")
         val responseMode = Uri.parse(data).getQueryParameter("response_mode")
+        val clientMetadataUri = Uri.parse(data).getQueryParameter("client_metadata_uri")
         val clientMetadataJson = Uri.parse(data).getQueryParameter("client_metadata")
         val clientMetadetails: ClientMetaDetails? = if (!clientMetadataJson.isNullOrBlank()) {
-            Gson().fromJson(clientMetadataJson, ClientMetaDetails::class.java)
+            gson.fromJson(clientMetadataJson, ClientMetaDetails::class.java)
         } else {
             null
         }
-        if (presentationDefinition != null) {
-            return PresentationRequest(
+        if (presentationDefinition != null || presentationDefinitionUri != null) {
+            val presentationRequest = PresentationRequest(
                 clientId = clientId,
                 state = state,
                 redirectUri = redirectUri,
@@ -89,22 +95,15 @@ class VerificationService : VerificationServiceInterface {
                 responseUri = responseUri,
                 clientMetaDetails = clientMetadetails
             )
-        } else if (presentationDefinitionUri != null) {
-            val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(presentationDefinitionUri)
-            return PresentationRequest(
-                clientId = clientId,
-                state = state,
-                redirectUri = redirectUri,
-                nonce = nonce,
-                presentationDefinition = resolvedPresentationDefinition,
-                presentationDefinitionUri = presentationDefinitionUri,
-                responseMode = responseMode,
-                responseType = responseType,
-                scope = scope,
-                requestUri = requestUri,
-                responseUri = responseUri,
-                clientMetaDetails = clientMetadetails
-            )
+            if (presentationDefinition.isNullOrBlank() && !presentationDefinitionUri.isNullOrBlank()){
+                val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(presentationDefinitionUri)
+                presentationRequest.presentationDefinition = resolvedPresentationDefinition
+            }
+            if (clientMetadataJson.isNullOrBlank() && !clientMetadataUri.isNullOrBlank()){
+                val resolvedClientMetaData = getClientMetaDataFromClientMetaDataUri(clientMetadataUri)
+                presentationRequest.clientMetaDetails = resolvedClientMetaData
+            }
+            return presentationRequest
         } else if (!requestUri.isNullOrBlank() || !responseUri.isNullOrBlank()) {
             val response =
                 ApiManager.api.getService()
@@ -112,7 +111,7 @@ class VerificationService : VerificationServiceInterface {
             if (response?.isSuccessful == true) {
                 val contentType = response.headers()["Content-Type"]
                 val responseString = response.body()?.string()
-                val gson = Gson()
+
                 if (contentType?.contains("application/json") == true) {
                     val json = gson.fromJson(
                         responseString,
@@ -121,6 +120,10 @@ class VerificationService : VerificationServiceInterface {
                     if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()){
                         val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
                         json.presentationDefinition = resolvedPresentationDefinition
+                    }
+                    if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()){
+                        val resolvedClientMetaDetails = getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                        json.clientMetaDetails = resolvedClientMetaDetails
                     }
                     return json
                 }else{
@@ -133,6 +136,10 @@ class VerificationService : VerificationServiceInterface {
                             val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
                             json.presentationDefinition = resolvedPresentationDefinition
                         }
+                        if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()){
+                            val resolvedClientMetaDetails = getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                            json.clientMetaDetails = resolvedClientMetaDetails
+                        }
                         return json
                     }else{
                         val json = gson.fromJson(
@@ -143,6 +150,10 @@ class VerificationService : VerificationServiceInterface {
                             val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
                             json.presentationDefinition = resolvedPresentationDefinition
                         }
+                        if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()){
+                            val resolvedClientMetaDetails = getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                            json.clientMetaDetails = resolvedClientMetaDetails
+                        }
                         return json
                     }
                 }
@@ -150,14 +161,19 @@ class VerificationService : VerificationServiceInterface {
                 return null
             }
         } else if (isValidJWT(data)) {
-            val split = data.split(".")
-            var payload: String? = null
-            if (split.size == 3) {
-                payload = split[1]
-                return Gson().fromJson(payload, PresentationRequest::class.java)
-            } else {
-                return null
+            val json = gson.fromJson(
+                parseJWTForPayload(data?:"{}"),
+                PresentationRequest::class.java
+            )
+            if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()){
+                val resolvedPresentationDefinition = getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                json.presentationDefinition = resolvedPresentationDefinition
             }
+            if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()){
+                val resolvedClientMetaDetails = getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                json.clientMetaDetails = resolvedClientMetaDetails
+            }
+            return json
         } else {
             return null
         }
@@ -169,7 +185,7 @@ class VerificationService : VerificationServiceInterface {
 
         val response =
             ApiManager.api.getService()
-                ?.getPresentationDefinitionFromPresentationDefinitionUri(presentationDefinitionUri ?: "")
+                ?.resolveUrl(presentationDefinitionUri ?: "")
         if (response?.isSuccessful == true) {
             val contentType = response.headers()["Content-Type"]
             val responseString = response.body()?.string()
@@ -200,24 +216,43 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
-    private fun isValidJWT(token: String): Boolean {
-        try {
-            // Parse the JWT token
-            val parsedJWT = SignedJWT.parse(token)
-            return parsedJWT.payload != null
-        } catch (e: Exception) {
-            println("JWT parsing failed: ${e.message}")
-            return false
-        }
-    }
+    private suspend fun getClientMetaDataFromClientMetaDataUri(clientMetadataUri:String?):ClientMetaDetails?{
+        if (clientMetadataUri.isNullOrBlank())
+            return null
 
-    @Throws(ParseException::class)
-    private fun parseJWTForPayload(accessToken: String): String {
-        try {
-            val decodedJWT = SignedJWT.parse(accessToken)
-            return decodedJWT.payload.toString()
-        } catch (e: ParseException) {
-            throw java.lang.Exception("Invalid token!")
+        val response =
+            ApiManager.api.getService()?.resolveUrl(clientMetadataUri ?: "")
+        if (response?.isSuccessful == true) {
+            try {
+                val contentType = response.headers()["Content-Type"]
+                val responseString = response.body()?.string()
+                val gson = Gson()
+                if (contentType?.contains("application/json") == true) {
+                    val json = gson.fromJson(
+                        responseString,
+                        ClientMetaDetails::class.java
+                    )
+                    return json
+                }else{
+                    if (isValidJWT(responseString?:"")) {
+                        val json = gson.fromJson(
+                            parseJWTForPayload(responseString?:"{}"),
+                            ClientMetaDetails::class.java
+                        )
+                        return json
+                    }else{
+                        val json = gson.fromJson(
+                            responseString?:"{}",
+                            ClientMetaDetails::class.java
+                        )
+                        return json
+                    }
+                }
+            } catch (e: Exception) {
+               return null
+            }
+        } else {
+            return null
         }
     }
 
@@ -336,6 +371,25 @@ class VerificationService : VerificationServiceInterface {
         )
 
         val tokenResponse = when {
+            response?.code() == 200 ->{
+                val redirectUri = response.body()?.string()
+                val gson = Gson()
+                try {
+                    val vpTokenResponse =
+                        gson.fromJson(redirectUri, VPTokenResponse::class.java)
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location = vpTokenResponse.redirectUri ?: "https://www.example.com?code=1"
+                        )
+                    )
+                } catch (e: Exception) {
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location ="https://www.example.com?code=1"
+                        )
+                    )
+                }
+            }
             response?.code() == 302 || response?.code() == 200 -> {
                 val locationHeader = response.headers()["Location"]
                 if (locationHeader?.contains("error=") == true) {
@@ -619,7 +673,10 @@ class VerificationService : VerificationServiceInterface {
             val descriptor = DescriptorMap(
                 id = inputDescriptors.id,
                 path = "$",
-                format = presentationDefinition.format?.keys?.firstOrNull() ?: "jwt_vp",
+                format =
+                presentationDefinition.format?.keys?.firstOrNull() ?:
+                inputDescriptors.format?.keys?.firstOrNull() ?:
+                "jwt_vp",
                 pathNested = PathNested(
                     id = inputDescriptors.id,
                     format = "jwt_vc",
