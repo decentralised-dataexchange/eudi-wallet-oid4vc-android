@@ -158,4 +158,10 @@ interface IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         type: String?
     ): ArrayList<String>?
+
+    fun isCredentialMetaDataAvailable(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        type: String?,
+        version: Int? = 2
+    ): Boolean
 }
