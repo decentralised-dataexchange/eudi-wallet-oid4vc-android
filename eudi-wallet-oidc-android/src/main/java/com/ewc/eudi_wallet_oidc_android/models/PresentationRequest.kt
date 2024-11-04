@@ -19,5 +19,6 @@ data class PresentationRequest(
     @SerializedName("response_uri") var responseUri: String? = null,
     @SerializedName("presentation_definition") var presentationDefinition: Any? = null,
     @SerializedName("presentation_definition_uri") var presentationDefinitionUri: String? = null,
-    @SerializedName("client_metadata") var clientMetaDetails: Any? = null
+    @SerializedName("client_metadata") var clientMetaDetails: Any? = null,
+    @SerializedName("client_metadata_uri") var clientMetadataUri: String? = null
 )
