@@ -38,7 +38,7 @@ class ProcessWebJWKFromKID {
         } else {
             "https://$domain/.well-known/did.json" // Use the default path if no additional path is given
         }
-        val jwkKey =fetchJwks(jwksUri =jwksUri, kid = null)
+        val jwkKey =fetchJwks(jwksUri =jwksUri, kid = did)
         val converted = convertToJWK(jwkKey)
 
 
