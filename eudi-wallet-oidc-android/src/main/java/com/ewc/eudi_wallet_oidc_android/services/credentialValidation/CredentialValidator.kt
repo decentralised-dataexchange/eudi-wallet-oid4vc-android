@@ -34,7 +34,7 @@ class CredentialValidator:CredentialValidatorInterface {
             throw IllegalArgumentException("JWT token expired")
         } catch (signatureException: SignatureException) {
             // Throw IllegalArgumentException if JWT signature is invalid
-            throw IllegalArgumentException("JWT signature invalid")
+            throw IllegalArgumentException(signatureException.message ?: "JWT signature invalid")
         }
     }
 }
