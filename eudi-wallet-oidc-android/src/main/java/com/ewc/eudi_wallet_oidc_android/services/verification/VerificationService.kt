@@ -47,6 +47,7 @@ import java.util.UUID
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.URL
 import java.nio.charset.StandardCharsets
 
@@ -455,6 +456,15 @@ class VerificationService : VerificationServiceInterface {
         presentationRequest: PresentationRequest,
         credentialList: List<String>
     ): WrappedVpTokenResponse? {
+        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
+        if (responseUri.isNullOrEmpty() || !isHostReachable(responseUri)) {
+            return WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(
+                    error = null,
+                    errorDescription = "Unable to resolve host: $responseUri"
+                )
+            )
+        }
 
         val presentationDefinition =
             processPresentationDefinition(presentationRequest.presentationDefinition)
@@ -466,7 +476,7 @@ class VerificationService : VerificationServiceInterface {
         val vpToken = if (formatMap?.containsKey("mso_mdoc") == true) {
             mdocVpToken(credentialList, presentationRequest)
         } else {
-            vpToken(presentationRequest, did, credentialList, subJwk)
+            processToken(presentationRequest, did, credentialList, subJwk)
         }
         val presentationSubmission = if (formatMap?.containsKey("mso_mdoc") == true) {
             createMdocPresentationSubmission(
@@ -553,12 +563,23 @@ class VerificationService : VerificationServiceInterface {
         return tokenResponse
     }
 
-    private fun vpToken(
+    private fun isHostReachable(url: String?): Boolean {
+        return try {
+            // Extract the hostname from the URL
+            val host = URL(url).host
+            // Check if the host can be resolved
+            InetAddress.getByName(host) != null
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+
+    private fun processToken(
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<String>,
         subJwk: JWK?,
-
         ): String {
 
         val iat = Date()
@@ -580,9 +601,10 @@ class VerificationService : VerificationServiceInterface {
                         "id" to jti,
                         "type" to listOf("VerifiablePresentation"),
                         "verifiableCredential" to credentialList
+                            )
+                        )
                     )
-                )
-            ).build()
+                    .build()
 
         // Create JWT for ES256K alg
         val jwsHeader =
