@@ -1,20 +1,17 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
 import android.util.Base64
+import com.nimbusds.jose.JWSAlgorithm
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.security.KeyStore
 import java.security.PublicKey
 import java.security.Signature
 import java.security.cert.CertPathValidator
-import java.security.cert.CertPathValidatorException
-import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
 import java.security.cert.PKIXParameters
-import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
 import javax.net.ssl.TrustManagerFactory
-import javax.net.ssl.X509TrustManager
 import java.util.Base64 as base64
 
 class X509SanRequestVerifier private constructor() {
@@ -63,22 +60,91 @@ class X509SanRequestVerifier private constructor() {
         return dnsNames
     }
 
-    fun validateSignatureWithCertificate(jwt: String, x5cChain: List<String>): Boolean {
-        val leafCertData = Base64.decode(x5cChain.firstOrNull() ?: "", Base64.DEFAULT)
-        val certificate = CertificateFactory.getInstance("X.509")
-            .generateCertificate(leafCertData.inputStream()) as X509Certificate
-        val publicKey = certificate.publicKey
+    fun validateSignatureWithCertificate(
+        jwt: String,
+        x5cChain: List<String>,
+        algorithm: JWSAlgorithm? = null
+    ): Boolean {
+        return try {
+            // Decode the leaf certificate from the x5cChain
+            val leafCertData = Base64.decode(x5cChain.firstOrNull() ?: "", Base64.DEFAULT)
+            val certificate = CertificateFactory.getInstance("X.509")
+                .generateCertificate(leafCertData.inputStream()) as X509Certificate
+            val publicKey = certificate.publicKey
 
-        val segments = jwt.split(".")
-        if (segments.size != 3) {
-            println("Invalid JWT format")
-            return false
+            // Split JWT into its segments
+            val segments = jwt.split(".")
+            if (segments.size != 3) {
+                println("Invalid JWT format")
+                return false
+            }
+
+            val signedData = "${segments[0]}.${segments[1]}"
+
+            val signatureWithoutTilda = if (segments[2].contains("~")) {
+                // If the signature contains '~', split it and take the first part
+                segments[2].split("~")[0]
+            } else {
+                // If there's no '~', assign the signature as is
+                segments[2]
+            }
+
+            val signature: ByteArray = if (algorithm != null && algorithm.name.startsWith("ES")) {
+                convertRawSignatureToASN1DER(
+                    // Base64.decode(segments[2], Base64.DEFAULT)
+                    Base64.decode(base64UrlToBase64(signatureWithoutTilda), Base64.DEFAULT)
+                ) ?: return false
+            } else {
+                Base64.decode(base64UrlToBase64(signatureWithoutTilda), Base64.DEFAULT)
+            }
+
+            // Validate signature before verifying
+            if (signature.isEmpty()) {
+                println("Signature is invalid")
+                return false
+            }
+
+
+            // Verify the signature
+            verifySignature(publicKey, signedData.toByteArray(), signature,algorithm)
+        } catch (e: Exception) {
+            println("Error during signature validation: ${e.message}")
+            false // Return false in case of an exception
         }
+    }
 
-        val signedData = "${segments[0]}.${segments[1]}"
-        val signature = Base64.decode(base64UrlToBase64(segments[2]), Base64.DEFAULT)
+    private fun convertRawSignatureToASN1DER(rawSignature: ByteArray): ByteArray? {
+        return try {
+            val halfLength = rawSignature.size / 2
+            val r = rawSignature.sliceArray(0 until halfLength)
+            val s = rawSignature.sliceArray(halfLength until rawSignature.size)
 
-        return verifySignature(publicKey, signedData.toByteArray(), signature)
+            fun asn1Length(length: Int): ByteArray {
+                return if (length < 128) {
+                    byteArrayOf(length.toByte())
+                } else {
+                    val lengthBytes = length.toBigInteger().toByteArray()
+                    val trimmedLengthBytes = lengthBytes.dropWhile { it == 0.toByte() }.toByteArray()
+                    byteArrayOf((0x80 or trimmedLengthBytes.size).toByte()) + trimmedLengthBytes
+                }
+            }
+
+            fun asn1Integer(data: ByteArray): ByteArray {
+                var bytes = data.toList()
+                // Add a leading zero if the MSB is set (to avoid it being interpreted as negative)
+                if (bytes.isNotEmpty() && (bytes[0].toInt() and 0x80) != 0) {
+                    bytes = listOf(0x00.toByte()) + bytes
+                }
+                return byteArrayOf(0x02, bytes.size.toByte()) + bytes.toByteArray()
+            }
+
+            val asn1R = asn1Integer(r)
+            val asn1S = asn1Integer(s)
+            val asn1Sequence = byteArrayOf(0x30) + asn1Length(asn1R.size + asn1S.size) + asn1R + asn1S
+            asn1Sequence
+        } catch (e: Exception) {
+            null // Return null on failure
+        }
     }
 
     private fun base64UrlToBase64(base64Url: String): String {
@@ -90,9 +156,18 @@ class X509SanRequestVerifier private constructor() {
         return base64
     }
 
-    private fun verifySignature(publicKey: PublicKey, data: ByteArray, signature: ByteArray): Boolean {
+    private fun verifySignature(publicKey: PublicKey, data: ByteArray, signature: ByteArray, algorithm: JWSAlgorithm? = null): Boolean {
         return try {
-            val signatureInstance = Signature.getInstance("SHA256withRSA")
+            // Check if the algorithm is provided or not
+            val signatureInstance = if (algorithm != null && algorithm.name.startsWith("ES")) {
+                // If the algorithm starts with "ES", it's likely an ECDSA (e.g., ES256)
+                Signature.getInstance("SHA256withECDSA")
+            } else {
+                // Default to RSA algorithm (e.g., RS256, RS512)
+                Signature.getInstance("SHA256withRSA")
+            }
+
+            // Initialize signature verification with the public key
             signatureInstance.initVerify(publicKey)
             signatureInstance.update(data)
             signatureInstance.verify(signature)
@@ -102,91 +177,8 @@ class X509SanRequestVerifier private constructor() {
         }
     }
 
-//    fun validateTrustChain(certificates: List<ByteArray>): Boolean {
-//        val certificateFactory = CertificateFactory.getInstance("X.509")
-//        val x509Certificates = certificates.map {
-//            certificateFactory.generateCertificate(it.inputStream()) as X509Certificate
-//        }
-//
-//        val certPath = certificateFactory.generateCertPath(x509Certificates)
-//        val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-//        trustManagerFactory.init(null as KeyStore?) // Use the default trust store
-//
-//        // Retrieve the X509TrustManager to get the trusted issuers
-//        val trustManager = trustManagerFactory.trustManagers.first() as X509TrustManager
-//        val trustAnchors = trustManager.acceptedIssuers.map { TrustAnchor(it, null) }.toSet()
-//
-//        val pkixParams = PKIXParameters(trustAnchors).apply {
-//            isRevocationEnabled = false // Disable revocation; adjust based on security needs
-//        }
-//
-//        return try {
-//            val certPathValidator = CertPathValidator.getInstance("PKIX")
-//            certPathValidator.validate(certPath, pkixParams)
-//            true
-//        } catch (e: Exception) {
-//            println("Certificate path validation failed: ${e.message}")
-//            false
-//        }
-//    }
 
 
-//    fun validateTrustChain(x5cChain: List<String>): Boolean {
-//        try {
-//            // Convert the Base64 encoded certificates to X509Certificate objects
-//            val certificateFactory = CertificateFactory.getInstance("X.509")
-//            val certificates = x5cChain.mapNotNull { certBase64 ->
-//                val certData = base64.getDecoder().decode(certBase64)
-//                try {
-//                    certificateFactory.generateCertificate(ByteArrayInputStream(certData)) as X509Certificate
-//                } catch (e: Exception) {
-//                    println("Invalid certificate in chain: ${e.message}")
-//                    null
-//                }
-//            }
-//
-//            // If the list of certificates is empty or contains invalid certificates, return false
-//            if (certificates.isEmpty()) {
-//                println("No valid certificates found in the chain.")
-//                return false
-//            }
-//
-//            // Initialize TrustManagerFactory to get the default trust managers
-//            val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-//            trustManagerFactory.init(null as KeyStore?) // Uses the default system trust store
-//
-//            // Find the first X509TrustManager
-//            val x509TrustManager = trustManagerFactory.trustManagers
-//                .filterIsInstance<X509TrustManager>()
-//                .firstOrNull()
-//                ?: throw Exception("No X509TrustManager found in the TrustManagerFactory")
-//
-//            // Create the CertPath from the certificates
-//            val certPath = certificateFactory.generateCertPath(certificates)
-//
-//            // Create PKIXParameters using the accepted issuers from the trust manager
-//            val acceptedIssuers = x509TrustManager.acceptedIssuers
-//                .map { TrustAnchor(it, null) }
-//                .toSet()
-//            val pkixParams = java.security.cert.PKIXParameters(acceptedIssuers).apply {
-//                isRevocationEnabled = false // Adjust this based on your requirements
-//            }
-//
-//            // Validate the certification path using PKIX
-//            val certPathValidator = CertPathValidator.getInstance("PKIX")
-//            try {
-//                certPathValidator.validate(certPath, pkixParams)
-//                println("The certificate chain is trusted.")
-//                return true
-//            } catch (e: CertPathValidatorException) {
-//                println("Certificate path validation failed: ${e.message}")
-//                return false
-//            }
-//        } catch (e: Exception) {
-//            println("An error occurred during trust chain validation: ${e.message}")
-//            return false
-//        }
-//    }
 
     @Throws(Exception::class)
     fun validateTrustChain(x5cCertificates: List<String>): Boolean {
