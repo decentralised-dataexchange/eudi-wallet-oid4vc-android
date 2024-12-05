@@ -8,6 +8,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ParResponse
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import okhttp3.ResponseBody
+import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Field
@@ -93,4 +94,10 @@ interface ApiService {
 
     @GET
     suspend fun ebsiDIDResolver(@Url url: String): Response<DIDDocument>
+    @GET
+    fun getStatusList(
+        @Url url: String, // Dynamically set the URL
+        @Header("Accept") accept: String // Dynamically set the Accept header
+    ): Call<ResponseBody>
+
 }
