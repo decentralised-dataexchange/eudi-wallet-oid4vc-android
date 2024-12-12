@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.network
 
+import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
@@ -19,6 +21,7 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
+//import retrofit2.Call
 
 interface ApiService {
     @GET
@@ -99,5 +102,16 @@ interface ApiService {
         @Url url: String, // Dynamically set the URL
         @Header("Accept") accept: String // Dynamically set the Accept header
     ): Call<ResponseBody>
+
+    @POST
+    suspend fun sendWUARequest(
+        @Url url: String,
+        @Header("X-Wallet-Unit-Integrity-Token") deviceIntegrityToken: String,
+        @Header("X-Wallet-Unit-Platform") devicePlatform: String,
+        @Header("X-Wallet-Unit-Nonce") nonce: String,
+        @Body body: ClientAssertion
+    ): Response<CredentialOfferResponse>
+    @GET
+    suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
 
 }

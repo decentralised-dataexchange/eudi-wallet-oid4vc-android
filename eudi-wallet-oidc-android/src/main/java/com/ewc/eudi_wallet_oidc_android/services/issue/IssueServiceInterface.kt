@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
@@ -62,7 +63,8 @@ interface IssueServiceInterface {
         codeVerifier: String?,
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
-        version: Int?
+        version: Int?,
+        clientAssertion: String?
     ): WrappedTokenResponse?
 
     /**
