@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
+import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDataas
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDetails
@@ -79,6 +80,9 @@ class IssueService : IssueServiceInterface {
             return null
         } catch (exc: UriValidationFailed) {
             return null
+        }catch (e:Exception){
+            Log.d("Exception", e.message.toString())
+            return  null
         }
     }
 
@@ -439,25 +443,37 @@ class IssueService : IssueServiceInterface {
         codeVerifier: String?,
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
-        version: Int?
+        version: Int?,
+        clientAssertion: String?
     ): WrappedTokenResponse? {
         val response = ApiManager.api.getService()?.getAccessTokenFromCode(
             tokenEndPoint ?: "",
-            if (isPreAuthorisedCodeFlow == true) mapOf(
-                "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                "pre-authorized_code" to (code ?: ""),
-                if(version == 1){
-                    "user_pin" to (userPin ?: "")
-                }else{
-                    "tx_code" to (userPin ?: "")
+            if (isPreAuthorisedCodeFlow == true) {
+                // Map for pre-authorized code flow
+                mutableMapOf(
+                    "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                    "pre-authorized_code" to (code ?: "")
+                ).apply {
+                    if (version == 1) {
+                        this["user_pin"] = userPin ?: ""
+                    } else {
+                        this["tx_code"] = userPin ?: ""
+                    }
                 }
-            )
-            else mapOf(
-                "grant_type" to "authorization_code",
-                "code" to (code ?: ""),
-                "client_id" to (did ?: ""),
-                "code_verifier" to (codeVerifier ?: "")
-            ),
+            } else {
+                // Map for authorization code flow
+                mutableMapOf(
+                    "grant_type" to "authorization_code",
+                    "code" to (code ?: ""),
+                    "client_id" to (did ?: ""),
+                    "code_verifier" to (codeVerifier ?: "")
+                ).apply {
+                    if (clientAssertion != null) {
+                        this["clientAssertion"] = clientAssertion ?: ""
+                        this["clientAssertionType"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                    }
+                }
+            }
         )
 
         val tokenResponse = when {

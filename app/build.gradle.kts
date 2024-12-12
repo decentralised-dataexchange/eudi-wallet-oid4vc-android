@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.ewc.eudiwalletoidcandroid"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -78,4 +78,5 @@ dependencies {
             strictly("2.0.9")
         }
     }
+    implementation ("com.google.android.play:integrity:1.4.0")
 }

@@ -563,6 +563,216 @@ class VerificationService : VerificationServiceInterface {
         return tokenResponse
     }
 
+    override suspend fun processAndSendAuthorisationResponse(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<String>?
+    ): WrappedVpTokenResponse? {
+        var vpToken: String? = null
+        var idToken: String? = null
+        var presentationSubmission: Any? = null
+        // Check if the URL is reachable before proceeding
+        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
+        if (responseUri.isNullOrEmpty() || !isHostReachable(responseUri)) {
+            return WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(
+                    error = null,
+                    errorDescription = "Unable to resolve host: $responseUri"
+                )
+            )
+        }
+
+
+        if (presentationRequest.responseType == "id_token")
+        {
+            idToken=   processToken(presentationRequest, did, credentialList, subJwk)
+
+        }
+        else if (presentationRequest.responseType == "vp_token")
+        {
+            val presentationDefinition =
+                processPresentationDefinition(presentationRequest.presentationDefinition)
+            val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
+                ?: presentationDefinition.inputDescriptors
+                    ?.flatMap { it.format?.toList() ?: emptyList() }
+                    ?.toMap()
+
+            vpToken = if (formatMap?.containsKey("mso_mdoc") == true) {
+                mdocVpToken(credentialList, presentationRequest)
+            } else {
+                processToken(presentationRequest, did, credentialList, subJwk)
+            }
+            presentationSubmission = if (formatMap?.containsKey("mso_mdoc") == true) {
+                createMdocPresentationSubmission(
+                    presentationRequest
+                )
+            } else {
+                createPresentationSubmission(
+                    presentationRequest
+                )
+            }
+
+
+        } else if (presentationRequest.responseType == "vp_token+id_token")
+        {
+            // Process both vp_token and id_token
+            idToken = processToken(presentationRequest, did, credentialList, subJwk)
+
+            val presentationDefinition =
+                processPresentationDefinition(presentationRequest.presentationDefinition)
+            val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
+                ?: presentationDefinition.inputDescriptors
+                    ?.flatMap { it.format?.toList() ?: emptyList() }
+                    ?.toMap()
+
+            vpToken = if (formatMap?.containsKey("mso_mdoc") == true) {
+                mdocVpToken(credentialList, presentationRequest)
+            } else {
+                processToken(presentationRequest, did, credentialList, subJwk)
+            }
+
+            presentationSubmission = if (formatMap?.containsKey("mso_mdoc") == true) {
+                createMdocPresentationSubmission(presentationRequest)
+            } else {
+                createPresentationSubmission(presentationRequest)
+            }
+
+
+        }
+
+        val response = ApiManager.api.getService()?.sendVPToken(
+            presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+            when (presentationRequest.responseType) {
+                "vp_token" -> {
+                    mapOf(
+                        "vp_token" to (vpToken ?: ""),
+                        "presentation_submission" to Gson().toJson(presentationSubmission),
+                        "state" to (presentationRequest.state ?: "")
+                    )
+                }
+                "id_token" -> {
+                    mapOf(
+                        "id_token" to (idToken ?: ""),
+                        "state" to (presentationRequest.state ?: "")
+                    )
+                }
+                "vp_token+id_token" -> {
+                    mapOf(
+                        "vp_token" to (vpToken ?: ""),
+                        "id_token" to (idToken ?: ""),
+                        "presentation_submission" to Gson().toJson(presentationSubmission),
+                        "state" to (presentationRequest.state ?: "")
+                    )
+                }
+                else -> throw IllegalStateException("Unexpected responseType")
+            }
+        )
+
+
+        val tokenResponse = when {
+            response?.code() == 200 -> {
+                val redirectUri = response.body()?.string()
+                val gson = Gson()
+                try {
+                    val vpTokenResponse =
+                        gson.fromJson(redirectUri, VPTokenResponse::class.java)
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location = vpTokenResponse.redirectUri
+                                ?: "https://www.example.com?code=1"
+                        )
+                    )
+                } catch (e: Exception) {
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location = "https://www.example.com?code=1"
+                        )
+                    )
+                }
+            }
+            response?.code() == 204 -> {
+                try {
+                    // Extract the URL from the response object
+                    val urlValue = response.raw().request.url.toString()
+
+                    if (urlValue.isNullOrEmpty()) {
+                        return WrappedVpTokenResponse(
+                            vpTokenResponse = null,
+                            errorResponse = ErrorResponse(
+                                error = null,
+                                errorDescription = "The response URL is missing or empty"
+                            )
+                        )
+                    }
+
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(location = urlValue)
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace() // Log the exception for debugging
+                    return WrappedVpTokenResponse(
+                        vpTokenResponse = null,
+                        errorResponse = ErrorResponse(
+                            error = null,
+                            errorDescription = "An unexpected error occurred: ${e.message}"
+                        )
+                    )
+                }
+            }
+
+
+
+            response?.code() == 302 || response?.code() == 200 -> {
+                val locationHeader = response.headers()["Location"]
+                if (locationHeader?.contains("error=") == true) {
+                    // Parse the error from the location header
+                    val errorParams = locationHeader.substringAfter("?").split("&").associate {
+                        val (key, value) = it.split("=")
+                        key to value
+                    }
+
+                    WrappedVpTokenResponse(
+                        errorResponse = ErrorResponse(
+                            error = when (errorParams["error"]) {
+                                "invalid_request" -> 400
+                                else -> null
+                            },
+                            errorDescription = errorParams["error_description"]
+                        )
+                    )
+                } else {
+                    WrappedVpTokenResponse(
+                        vpTokenResponse = VPTokenResponse(
+                            location = locationHeader ?: "https://www.example.com?code=1"
+                        )
+                    )
+                }
+
+            }
+
+            (response?.code() ?: 0) >= 400 -> {
+                val errorBody = response?.errorBody()?.string()
+                val errorMessage = errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
+                WrappedVpTokenResponse(
+                    errorResponse = ErrorResponse(
+                        error = response?.code(),
+                        errorDescription = errorMessage
+                    )
+                )
+            }
+
+
+            else -> WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(
+                    error = response?.code(),
+                    errorDescription = "An unexpected error occurred"
+                )
+            )
+        }
+        return tokenResponse
+    }
+
     private fun isHostReachable(url: String?): Boolean {
         return try {
             // Extract the hostname from the URL
@@ -578,37 +788,56 @@ class VerificationService : VerificationServiceInterface {
     private fun processToken(
         presentationRequest: PresentationRequest,
         did: String?,
-        credentialList: List<String>,
+        credentialList: List<String>?=null,
         subJwk: JWK?,
+
         ): String {
 
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"
-        val claimsSet = JWTClaimsSet.Builder()
-            .audience(presentationRequest.clientId)
-            .issueTime(iat)
-            .expirationTime(Date(iat.time + 600000))
-            .issuer(did)
-            .jwtID(jti)
-            .notBeforeTime(iat)
-            .claim("nonce", presentationRequest.nonce)
-            .subject(did)
-            .claim(
-                "vp", com.nimbusds.jose.shaded.json.JSONObject(
-                    hashMapOf(
-                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
-                        "holder" to did,
-                        "id" to jti,
-                        "type" to listOf("VerifiablePresentation"),
-                        "verifiableCredential" to credentialList
+        val claimsSet = when (presentationRequest.responseType) {
+            "vp_token" -> {
+                JWTClaimsSet.Builder()
+                    .audience(presentationRequest.clientId)
+                    .issueTime(iat)
+                    .expirationTime(Date(iat.time + 600000))
+                    .issuer(did)
+                    .jwtID(jti)
+                    .notBeforeTime(iat)
+                    .claim("nonce", presentationRequest.nonce)
+                    .subject(did)
+                    .claim(
+                        "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                            hashMapOf(
+                                "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                                "holder" to did,
+                                "id" to jti,
+                                "type" to listOf("VerifiablePresentation"),
+                                "verifiableCredential" to credentialList
                             )
                         )
                     )
                     .build()
+            }
+            "id_token" -> {
+                JWTClaimsSet.Builder()
+                    .issuer(did)
+                    .subject(did)
+                    .audience(presentationRequest.clientId ?: "https://api-conformance.ebsi.eu/conformance/v3/auth-mock")
+                    .expirationTime(Date(iat.time + 600000))
+                    .issueTime(iat)
+                    .claim("nonce", presentationRequest.nonce)
+                    .build()
+            }
+            else -> throw IllegalArgumentException("Unsupported response type")
+        }
 
         // Create JWT for ES256K alg
         val jwsHeader =
-            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+            JWSHeader.Builder(if (subJwk is OctetKeyPair)
+                JWSAlgorithm.EdDSA
+            else
+                JWSAlgorithm.ES256)
                 .type(JOSEObjectType("JWT"))
                 .keyID("$did#${did?.replace("did:key:", "")}")
                 .jwk(subJwk?.toPublicJWK())
@@ -620,16 +849,19 @@ class VerificationService : VerificationServiceInterface {
         )
 
         // Sign with private EC key
-        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
+        jwt.sign(if (subJwk is OctetKeyPair)
+            Ed25519Signer(subJwk)
+        else
+            ECDSASigner(subJwk as ECKey))
         return jwt.serialize()
     }
 
     private fun mdocVpToken(
-        credentialList: List<String>,
+        credentialList: List<String>?=null,
         presentationRequest: PresentationRequest
     ): String {
         // Validate input
-        if (credentialList.isEmpty()) {
+        if (credentialList?.isNullOrEmpty() == true) {
             throw IllegalArgumentException("Credential list cannot be empty")
         }
         return try {

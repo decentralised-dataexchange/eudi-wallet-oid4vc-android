@@ -9,7 +9,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 26
+        minSdk = 28
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -65,6 +65,7 @@ dependencies {
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
     implementation("co.nstant.in:cbor:0.9")
+    implementation ("com.google.android.play:integrity:1.4.0")
 }
 
 

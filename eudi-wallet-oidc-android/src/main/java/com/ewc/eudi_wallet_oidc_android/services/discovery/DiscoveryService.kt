@@ -78,9 +78,9 @@ class DiscoveryService : DiscoveryServiceInterface {
      * @return WrappedAuthConfigResponse
      */
     override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): WrappedAuthConfigResponse {
-        var authorizationServer = authorisationServerWellKnownURI?.replace("/.well-known/openid-configuration","")
+        var authorizationServer = authorisationServerWellKnownURI?.replace("/.well-known/oauth-authorization-server","")
         authorizationServer = removeTrailingSlash(authorizationServer)
-        authorizationServer = "$authorizationServer/.well-known/openid-configuration"
+        authorizationServer = "$authorizationServer/.well-known/oauth-authorization-server"
         try {
             UrlUtils.validateUri(authorizationServer)
 
@@ -90,7 +90,23 @@ class DiscoveryService : DiscoveryServiceInterface {
             return if (response?.isSuccessful == true) {
                 WrappedAuthConfigResponse(authConfig = response.body(), errorResponse = null)
             } else {
-                WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
+                // If the first attempt fails, modify the authorizationServer URL for the openid-configuration endpoint
+                authorizationServer = authorizationServer.replace("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration")
+
+
+                val fallbackResponse = ApiManager.api.getService()?.fetchAuthConfig(authorizationServer)
+                return if (fallbackResponse?.isSuccessful == true) {
+                    WrappedAuthConfigResponse(authConfig = fallbackResponse.body(), errorResponse = null)
+                }
+                else {
+                    // If both attempts fail, return an error response
+                    WrappedAuthConfigResponse(
+                        authConfig = null,
+                        errorResponse = ErrorResponse(error = fallbackResponse?.code(), errorDescription = fallbackResponse?.message())
+                    )
+                }
+
+                // WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
             }
         } catch (exc: UriValidationFailed) {
             return WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))

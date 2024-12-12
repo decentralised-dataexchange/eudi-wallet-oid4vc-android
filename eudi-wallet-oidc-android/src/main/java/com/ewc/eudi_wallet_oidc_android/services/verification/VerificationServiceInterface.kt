@@ -58,6 +58,14 @@ interface VerificationServiceInterface {
         credentialList: List<String>
     ): WrappedVpTokenResponse?
 
+
+    suspend fun processAndSendAuthorisationResponse(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<String>? = null
+    ): WrappedVpTokenResponse?
+
     /**
      * To filter the credential using the input descriptors
      * @param credentialList - list of all issued credentials
