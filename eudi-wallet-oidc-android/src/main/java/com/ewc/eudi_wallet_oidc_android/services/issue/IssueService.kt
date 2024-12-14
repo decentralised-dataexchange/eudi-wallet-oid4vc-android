@@ -444,8 +444,19 @@ class IssueService : IssueServiceInterface {
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
         version: Int?,
-        clientAssertion: String?
+        clientAssertion: String?,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): WrappedTokenResponse? {
+        val redirectUri = "http://localhost:8080"
+        val headers = mutableMapOf<String, String>().apply {
+            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+            }
+            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
+            }
+        }
         val response = ApiManager.api.getService()?.getAccessTokenFromCode(
             tokenEndPoint ?: "",
             if (isPreAuthorisedCodeFlow == true) {
@@ -466,14 +477,16 @@ class IssueService : IssueServiceInterface {
                     "grant_type" to "authorization_code",
                     "code" to (code ?: ""),
                     "client_id" to (did ?: ""),
-                    "code_verifier" to (codeVerifier ?: "")
+                    "code_verifier" to (codeVerifier ?: ""),
+                    "redirect_uri" to (redirectUri ?: "")
                 ).apply {
                     if (clientAssertion != null) {
-                        this["clientAssertion"] = clientAssertion ?: ""
-                        this["clientAssertionType"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                        this["client_assertion"] = clientAssertion ?: ""
+                        this["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
                     }
                 }
-            }
+            },
+            headers
         )
 
         val tokenResponse = when {

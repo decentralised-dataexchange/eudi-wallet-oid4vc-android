@@ -55,7 +55,9 @@ interface VerificationServiceInterface {
         did: String?,
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
-        credentialList: List<String>
+        credentialList: List<String>,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse?
 
 
