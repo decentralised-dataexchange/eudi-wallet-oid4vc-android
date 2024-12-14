@@ -64,7 +64,9 @@ interface IssueServiceInterface {
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
         version: Int?,
-        clientAssertion: String?
+        clientAssertion: String?,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): WrappedTokenResponse?
 
     /**

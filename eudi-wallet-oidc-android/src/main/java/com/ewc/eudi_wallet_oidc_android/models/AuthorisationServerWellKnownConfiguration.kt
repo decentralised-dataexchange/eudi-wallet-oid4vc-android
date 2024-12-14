@@ -23,10 +23,11 @@ data class AuthorisationServerWellKnownConfiguration(
     @SerializedName("subject_syntax_types_supported") var subjectSyntaxTypesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("subject_syntax_types_discriminations") var subjectSyntaxTypesDiscriminations: ArrayList<String> = arrayListOf(),
     @SerializedName("subject_trust_frameworks_supported") var subjectTrustFrameworksSupported: ArrayList<String> = arrayListOf(),
-    @SerializedName("id_token_signing_alg_values_supported") var idTokenTypesSupported: ArrayList<String> = arrayListOf(),
+    @SerializedName("id_token_types_supported") var idTokenTypesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("require_pushed_authorization_requests") var requirePushedAuthorizationRequests: Boolean = false,
     @SerializedName("pushed_authorization_request_endpoint") var pushedAuthorizationRequestEndpoint: String? = null,
-    )
+    @SerializedName("id_token_signing_alg_values_supported") var idTokenSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
+)
 
 data class RequestAuthenticationMethodsSupported(
 

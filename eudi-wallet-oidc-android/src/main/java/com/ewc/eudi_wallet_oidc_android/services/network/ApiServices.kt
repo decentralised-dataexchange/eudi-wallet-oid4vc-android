@@ -18,6 +18,7 @@ import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
@@ -58,7 +59,8 @@ interface ApiService {
     @POST("")
     suspend fun getAccessTokenFromCode(
         @Url url: String,
-        @FieldMap map: Map<String, String?>
+        @FieldMap map: Map<String, String?>,
+        @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<TokenResponse>
 
     @POST
@@ -92,7 +94,8 @@ interface ApiService {
     @POST("")
     suspend fun sendVPToken(
         @Url url: String,
-        @FieldMap map: Map<String, String>
+        @FieldMap map: Map<String, String>,
+        @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<ResponseBody>
 
     @GET

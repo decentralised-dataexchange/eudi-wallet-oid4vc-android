@@ -54,6 +54,7 @@ object WalletAttestationUtil {
     val baseUrl =
         "https://staging-oid4vc.igrant.io/organisation/4264f05a-e0cd-49cb-bb32-b664e1d0f448/service"
 
+
     suspend fun initiateWalletUnitAttestation(
         context: Context,
         cloudProjectNumber: Long
@@ -70,7 +71,8 @@ object WalletAttestationUtil {
 
             Log.d(TAG, "generated privateKey With Attestation:$privateKey")
             Log.d(TAG, "generated publicKey With Attestation:$publicKey")
-
+            val did = DIDService().createDID(ecKey)
+            Log.d(TAG, "Generated DID: $did")
             // Step 2: Prepare the integrity token provider
             val tokenProvider = prepareIntegrityTokenProvider(context, cloudProjectNumber)
             Log.d(TAG, "Prepare tokenProvider: $tokenProvider")
@@ -89,7 +91,7 @@ object WalletAttestationUtil {
             Log.d(TAG, "integrity token:$token ")
 
             // Step 6: Generate client assertion
-            clientAssertion = generateClientAssertion(baseUrl, ecKey)
+            clientAssertion = generateClientAssertion(ecKey,did)
             Log.d(TAG, "clientAssertion:$clientAssertion ")
 
 
@@ -105,7 +107,9 @@ object WalletAttestationUtil {
 
             WalletAttestationResult(
                 walletUnitAttestationCredential?.credentialOffer,
-                clientAssertion
+                clientAssertion,
+                did,
+                ecKey
             )
 
         } catch (e: Exception) {
@@ -240,13 +244,11 @@ object WalletAttestationUtil {
 
 
     private fun generateClientAssertion(
-        aud: String,
         ecKey: ECKey,
+        did: String?
     ): String {
         try {
 
-            val did = DIDService().createDID(ecKey)
-            //val aud = "aud url"
             Log.d(TAG, "Client assertion did:$did")
             val now = Date()
             val expTime = Date(now.time + 3600 * 1000)
@@ -260,7 +262,7 @@ object WalletAttestationUtil {
 
             // Create JWT Payload
             val payload = JWTClaimsSet.Builder()
-                .audience(aud)
+                .audience(baseUrl)
                 .claim("client_id", did)
                 .claim("cnf", mapOf("jwk" to ecKey.toJSONObject()))
                 .expirationTime(expTime)
@@ -336,41 +338,42 @@ object WalletAttestationUtil {
 
 
     suspend fun generateWUAProofOfPossession(
-        iss: String,
-        aud: String,
-        jwk: JWK,
-        validityDuration: Long = 24 * 60 * 60 * 1000 // Default: 24 hours
-    ): String {
-        val now = Date()
-        val expirationTime = Date(now.time + validityDuration)
+        ecKey: ECKey,
+        did: String?,
+        aud: String?
+    ): String? {
+        try {
+            val now = Date()
+            val expirationTime = Date(now.time + 6 * 60 * 1000)
 
-        // Create the JWT claims
-        val claimsSet = JWTClaimsSet.Builder()
-            .issuer(iss)
-            .audience(aud)
-            .notBeforeTime(now)
-            .expirationTime(expirationTime)
-            .jwtID(UUID.randomUUID().toString()) // Unique identifier for replay protection
-            .build()
-
-        // Create the JWS header
-        val jwsHeader =
-            JWSHeader.Builder(JWSAlgorithm.ES256) // Use ES256 or the appropriate algorithm
-                .type(JOSEObjectType.JWT)
-                .keyID(jwk.keyID) // Include key ID in the header
+            // Create the JWT claims
+            val claimsSet = JWTClaimsSet.Builder()
+                .issuer(did)
+                .audience(aud)
+                .notBeforeTime(now)
+                .expirationTime(expirationTime)
+                .jwtID("urn:uuid:${UUID.randomUUID().toString()}")
                 .build()
 
-        // Sign the JWT
-        val signedJWT = SignedJWT(jwsHeader, claimsSet)
+            // Create the JWS header
+            val header = JWSHeader.Builder(JWSAlgorithm.ES256).build()
 
-        // Create signer with the private key
-        val signer = ECDSASigner(jwk.toECKey())
+            // Sign the JWT
+            val signedJWT = SignedJWT(header, claimsSet)
 
-        // Sign the JWT
-        signedJWT.sign(signer)
+            // Create signer with the private key
+            val signer = ECDSASigner(ecKey)
 
-        // Return the serialized JWT
-        return signedJWT.serialize()
+            // Sign the JWT
+            signedJWT.sign(signer)
+
+            // Return the serialized JWT
+            return signedJWT.serialize()
+        }catch (e:Exception){
+            Log.d("Error",e.message.toString())
+            return null
+        }
+
     }
 
 

@@ -454,8 +454,11 @@ class VerificationService : VerificationServiceInterface {
         did: String?,
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
-        credentialList: List<String>
+        credentialList: List<String>,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse? {
+
         val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
         if (responseUri.isNullOrEmpty() || !isHostReachable(responseUri)) {
             return WrappedVpTokenResponse(
@@ -464,6 +467,14 @@ class VerificationService : VerificationServiceInterface {
                     errorDescription = "Unable to resolve host: $responseUri"
                 )
             )
+        }
+        val headers = mutableMapOf<String, String>().apply {
+            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+            }
+            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
+            }
         }
 
         val presentationDefinition =
@@ -497,7 +508,8 @@ class VerificationService : VerificationServiceInterface {
                     presentationSubmission
                 ),
                 "state" to (presentationRequest.state ?: "")
-            )
+            ),
+            headers
         )
 
         val tokenResponse = when {
@@ -784,60 +796,40 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
-
     private fun processToken(
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<String>?=null,
         subJwk: JWK?,
-
-        ): String {
+    ): String {
 
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"
-        val claimsSet = when (presentationRequest.responseType) {
-            "vp_token" -> {
-                JWTClaimsSet.Builder()
-                    .audience(presentationRequest.clientId)
-                    .issueTime(iat)
-                    .expirationTime(Date(iat.time + 600000))
-                    .issuer(did)
-                    .jwtID(jti)
-                    .notBeforeTime(iat)
-                    .claim("nonce", presentationRequest.nonce)
-                    .subject(did)
-                    .claim(
-                        "vp", com.nimbusds.jose.shaded.json.JSONObject(
-                            hashMapOf(
-                                "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
-                                "holder" to did,
-                                "id" to jti,
-                                "type" to listOf("VerifiablePresentation"),
-                                "verifiableCredential" to credentialList
-                            )
-                        )
+        val claimsSet = JWTClaimsSet.Builder()
+            .audience(presentationRequest.clientId)
+            .issueTime(iat)
+            .expirationTime(Date(iat.time + 600000))
+            .issuer(did)
+            .jwtID(jti)
+            .notBeforeTime(iat)
+            .claim("nonce", presentationRequest.nonce)
+            .subject(did)
+            .claim(
+                "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                    hashMapOf(
+                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                        "holder" to did,
+                        "id" to jti,
+                        "type" to listOf("VerifiablePresentation"),
+                        "verifiableCredential" to credentialList
                     )
-                    .build()
-            }
-            "id_token" -> {
-                JWTClaimsSet.Builder()
-                    .issuer(did)
-                    .subject(did)
-                    .audience(presentationRequest.clientId ?: "https://api-conformance.ebsi.eu/conformance/v3/auth-mock")
-                    .expirationTime(Date(iat.time + 600000))
-                    .issueTime(iat)
-                    .claim("nonce", presentationRequest.nonce)
-                    .build()
-            }
-            else -> throw IllegalArgumentException("Unsupported response type")
-        }
+                )
+            )
+            .build()
 
         // Create JWT for ES256K alg
         val jwsHeader =
-            JWSHeader.Builder(if (subJwk is OctetKeyPair)
-                JWSAlgorithm.EdDSA
-            else
-                JWSAlgorithm.ES256)
+            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
                 .type(JOSEObjectType("JWT"))
                 .keyID("$did#${did?.replace("did:key:", "")}")
                 .jwk(subJwk?.toPublicJWK())
@@ -849,12 +841,79 @@ class VerificationService : VerificationServiceInterface {
         )
 
         // Sign with private EC key
-        jwt.sign(if (subJwk is OctetKeyPair)
-            Ed25519Signer(subJwk)
-        else
-            ECDSASigner(subJwk as ECKey))
+        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
         return jwt.serialize()
     }
+//    private fun processToken(
+//        presentationRequest: PresentationRequest,
+//        did: String?,
+//        credentialList: List<String>?=null,
+//        subJwk: JWK?,
+//
+//        ): String {
+//
+//        val iat = Date()
+//        val jti = "urn:uuid:${UUID.randomUUID()}"
+//        val claimsSet = when (presentationRequest.responseType) {
+//            "vp_token" -> {
+//                JWTClaimsSet.Builder()
+//                    .audience(presentationRequest.clientId)
+//                    .issueTime(iat)
+//                    .expirationTime(Date(iat.time + 600000))
+//                    .issuer(did)
+//                    .jwtID(jti)
+//                    .notBeforeTime(iat)
+//                    .claim("nonce", presentationRequest.nonce)
+//                    .subject(did)
+//                    .claim(
+//                        "vp", com.nimbusds.jose.shaded.json.JSONObject(
+//                            hashMapOf(
+//                                "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+//                                "holder" to did,
+//                                "id" to jti,
+//                                "type" to listOf("VerifiablePresentation"),
+//                                "verifiableCredential" to credentialList
+//                            )
+//                        )
+//                    )
+//                    .build()
+//            }
+//            "id_token" -> {
+//                JWTClaimsSet.Builder()
+//                    .issuer(did)
+//                    .subject(did)
+//                    .audience(presentationRequest.clientId ?: "https://api-conformance.ebsi.eu/conformance/v3/auth-mock")
+//                    .expirationTime(Date(iat.time + 600000))
+//                    .issueTime(iat)
+//                    .claim("nonce", presentationRequest.nonce)
+//                    .build()
+//            }
+//            else -> throw IllegalArgumentException("Unsupported response type")
+//        }
+//
+//        // Create JWT for ES256K alg
+//        val jwsHeader =
+//            JWSHeader.Builder(if (subJwk is OctetKeyPair)
+//                JWSAlgorithm.EdDSA
+//            else
+//                JWSAlgorithm.ES256)
+//                .type(JOSEObjectType("JWT"))
+//                .keyID("$did#${did?.replace("did:key:", "")}")
+//                .jwk(subJwk?.toPublicJWK())
+//                .build()
+//
+//        val jwt = SignedJWT(
+//            jwsHeader,
+//            claimsSet
+//        )
+//
+//        // Sign with private EC key
+//        jwt.sign(if (subJwk is OctetKeyPair)
+//            Ed25519Signer(subJwk)
+//        else
+//            ECDSASigner(subJwk as ECKey))
+//        return jwt.serialize()
+//    }
 
     private fun mdocVpToken(
         credentialList: List<String>?=null,
@@ -1037,10 +1096,14 @@ class VerificationService : VerificationServiceInterface {
                     PresentationDefinition::class.java
                 )
 
-                else -> throw IllegalArgumentException("Invalid presentation definition format")
+                else -> {
+                    Log.e("VerificationService","Invalid presentation definition format")
+                    PresentationDefinition()
+                }
             }
         } catch (e: Exception) {
-            throw IllegalArgumentException("Error processing presentation definition", e)
+            Log.e("VerificationService","Error processing presentation definition",e)
+           return PresentationDefinition()
         }
     }
 
