@@ -53,7 +53,7 @@ import kotlin.coroutines.resumeWithException
 object WalletAttestationUtil {
     val TAG = "WalletUnitAttestation"
     val baseUrl =
-        "https://oid4vc.igrant.io/organisation/445f2b74-cc27-44ef-bed7-4809c13699cf/service"
+        "https://staging-oid4vc.igrant.io/organisation/4264f05a-e0cd-49cb-bb32-b664e1d0f448/service"
 
 
     suspend fun initiateWalletUnitAttestation(
