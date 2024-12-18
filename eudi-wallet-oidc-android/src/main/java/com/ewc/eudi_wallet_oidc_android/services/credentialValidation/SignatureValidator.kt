@@ -76,7 +76,13 @@ class SignatureValidator {
                         jwt // If split fails, use the original JWT
                     }
                     // Verify signature using the JWK response
-                    return verifyJwtSignature(splitJwt, it.toJSONString())
+
+                    val isValidSignature = verifyJwtSignature(splitJwt, it.toJSONString())
+                    if (isValidSignature) {
+                        return true
+                    } else {
+                        throw SignatureException("JWT signature invalid")
+                    }
                 } ?: throw SignatureException("JWT signature invalid") // Throw an exception if JWK response is null
 
             } ?: throw SignatureException("JWT signature invalid") // Handle the case where JWT is null

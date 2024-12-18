@@ -788,7 +788,10 @@ class IssueService : IssueServiceInterface {
             }
 
             else -> {
-                null
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = err
+                )
             }
         }
         return errorResponse

@@ -29,7 +29,12 @@ class CredentialRevocationUtil {
         val revokedStatusList = mutableListOf<String>()
         var processedCount = 0
         val uniqueUris = extractUniqueStatusUris(credentials)
+        if (uniqueUris.isEmpty()) {
+            callback(emptyList())
+            return
+        }
         println(uniqueUris)
+
         fetchStatusFromServer(uniqueUris) { statusModels ->
 
             for (credential in credentials) {

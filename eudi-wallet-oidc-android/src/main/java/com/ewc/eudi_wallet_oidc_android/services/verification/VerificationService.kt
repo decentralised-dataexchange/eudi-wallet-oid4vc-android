@@ -25,6 +25,7 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.utils.X509SanRequestVerifier
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
@@ -37,7 +38,9 @@ import com.nimbusds.jose.crypto.Ed25519Signer
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
+import com.nimbusds.jwt.JWT
 import com.nimbusds.jwt.JWTClaimsSet
+import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.SignedJWT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,6 +55,7 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 
 class VerificationService : VerificationServiceInterface {
+
 
     /**
      * Authorisation requests can be presented to the wallet by verifying in two ways:
@@ -116,38 +120,24 @@ class VerificationService : VerificationServiceInterface {
                     getClientMetaDataFromClientMetaDataUri(clientMetadataUri)
                 presentationRequest.clientMetaDetails = resolvedClientMetaData
             }
-            return WrappedPresentationRequest(presentationRequest = presentationRequest,errorResponse = null)
+            return WrappedPresentationRequest(
+                presentationRequest = presentationRequest,
+                errorResponse = null
+            )
 
         } else if (!requestUri.isNullOrBlank() || !responseUri.isNullOrBlank()) {
+            try {
 
-            val response =
-                ApiManager.api.getService()
-                    ?.getPresentationDefinitionFromRequestUri(requestUri ?: responseUri ?: "")
-            if (response?.isSuccessful == true) {
-                val contentType = response.headers()["Content-Type"]
-                val responseString = response.body()?.string()
+                val response =
+                    ApiManager.api.getService()
+                        ?.getPresentationDefinitionFromRequestUri(requestUri ?: responseUri ?: "")
+                if (response?.isSuccessful == true) {
+                    val contentType = response.headers()["Content-Type"]
+                    val responseString = response.body()?.string()
 
-                if (contentType?.contains("application/json") == true) {
-                    val json = gson.fromJson(
-                        responseString,
-                        PresentationRequest::class.java
-                    )
-                    if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
-                        val resolvedPresentationDefinition =
-                            getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
-                        json.presentationDefinition = resolvedPresentationDefinition
-                    }
-                    if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()) {
-                        val resolvedClientMetaDetails =
-                            getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
-                        json.clientMetaDetails = resolvedClientMetaDetails
-                    }
-
-                    return validatePresentationRequest(WrappedPresentationRequest(presentationRequest = json) , responseString)
-                } else {
-                    if (isValidJWT(responseString ?: "")) {
+                    if (contentType?.contains("application/json") == true) {
                         val json = gson.fromJson(
-                            parseJWTForPayload(responseString ?: "{}"),
+                            responseString,
                             PresentationRequest::class.java
                         )
                         if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
@@ -160,29 +150,69 @@ class VerificationService : VerificationServiceInterface {
                                 getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
                             json.clientMetaDetails = resolvedClientMetaDetails
                         }
-                        return validatePresentationRequest(WrappedPresentationRequest(presentationRequest = json) , responseString)
+
+                        return validatePresentationRequest(
+                            WrappedPresentationRequest(
+                                presentationRequest = json
+                            ), responseString
+                        )
                     } else {
+                        if (isValidJWT(responseString ?: "")) {
+                            val json = gson.fromJson(
+                                parseJWTForPayload(responseString ?: "{}"),
+                                PresentationRequest::class.java
+                            )
+                            if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
+                                val resolvedPresentationDefinition =
+                                    getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                                json.presentationDefinition = resolvedPresentationDefinition
+                            }
+                            if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()) {
+                                val resolvedClientMetaDetails =
+                                    getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                                json.clientMetaDetails = resolvedClientMetaDetails
+                            }
+                            return validatePresentationRequest(
+                                WrappedPresentationRequest(
+                                    presentationRequest = json
+                                ), responseString
+                            )
+                        } else {
 
-                        val json = gson.fromJson(
-                            responseString ?: "{}",
-                            PresentationRequest::class.java
-                        )
-                        if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
-                            val resolvedPresentationDefinition =
-                                getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
-                            json.presentationDefinition = resolvedPresentationDefinition
+                            val json = gson.fromJson(
+                                responseString ?: "{}",
+                                PresentationRequest::class.java
+                            )
+                            if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
+                                val resolvedPresentationDefinition =
+                                    getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
+                                json.presentationDefinition = resolvedPresentationDefinition
+                            }
+                            if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()) {
+                                val resolvedClientMetaDetails =
+                                    getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
+                                json.clientMetaDetails = resolvedClientMetaDetails
+                            }
+                            return validatePresentationRequest(
+                                WrappedPresentationRequest(
+                                    presentationRequest = json
+                                ), responseString
+                            )
                         }
-                        if (json.clientMetaDetails == null && !json.clientMetadataUri.isNullOrBlank()) {
-                            val resolvedClientMetaDetails =
-                                getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
-                            json.clientMetaDetails = resolvedClientMetaDetails
-                        }
-                        return validatePresentationRequest(WrappedPresentationRequest(presentationRequest = json) , responseString)
                     }
+                } else {
+                    return null
                 }
-            } else {
-                return null
+            } catch (e: Exception) {
+                return WrappedPresentationRequest(
+                    presentationRequest = null,
+                    errorResponse = ErrorResponse(
+                        error = null,
+                        errorDescription = e.message.toString()
+                    )
+                )
             }
+
         } else if (isValidJWT(data)) {
             val json = gson.fromJson(
                 parseJWTForPayload(data ?: "{}"),
@@ -198,7 +228,10 @@ class VerificationService : VerificationServiceInterface {
                     getClientMetaDataFromClientMetaDataUri(json.clientMetadataUri)
                 json.clientMetaDetails = resolvedClientMetaDetails
             }
-            return validatePresentationRequest(WrappedPresentationRequest(presentationRequest = json) , data)
+            return validatePresentationRequest(
+                WrappedPresentationRequest(presentationRequest = json),
+                data
+            )
         } else {
             return null
         }
@@ -215,10 +248,11 @@ class VerificationService : VerificationServiceInterface {
 
             // Calling the function
             if (x5cChain != null) {
-                val isClientIdInDnsNames = X509SanRequestVerifier.instance.validateClientIDInCertificate(
-                    x5cChain,
-                    presentationRequest.presentationRequest?.clientId
-                )
+                val isClientIdInDnsNames =
+                    X509SanRequestVerifier.instance.validateClientIDInCertificate(
+                        x5cChain,
+                        presentationRequest.presentationRequest?.clientId
+                    )
 
                 val isSignatureValid =
                     X509SanRequestVerifier.instance.validateSignatureWithCertificate(
@@ -229,10 +263,16 @@ class VerificationService : VerificationServiceInterface {
                 val isTrustChainValid =
                     X509SanRequestVerifier.instance.validateTrustChain(x5cChain)
 
-                return if(isClientIdInDnsNames && isSignatureValid && isTrustChainValid )   {
+                return if (isClientIdInDnsNames && isSignatureValid && isTrustChainValid) {
                     presentationRequest
-                } else{
-                    WrappedPresentationRequest(presentationRequest = null,errorResponse = ErrorResponse(error = null , errorDescription = "Invalid Request" ))
+                } else {
+                    WrappedPresentationRequest(
+                        presentationRequest = null,
+                        errorResponse = ErrorResponse(
+                            error = null,
+                            errorDescription = "Invalid Request"
+                        )
+                    )
                 }
 
             } else {
@@ -455,7 +495,7 @@ class VerificationService : VerificationServiceInterface {
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
         credentialList: List<String>,
-        walletUnitAttestationJWT: String? ,
+        walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse? {
 
@@ -579,30 +619,27 @@ class VerificationService : VerificationServiceInterface {
         did: String?,
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
-        credentialList: List<String>?
+        credentialList: List<String>?,
+        walletUnitAttestationJWT: String?,
+        walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse? {
         var vpToken: String? = null
         var idToken: String? = null
         var presentationSubmission: Any? = null
-        // Check if the URL is reachable before proceeding
-        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
-        if (responseUri.isNullOrEmpty() || !isHostReachable(responseUri)) {
-            return WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "Unable to resolve host: $responseUri"
-                )
-            )
+        val headers = mutableMapOf<String, String>().apply {
+            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+            }
+            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
+            }
         }
 
 
-        if (presentationRequest.responseType == "id_token")
-        {
-            idToken=   processToken(presentationRequest, did, credentialList, subJwk)
+        if (presentationRequest.responseType == "id_token") {
+            idToken = processToken(presentationRequest, did, credentialList, subJwk)
 
-        }
-        else if (presentationRequest.responseType == "vp_token")
-        {
+        } else if (presentationRequest.responseType == "vp_token") {
             val presentationDefinition =
                 processPresentationDefinition(presentationRequest.presentationDefinition)
             val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
@@ -626,8 +663,7 @@ class VerificationService : VerificationServiceInterface {
             }
 
 
-        } else if (presentationRequest.responseType == "vp_token+id_token")
-        {
+        } else if (presentationRequest.responseType == "vp_token+id_token") {
             // Process both vp_token and id_token
             idToken = processToken(presentationRequest, did, credentialList, subJwk)
 
@@ -652,137 +688,159 @@ class VerificationService : VerificationServiceInterface {
 
 
         }
-
-        val response = ApiManager.api.getService()?.sendVPToken(
-            presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-            when (presentationRequest.responseType) {
-                "vp_token" -> {
-                    mapOf(
-                        "vp_token" to (vpToken ?: ""),
-                        "presentation_submission" to Gson().toJson(presentationSubmission),
-                        "state" to (presentationRequest.state ?: "")
-                    )
-                }
-                "id_token" -> {
-                    mapOf(
-                        "id_token" to (idToken ?: ""),
-                        "state" to (presentationRequest.state ?: "")
-                    )
-                }
-                "vp_token+id_token" -> {
-                    mapOf(
-                        "vp_token" to (vpToken ?: ""),
-                        "id_token" to (idToken ?: ""),
-                        "presentation_submission" to Gson().toJson(presentationSubmission),
-                        "state" to (presentationRequest.state ?: "")
-                    )
-                }
-                else -> throw IllegalStateException("Unexpected responseType")
-            }
-        )
-
-
-        val tokenResponse = when {
-            response?.code() == 200 -> {
-                val redirectUri = response.body()?.string()
-                val gson = Gson()
-                try {
-                    val vpTokenResponse =
-                        gson.fromJson(redirectUri, VPTokenResponse::class.java)
-                    return WrappedVpTokenResponse(
-                        vpTokenResponse = VPTokenResponse(
-                            location = vpTokenResponse.redirectUri
-                                ?: "https://www.example.com?code=1"
+        try {
+            val response = ApiManager.api.getService()?.sendVPToken(
+                presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+                when (presentationRequest.responseType) {
+                    "vp_token" -> {
+                        mapOf(
+                            "vp_token" to (vpToken ?: ""),
+                            "presentation_submission" to Gson().toJson(presentationSubmission),
+                            "state" to (presentationRequest.state ?: "")
                         )
-                    )
-                } catch (e: Exception) {
-                    return WrappedVpTokenResponse(
-                        vpTokenResponse = VPTokenResponse(
-                            location = "https://www.example.com?code=1"
-                        )
-                    )
-                }
-            }
-            response?.code() == 204 -> {
-                try {
-                    // Extract the URL from the response object
-                    val urlValue = response.raw().request.url.toString()
+                    }
 
-                    if (urlValue.isNullOrEmpty()) {
+                    "id_token" -> {
+                        mapOf(
+                            "id_token" to (idToken ?: ""),
+                            "state" to (presentationRequest.state ?: "")
+                        )
+                    }
+
+                    "vp_token+id_token" -> {
+                        mapOf(
+                            "vp_token" to (vpToken ?: ""),
+                            "id_token" to (idToken ?: ""),
+                            "presentation_submission" to Gson().toJson(presentationSubmission),
+                            "state" to (presentationRequest.state ?: "")
+                        )
+                    }
+
+                    else -> {
                         return WrappedVpTokenResponse(
                             vpTokenResponse = null,
                             errorResponse = ErrorResponse(
                                 error = null,
-                                errorDescription = "The response URL is missing or empty"
+                                errorDescription = "Unsupported response Type"
+                            )
+                        )
+                    }
+                },
+                headers
+
+            )
+
+
+            val tokenResponse = when {
+                response?.code() == 200 -> {
+                    val redirectUri = response.body()?.string()
+                    val gson = Gson()
+                    try {
+                        val vpTokenResponse =
+                            gson.fromJson(redirectUri, VPTokenResponse::class.java)
+                        return WrappedVpTokenResponse(
+                            vpTokenResponse = VPTokenResponse(
+                                location = vpTokenResponse.redirectUri
+                                    ?: "https://www.example.com?code=1"
+                            )
+                        )
+                    } catch (e: Exception) {
+                        return WrappedVpTokenResponse(
+                            vpTokenResponse = VPTokenResponse(
+                                location = "https://www.example.com?code=1"
+                            )
+                        )
+                    }
+                }
+
+                response?.code() == 204 -> {
+                    try {
+                        // Extract the URL from the response object
+                        val urlValue = response.raw().request.url.toString()
+
+                        if (urlValue.isNullOrEmpty()) {
+                            return WrappedVpTokenResponse(
+                                vpTokenResponse = null,
+                                errorResponse = ErrorResponse(
+                                    error = null,
+                                    errorDescription = "The response URL is missing or empty"
+                                )
+                            )
+                        }
+
+                        return WrappedVpTokenResponse(
+                            vpTokenResponse = VPTokenResponse(location = urlValue)
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace() // Log the exception for debugging
+                        return WrappedVpTokenResponse(
+                            vpTokenResponse = null,
+                            errorResponse = ErrorResponse(
+                                error = null,
+                                errorDescription = "An unexpected error occurred: ${e.message}"
+                            )
+                        )
+                    }
+                }
+
+
+                response?.code() == 302 || response?.code() == 200 -> {
+                    val locationHeader = response.headers()["Location"]
+                    if (locationHeader?.contains("error=") == true) {
+                        // Parse the error from the location header
+                        val errorParams = locationHeader.substringAfter("?").split("&").associate {
+                            val (key, value) = it.split("=")
+                            key to value
+                        }
+
+                        WrappedVpTokenResponse(
+                            errorResponse = ErrorResponse(
+                                error = when (errorParams["error"]) {
+                                    "invalid_request" -> 400
+                                    else -> null
+                                },
+                                errorDescription = errorParams["error_description"]
+                            )
+                        )
+                    } else {
+                        WrappedVpTokenResponse(
+                            vpTokenResponse = VPTokenResponse(
+                                location = locationHeader ?: "https://www.example.com?code=1"
                             )
                         )
                     }
 
-                    return WrappedVpTokenResponse(
-                        vpTokenResponse = VPTokenResponse(location = urlValue)
-                    )
-                } catch (e: Exception) {
-                    e.printStackTrace() // Log the exception for debugging
-                    return WrappedVpTokenResponse(
-                        vpTokenResponse = null,
-                        errorResponse = ErrorResponse(
-                            error = null,
-                            errorDescription = "An unexpected error occurred: ${e.message}"
-                        )
-                    )
                 }
-            }
 
-
-
-            response?.code() == 302 || response?.code() == 200 -> {
-                val locationHeader = response.headers()["Location"]
-                if (locationHeader?.contains("error=") == true) {
-                    // Parse the error from the location header
-                    val errorParams = locationHeader.substringAfter("?").split("&").associate {
-                        val (key, value) = it.split("=")
-                        key to value
-                    }
-
+                (response?.code() ?: 0) >= 400 -> {
+                    val errorBody = response?.errorBody()?.string()
+                    val errorMessage =
+                        errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
                     WrappedVpTokenResponse(
                         errorResponse = ErrorResponse(
-                            error = when (errorParams["error"]) {
-                                "invalid_request" -> 400
-                                else -> null
-                            },
-                            errorDescription = errorParams["error_description"]
-                        )
-                    )
-                } else {
-                    WrappedVpTokenResponse(
-                        vpTokenResponse = VPTokenResponse(
-                            location = locationHeader ?: "https://www.example.com?code=1"
+                            error = response?.code(),
+                            errorDescription = errorMessage
                         )
                     )
                 }
 
-            }
 
-            (response?.code() ?: 0) >= 400 -> {
-                val errorBody = response?.errorBody()?.string()
-                val errorMessage = errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
-                WrappedVpTokenResponse(
+                else -> WrappedVpTokenResponse(
                     errorResponse = ErrorResponse(
                         error = response?.code(),
-                        errorDescription = errorMessage
+                        errorDescription = "An unexpected error occurred"
                     )
                 )
             }
-
-
-            else -> WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = response?.code(),
-                    errorDescription = "An unexpected error occurred"
-                )
+            return tokenResponse
+        } catch (e: Exception) {
+            return WrappedVpTokenResponse(
+                vpTokenResponse = null,
+                errorResponse = ErrorResponse(error = null, errorDescription = e.message.toString())
             )
         }
-        return tokenResponse
+
+
     }
 
     private fun isHostReachable(url: String?): Boolean {
@@ -796,107 +854,40 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
-    private fun processToken(
-        presentationRequest: PresentationRequest,
-        did: String?,
-        credentialList: List<String>?=null,
-        subJwk: JWK?,
-    ): String {
-
-        val iat = Date()
-        val jti = "urn:uuid:${UUID.randomUUID()}"
-        val claimsSet = JWTClaimsSet.Builder()
-            .audience(presentationRequest.clientId)
-            .issueTime(iat)
-            .expirationTime(Date(iat.time + 600000))
-            .issuer(did)
-            .jwtID(jti)
-            .notBeforeTime(iat)
-            .claim("nonce", presentationRequest.nonce)
-            .subject(did)
-            .claim(
-                "vp", com.nimbusds.jose.shaded.json.JSONObject(
-                    hashMapOf(
-                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
-                        "holder" to did,
-                        "id" to jti,
-                        "type" to listOf("VerifiablePresentation"),
-                        "verifiableCredential" to credentialList
-                    )
-                )
-            )
-            .build()
-
-        // Create JWT for ES256K alg
-        val jwsHeader =
-            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-                .type(JOSEObjectType("JWT"))
-                .keyID("$did#${did?.replace("did:key:", "")}")
-                .jwk(subJwk?.toPublicJWK())
-                .build()
-
-        val jwt = SignedJWT(
-            jwsHeader,
-            claimsSet
-        )
-
-        // Sign with private EC key
-        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
-        return jwt.serialize()
-    }
-//    private fun processToken(
+    //    private fun processToken(
 //        presentationRequest: PresentationRequest,
 //        did: String?,
 //        credentialList: List<String>?=null,
 //        subJwk: JWK?,
-//
-//        ): String {
+//    ): String {
 //
 //        val iat = Date()
 //        val jti = "urn:uuid:${UUID.randomUUID()}"
-//        val claimsSet = when (presentationRequest.responseType) {
-//            "vp_token" -> {
-//                JWTClaimsSet.Builder()
-//                    .audience(presentationRequest.clientId)
-//                    .issueTime(iat)
-//                    .expirationTime(Date(iat.time + 600000))
-//                    .issuer(did)
-//                    .jwtID(jti)
-//                    .notBeforeTime(iat)
-//                    .claim("nonce", presentationRequest.nonce)
-//                    .subject(did)
-//                    .claim(
-//                        "vp", com.nimbusds.jose.shaded.json.JSONObject(
-//                            hashMapOf(
-//                                "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
-//                                "holder" to did,
-//                                "id" to jti,
-//                                "type" to listOf("VerifiablePresentation"),
-//                                "verifiableCredential" to credentialList
-//                            )
-//                        )
+//        val claimsSet = JWTClaimsSet.Builder()
+//            .audience(presentationRequest.clientId)
+//            .issueTime(iat)
+//            .expirationTime(Date(iat.time + 600000))
+//            .issuer(did)
+//            .jwtID(jti)
+//            .notBeforeTime(iat)
+//            .claim("nonce", presentationRequest.nonce)
+//            .subject(did)
+//            .claim(
+//                "vp", com.nimbusds.jose.shaded.json.JSONObject(
+//                    hashMapOf(
+//                        "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+//                        "holder" to did,
+//                        "id" to jti,
+//                        "type" to listOf("VerifiablePresentation"),
+//                        "verifiableCredential" to credentialList
 //                    )
-//                    .build()
-//            }
-//            "id_token" -> {
-//                JWTClaimsSet.Builder()
-//                    .issuer(did)
-//                    .subject(did)
-//                    .audience(presentationRequest.clientId ?: "https://api-conformance.ebsi.eu/conformance/v3/auth-mock")
-//                    .expirationTime(Date(iat.time + 600000))
-//                    .issueTime(iat)
-//                    .claim("nonce", presentationRequest.nonce)
-//                    .build()
-//            }
-//            else -> throw IllegalArgumentException("Unsupported response type")
-//        }
+//                )
+//            )
+//            .build()
 //
 //        // Create JWT for ES256K alg
 //        val jwsHeader =
-//            JWSHeader.Builder(if (subJwk is OctetKeyPair)
-//                JWSAlgorithm.EdDSA
-//            else
-//                JWSAlgorithm.ES256)
+//            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
 //                .type(JOSEObjectType("JWT"))
 //                .keyID("$did#${did?.replace("did:key:", "")}")
 //                .jwk(subJwk?.toPublicJWK())
@@ -908,15 +899,157 @@ class VerificationService : VerificationServiceInterface {
 //        )
 //
 //        // Sign with private EC key
-//        jwt.sign(if (subJwk is OctetKeyPair)
-//            Ed25519Signer(subJwk)
-//        else
-//            ECDSASigner(subJwk as ECKey))
+//        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
 //        return jwt.serialize()
 //    }
+    private fun processToken(
+        presentationRequest: PresentationRequest,
+        did: String?,
+        credentialList: List<String>? = null,
+        subJwk: JWK?,
+    ): String {
+        val updatedCredentialList: MutableList<String> = mutableListOf()
+        val iat = Date()
+        val jti = "urn:uuid:${UUID.randomUUID()}"
+
+        credentialList?.let { credentials ->
+            for (credential in credentials) {
+                try {
+                    // Parse the JWT
+                    val jwt: JWT = JWTParser.parse(credential)
+
+                    // Get the payload as a JWTClaimsSet
+                    val claimsSet = jwt.jwtClaimsSet
+                    // Check for the presence of the "vct" parameter
+                    if (claimsSet.getStringClaim("vct") != null) {
+                        Log.d("processToken:", "SDJWT detected")
+
+                        val claims = mutableMapOf<String, Any>()
+                        Log.d("processToken:","transaction data = ${presentationRequest.transactionDdata}")
+                        if (presentationRequest.transactionDdata?.isNotEmpty() == true) {
+                            val transactionDataItem =
+                                presentationRequest.transactionDdata?.getOrNull(0)
+                            val hash = SDJWTService().calculateSHA256Hash(transactionDataItem)
+                            Log.d("processToken:", "transactionDataItem has added:${hash}")
+                            if (transactionDataItem != null) {
+                                claims["transaction_data_hashes"] = listOf(hash)
+                                claims["transaction_data_hashes_alg"] = "sha-256"
+                            }
+                        }
+                        else{
+                            Log.d("processToken:","transaction data not added to claims")
+                        }
+
+                        val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
+                            aud = presentationRequest.clientId,
+                            credential = credential,
+                            subJwk = subJwk,
+                            claims = if (claims.isNotEmpty()) claims else null
+                        )
+
+                        Log.d("ProcessToken:","keyBindingResponse $keyBindingResponse")
+                        if (keyBindingResponse!=null){
+                            // Append "~" only if it's not present at the end of the credential, then append keyBindingResponse
+                            val updatedCredential = "$credential${if (credential.endsWith("~")) "" else "~"}$keyBindingResponse"
+
+
+                            // Add the updated credential to the list
+                            updatedCredentialList.add(updatedCredential)
+                        }
+                        else{
+                            Log.d("ProcessToken:","keyBindingResponse is null")
+
+                        }
+
+
+                    } else {
+                        Log.d("processToken:", "JWT detected")
+                        updatedCredentialList.add(credential)
+
+                    }
+
+                } catch (e: Exception) {
+                    Log.d("processToken:", "${e.message}")
+                }
+            }
+        }
+
+        val claimsSet = when (presentationRequest.responseType) {
+            "vp_token" -> {
+                Log.d("processToken:", "updatedCredentialList: ${updatedCredentialList.size}")
+                JWTClaimsSet.Builder()
+                    .audience(presentationRequest.clientId)
+                    .issueTime(iat)
+                    .expirationTime(Date(iat.time + 600000))
+                    .issuer(did)
+                    .jwtID(jti)
+                    .notBeforeTime(iat)
+                    .claim("nonce", presentationRequest.nonce)
+                    .subject(did)
+                    .claim(
+                        "vp", com.nimbusds.jose.shaded.json.JSONObject(
+                            hashMapOf(
+                                "@context" to listOf("https://www.w3.org/2018/credentials/v1"),
+                                "holder" to did,
+                                "id" to jti,
+                                "type" to listOf("VerifiablePresentation"),
+                                "verifiableCredential" to updatedCredentialList
+                            )
+                        )
+                    )
+                    .build()
+            }
+
+            "id_token" -> {
+                JWTClaimsSet.Builder()
+                    .issuer(did)
+                    .subject(did)
+                    .audience(
+                        presentationRequest.clientId
+                            ?: "https://api-conformance.ebsi.eu/conformance/v3/auth-mock"
+                    )
+                    .expirationTime(Date(iat.time + 600000))
+                    .issueTime(iat)
+                    .claim("nonce", presentationRequest.nonce)
+                    .build()
+            }
+
+            else -> {
+                return ""
+            }
+        }
+        Log.d("processToken:", "claimsSet value = ${claimsSet.toJSONObject()}")
+
+        // Create JWT for ES256K alg
+        val jwsHeader =
+            JWSHeader.Builder(
+                if (subJwk is OctetKeyPair)
+                    JWSAlgorithm.EdDSA
+                else
+                    JWSAlgorithm.ES256
+            )
+                .type(JOSEObjectType("JWT"))
+                .keyID("$did#${did?.replace("did:key:", "")}")
+                .jwk(subJwk?.toPublicJWK())
+                .build()
+
+        val jwt = SignedJWT(
+            jwsHeader,
+            claimsSet
+        )
+
+        // Sign with private EC key
+        jwt.sign(
+            if (subJwk is OctetKeyPair)
+                Ed25519Signer(subJwk)
+            else
+                ECDSASigner(subJwk as ECKey)
+        )
+        return jwt.serialize()
+    }
 
     private fun mdocVpToken(
-        credentialList: List<String>?=null,
+        credentialList: List<String>? = null,
         presentationRequest: PresentationRequest
     ): String {
         // Validate input
@@ -1097,13 +1230,13 @@ class VerificationService : VerificationServiceInterface {
                 )
 
                 else -> {
-                    Log.e("VerificationService","Invalid presentation definition format")
+                    Log.e("VerificationService", "Invalid presentation definition format")
                     PresentationDefinition()
                 }
             }
         } catch (e: Exception) {
-            Log.e("VerificationService","Error processing presentation definition",e)
-           return PresentationDefinition()
+            Log.e("VerificationService", "Error processing presentation definition", e)
+            return PresentationDefinition()
         }
     }
 
