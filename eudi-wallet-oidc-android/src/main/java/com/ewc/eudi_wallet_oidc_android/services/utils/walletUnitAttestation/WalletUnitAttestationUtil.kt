@@ -11,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.WalletAttestationResult
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.StandardIntegrityManager
 import com.google.gson.Gson
@@ -52,7 +53,7 @@ import kotlin.coroutines.resumeWithException
 object WalletAttestationUtil {
     val TAG = "WalletUnitAttestation"
     val baseUrl =
-        "https://staging-oid4vc.igrant.io/organisation/4264f05a-e0cd-49cb-bb32-b664e1d0f448/service"
+        "https://oid4vc.igrant.io/organisation/445f2b74-cc27-44ef-bed7-4809c13699cf/service"
 
 
     suspend fun initiateWalletUnitAttestation(
@@ -337,7 +338,7 @@ object WalletAttestationUtil {
     }
 
 
-    suspend fun generateWUAProofOfPossession(
+    fun generateWUAProofOfPossession(
         ecKey: ECKey,
         did: String?,
         aud: String?
@@ -375,6 +376,65 @@ object WalletAttestationUtil {
         }
 
     }
+
+
+    fun createKeyBindingJWT(
+        aud: String?,
+        credential: String,
+        subJwk: JWK?,
+        claims: Map<String, Any>?
+    ): String? {
+        try {
+            // Start building the JWT claims
+            val claimsSetBuilder = JWTClaimsSet.Builder()
+                .claim("nonce", UUID.randomUUID().toString())
+                .claim("aud", aud)
+                .claim("iat", Date())
+                .claim("sd_hash", SDJWTService().calculateSHA256Hash(credential))
+
+               // If claims are provided, add them to the claims set
+                claims?.forEach { (key, value) ->
+                claimsSetBuilder.claim(key, value)
+               }
+
+             // Build the claims set
+             val claimsSet = claimsSetBuilder.build()
+            Log.d("processToken:", "createKeyBindingJWT claimsSet value = ${claimsSet.toJSONObject()}")
+
+            // Create JWT header
+            val header = JWSHeader.Builder(JWSAlgorithm.ES256)
+                .type(JOSEObjectType("kb+jwt"))
+                .build()
+
+            // Sign the JWT
+            val signedJWT = SignedJWT(header, claimsSet)
+
+            // Create signer with the private key
+            if (subJwk is ECKey) {
+                Log.d("processToken:", "subJwk private key = ${subJwk.toPrivateKey()}")
+            }
+            else{
+                Log.d("processToken:", "subJwk type = ${subJwk?.javaClass?.name}")
+
+            }
+            val signer = ECDSASigner(subJwk as ECKey)
+
+            // Sign the JWT
+            signedJWT.sign(signer)
+            Log.d("processToken:","createKeyBindingJWT signedJWT returned successfully")
+            // Return the serialized JWT
+            return signedJWT.serialize()
+
+
+        } catch (e: Exception) {
+            Log.d("processToken:", "createKeyBindingJWT signedJWT error ${e.message.toString()}")
+            return null
+        }
+    }
+
+
+
+
 
 
         private fun generateHash(input: String): String? {
