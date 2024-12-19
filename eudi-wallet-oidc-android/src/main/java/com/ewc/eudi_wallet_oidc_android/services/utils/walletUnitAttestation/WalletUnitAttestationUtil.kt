@@ -52,14 +52,15 @@ import kotlin.coroutines.resumeWithException
 
 object WalletAttestationUtil {
     val TAG = "WalletUnitAttestation"
-    val baseUrl =
-        "https://staging-oid4vc.igrant.io/organisation/4264f05a-e0cd-49cb-bb32-b664e1d0f448/service"
+    private var baseUrl: String? = null
 
 
     suspend fun initiateWalletUnitAttestation(
         context: Context,
-        cloudProjectNumber: Long
+        cloudProjectNumber: Long,
+        baseUrl: String
     ): WalletAttestationResult? {
+        this.baseUrl = baseUrl
         var clientAssertion: String? = null
         return try {
             // Step 1: Generate the key pair with attestation
@@ -431,13 +432,7 @@ object WalletAttestationUtil {
             return null
         }
     }
-
-
-
-
-
-
-        private fun generateHash(input: String): String? {
+    fun generateHash(input: String): String? {
         return try {
             val digest = MessageDigest.getInstance("SHA-256")
             val hashBytes = digest.digest(input.toByteArray(StandardCharsets.UTF_8))
