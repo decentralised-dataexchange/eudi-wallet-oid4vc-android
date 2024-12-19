@@ -26,6 +26,7 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.utils.X509SanRequestVerifier
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.generateHash
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
@@ -53,6 +54,7 @@ import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 
 class VerificationService : VerificationServiceInterface {
 
@@ -929,7 +931,7 @@ class VerificationService : VerificationServiceInterface {
                         if (presentationRequest.transactionDdata?.isNotEmpty() == true) {
                             val transactionDataItem =
                                 presentationRequest.transactionDdata?.getOrNull(0)
-                            val hash = SDJWTService().calculateSHA256Hash(transactionDataItem)
+                            val hash = generateHash(transactionDataItem?:"")
                             Log.d("processToken:", "transactionDataItem has added:${hash}")
                             if (transactionDataItem != null) {
                                 claims["transaction_data_hashes"] = listOf(hash)
