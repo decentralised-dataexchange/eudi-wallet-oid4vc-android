@@ -13,6 +13,9 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.JOSEException
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSVerifier
+import com.nimbusds.jose.crypto.RSASSAVerifier
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.RSAKey
 
 class SignatureValidator {
 
@@ -42,7 +45,12 @@ class SignatureValidator {
                         var x5cChain: List<String>? = null
                         x5cChain = X509SanRequestVerifier.instance.extractX5cFromJWT(jwt)
                         if (x5cChain != null) {
-                            return X509SanRequestVerifier.instance.validateSignatureWithCertificate(jwt, x5cChain, algorithm)
+                          val isSignatureValid = X509SanRequestVerifier.instance.validateSignatureWithCertificate(jwt, x5cChain, algorithm)
+                          if (isSignatureValid){
+                              return true
+                          }else{
+                              throw SignatureException("JWT signature x5c invalid or cannot be validated")
+                          }
                         }
                         // If no valid x5cChain, throw exception
                         throw SignatureException("JWT signature x5c invalid or cannot be validated")
@@ -108,7 +116,7 @@ class SignatureValidator {
     private fun verifyJwtSignature(jwt: String, jwkJson: String): Boolean {
         try {
             // Parse the JWK (JSON Web Key) from the JSON string
-            val jwk = ECKey.parse(jwkJson)
+            val jwk = JWK.parse(jwkJson)
 
             // Parse the JWT string into a JWS object (JSON Web Signature)
             val jwsObject = JWSObject.parse(jwt)
@@ -119,13 +127,58 @@ class SignatureValidator {
             // Create the appropriate verifier based on the algorithm used in the JWS header
             val verifier: JWSVerifier = when (algorithm) {
                 // For ES256 (ECDSA using P-256 curve and SHA-256), create an ECDSAVerifier
-                JWSAlgorithm.ES256 -> ECDSAVerifier(jwk.toECKey())
+                JWSAlgorithm.ES256 -> {
+                    if (jwk is ECKey) {
+                        ECDSAVerifier(jwk)  // Use the ECKey directly
+                    } else {
+                        throw JOSEException("JWK is not ECKey for algorithm $algorithm")
+                    }
+                }
 
                 // For ES384 (ECDSA using P-384 curve and SHA-384), create an ECDSAVerifier
-                JWSAlgorithm.ES384 -> ECDSAVerifier(jwk.toECKey())
+                JWSAlgorithm.ES384 -> {
+                    if (jwk is ECKey) {
+                        ECDSAVerifier(jwk)  // Use the ECKey directly
+                    } else {
+                        throw JOSEException("JWK is not ECKey for algorithm $algorithm")
+                    }
+                }
 
                 // For ES512 (ECDSA using P-521 curve and SHA-512), create an ECDSAVerifier
-                JWSAlgorithm.ES512 -> ECDSAVerifier(jwk.toECKey())
+                JWSAlgorithm.ES512 -> {
+                    if (jwk is ECKey) {
+                        ECDSAVerifier(jwk)  // Use the ECKey directly
+                    } else {
+                        throw JOSEException("JWK is not ECKey for algorithm $algorithm")
+                    }
+                }
+
+                // For RS256 (RSA algorithm), create an RSASSAVerifier
+                JWSAlgorithm.RS256 -> {
+                    if (jwk is RSAKey) {
+                        RSASSAVerifier(jwk)  // Use the RSAKey directly
+                    } else {
+                        throw JOSEException("JWK is not RSAKey for algorithm $algorithm")
+                    }
+                }
+
+                // For RS384 (RSA algorithm), create an RSASSAVerifier
+                JWSAlgorithm.RS384 -> {
+                    if (jwk is RSAKey) {
+                        RSASSAVerifier(jwk)  // Use the RSAKey directly
+                    } else {
+                        throw JOSEException("JWK is not RSAKey for algorithm $algorithm")
+                    }
+                }
+
+                // For RS512 (RSA algorithm), create an RSASSAVerifier
+                JWSAlgorithm.RS512 -> {
+                    if (jwk is RSAKey) {
+                        RSASSAVerifier(jwk)  // Use the RSAKey directly
+                    } else {
+                        throw JOSEException("JWK is not RSAKey for algorithm $algorithm")
+                    }
+                }
 
                 // Throw an exception if the algorithm is unsupported
                 else -> throw JOSEException("Unsupported JWS algorithm $algorithm")
@@ -141,5 +194,44 @@ class SignatureValidator {
             throw IllegalArgumentException("Invalid signature")
         }
     }
+
+//    @Throws(IllegalArgumentException::class)
+//    private fun verifyJwtSignature(jwt: String, jwkJson: String): Boolean {
+//        try {
+//            // Parse the JWK (JSON Web Key) from the JSON string
+//           // val jwk = ECKey.parse(jwkJson)
+//            // Parse the JWK (JSON Web Key) from the JSON string
+//            val jwk = JWK.parse(jwkJson)
+//
+//            // Parse the JWT string into a JWS object (JSON Web Signature)
+//            val jwsObject = JWSObject.parse(jwt)
+//
+//            // Get the algorithm specified in the JWS header
+//            val algorithm = jwsObject.header.algorithm
+//
+//            // Create the appropriate verifier based on the algorithm used in the JWS header
+//            val verifier: JWSVerifier = when (algorithm) {
+//                // For ES256 (ECDSA using P-256 curve and SHA-256), create an ECDSAVerifier
+//                JWSAlgorithm.ES256 -> ECDSAVerifier(jwk.toECKey())
+//
+//                // For ES384 (ECDSA using P-384 curve and SHA-384), create an ECDSAVerifier
+//                JWSAlgorithm.ES384 -> ECDSAVerifier(jwk.toECKey())
+//
+//                // For ES512 (ECDSA using P-521 curve and SHA-512), create an ECDSAVerifier
+//                JWSAlgorithm.ES512 -> ECDSAVerifier(jwk.toECKey())
+//                // Throw an exception if the algorithm is unsupported
+//                else -> throw JOSEException("Unsupported JWS algorithm $algorithm")
+//            }
+//
+//            // Verify the signature of the JWS using the appropriate verifier
+//            return jwsObject.verify(verifier)
+//        } catch (e: Exception) {
+//            // Print the stack trace for debugging purposes
+//            e.printStackTrace()
+//
+//            // Throw an IllegalArgumentException if signature verification fails or any error occurs
+//            throw IllegalArgumentException("Invalid signature")
+//        }
+//    }
 
 }
