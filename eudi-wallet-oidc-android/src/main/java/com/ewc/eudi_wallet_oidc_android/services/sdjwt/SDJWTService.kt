@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
 import android.util.Base64
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
@@ -380,29 +381,24 @@ class SDJWTService : SDJWTServiceInterface {
 
                     if (isStringPresentInJSONArray(sdList, hash)) {
                         try {
-                            val disclosure = Base64.decode(
-                                disclosures[index],
-                                Base64.URL_SAFE
-                            ).toString(charset("UTF-8"))
+                            val disclosure = String(
+                                Base64.decode(disclosures[index], Base64.URL_SAFE),
+                                charset("UTF-8")
+                            )
                             val (decodedKey, decodedValue) = extractKeyValue(disclosure)
-                            // Convert decodedValue to string first
-                            val decodedValueStr = decodedValue.toString()
-
-                            // Check if the string has extra quotes and trim
-                            val trimmedValue = if (decodedValueStr.startsWith("\"") && decodedValueStr.endsWith("\"")) {
-                                decodedValueStr.trim('"')
-                            } else {
-                                decodedValueStr // Keep it as is if no extra quotes
-                            }
                             if (decodedValue is JsonObject) {
-                                // If it's an object, add it directly
                                 jsonObject.add(decodedKey, decodedValue)
                             } else if (decodedValue is JsonArray) {
-                                // If it's an array, add it directly
                                 jsonObject.add(decodedKey, decodedValue)
-                            } else {
-                                // Otherwise, add it as a property
-                                jsonObject.addProperty(decodedKey, trimmedValue)
+                            } else if(decodedValue is Number){
+                                jsonObject.addProperty(decodedKey,decodedValue)
+                            } else if(decodedValue is String){
+                                jsonObject.addProperty(decodedKey,decodedValue)
+                            } else if (decodedValue is Boolean){
+                                jsonObject.addProperty(decodedKey,decodedValue)
+                            }
+                            else {
+                                jsonObject.addProperty(decodedKey, decodedValue.toString())
                             }
                         } catch (e: IllegalArgumentException) {
                             // Handle invalid base64-encoded strings
@@ -469,12 +465,44 @@ class SDJWTService : SDJWTServiceInterface {
         return false
     }
 
+    //    private fun extractKeyValue(decodedString: String): Pair<String, Any> {
+//        val jsonArray = JsonParser.parseString(decodedString).asJsonArray
+//        val key = jsonArray[1].asString
+//        val value = jsonArray[2]
+//        return Pair(key, value)
+//    }
     private fun extractKeyValue(decodedString: String): Pair<String, Any> {
         val jsonArray = JsonParser.parseString(decodedString).asJsonArray
         val key = jsonArray[1].asString
         val value = jsonArray[2]
-        return Pair(key, value)
+
+        // Handle the value properly based on its type
+        val processedValue = when {
+            value.isJsonPrimitive -> {
+                val primitive = value.asJsonPrimitive
+                when {
+                    primitive.isBoolean -> primitive.asBoolean
+                    primitive.isNumber -> {
+                        // Handle as either Int or Double, depending on the value
+                        if (primitive.asString.contains('.')) {
+                            primitive.asDouble
+                        } else {
+                            primitive.asInt
+                        }
+                    }
+                    primitive.isString -> primitive.asString
+                    else -> primitive.asString // Handle fallback case
+                }
+            }
+            value.isJsonObject -> value.asJsonObject
+            value.isJsonArray -> value.asJsonArray
+            else -> value.toString() // Fallback for other types
+        }
+
+        return Pair(key, processedValue)
     }
+
+
 
     private fun getDisclosuresFromSDJWT(credential: String?): List<String>? {
         val split = credential?.split("~")

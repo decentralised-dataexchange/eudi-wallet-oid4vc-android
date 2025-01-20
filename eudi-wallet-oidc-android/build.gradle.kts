@@ -56,7 +56,7 @@ dependencies {
 // Coroutine adapter for Retrofit
     implementation("com.jakewharton.retrofit:retrofit2-kotlin-coroutines-adapter:0.9.2")
 
-    implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
+    implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.11.1")
     implementation("org.slf4j:slf4j-api") {
         version {
             strictly("2.0.9")
