@@ -211,7 +211,8 @@ class CborUtils {
                         try {
                             // Decode the ByteString as CBOR
                             val nestedCBORStream = ByteArrayInputStream(element.bytes)
-                            val nestedCBOR = CborDecoder(nestedCBORStream).decode()[0]
+                            // val nestedCBOR = CborDecoder(nestedCBORStream).decode()[0]
+                            val nestedCBOR = CborDecoder(nestedCBORStream).decodeNext()
                             if (nestedCBOR.tag.value == 24L) {
                                 // Check if the item under the tag is a ByteString
                                 if (nestedCBOR is CborByteString) {
@@ -219,12 +220,13 @@ class CborUtils {
                                         // Decode the inner ByteString
                                         val decodedInnerCBORStream =
                                             ByteArrayInputStream(nestedCBOR.bytes)
-                                        val decodedInnerCBOR =
-                                            CborDecoder(decodedInnerCBORStream).decode()[0]
+//                                        val decodedInnerCBOR =
+//                                            CborDecoder(decodedInnerCBORStream).decode()[0]
+                                        val decodedInnerCBOR = CborDecoder(decodedInnerCBORStream).decodeNext()
 
                                         // Extract the document type
-                                        docType = extractDocType(decodedInnerCBOR)
-
+                                        docType = extractDocType(decodedInnerCBOR ?: continue)
+                                        if (docType != null) break
                                     } catch (e: Exception) {
                                         println("Failed to decode inner ByteString under Tag 24.")
                                     }
