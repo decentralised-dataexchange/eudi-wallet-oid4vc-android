@@ -58,21 +58,22 @@ object WalletAttestationUtil {
     suspend fun initiateWalletUnitAttestation(
         context: Context,
         cloudProjectNumber: Long,
-        baseUrl: String
+        baseUrl: String,
+        inputEcKey:ECKey?
     ): WalletAttestationResult? {
         this.baseUrl = baseUrl
         var clientAssertion: String? = null
         return try {
             // Step 1: Generate the key pair with attestation
-            val keyPair = generateES256Key()
-            val publicKey = keyPair?.public?.let { DIDService().convertToECPublicKey(it) }
-            val privateKey = keyPair?.private?.let { DIDService().convertToECPrivateKey(it) }
+            val ecKey = inputEcKey ?: run {
+                val keyPair = generateES256Key()
+                val publicKey = keyPair?.public?.let { DIDService().convertToECPublicKey(it) }
+                val privateKey = keyPair?.private?.let { DIDService().convertToECPrivateKey(it) }
+                Log.d(TAG, "Generated privateKey with attestation: $privateKey")
+                Log.d(TAG, "Generated publicKey with attestation: $publicKey")
 
-            val ecKey = ECKey.Builder(Curve.P_256, publicKey)
-                .privateKey(privateKey).build()
-
-            Log.d(TAG, "generated privateKey With Attestation:$privateKey")
-            Log.d(TAG, "generated publicKey With Attestation:$publicKey")
+                ECKey.Builder(Curve.P_256, publicKey).privateKey(privateKey).build()
+            }
             val did = DIDService().createDID(ecKey)
             Log.d(TAG, "Generated DID: $did")
             // Step 2: Prepare the integrity token provider
@@ -393,13 +394,13 @@ object WalletAttestationUtil {
                 .claim("iat", Date())
                 .claim("sd_hash", SDJWTService().calculateSHA256Hash(credential))
 
-               // If claims are provided, add them to the claims set
-                claims?.forEach { (key, value) ->
+            // If claims are provided, add them to the claims set
+            claims?.forEach { (key, value) ->
                 claimsSetBuilder.claim(key, value)
-               }
+            }
 
-             // Build the claims set
-             val claimsSet = claimsSetBuilder.build()
+            // Build the claims set
+            val claimsSet = claimsSetBuilder.build()
             Log.d("processToken:", "createKeyBindingJWT claimsSet value = ${claimsSet.toJSONObject()}")
 
             // Create JWT header

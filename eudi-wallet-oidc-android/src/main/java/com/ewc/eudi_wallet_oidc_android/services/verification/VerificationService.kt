@@ -911,7 +911,7 @@ class VerificationService : VerificationServiceInterface {
                         var claimsSet: JWTClaimsSet? = null
                         if (presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)?.format?.containsKey(
                                 "mso_mdoc"
-                            ) != true ||
+                            ) != true &&
                             presentationDefinition.format?.containsKey("mso_mdoc") != true
                         ) {
                             val jwt: JWT = JWTParser.parse(credential)
