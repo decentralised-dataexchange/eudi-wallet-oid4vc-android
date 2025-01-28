@@ -2,18 +2,17 @@ package com.ewc.eudi_wallet_oidc_android.services.utils.credentialRevocation
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
+import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import okhttp3.ResponseBody
 import org.json.JSONObject
 import java.util.Base64
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-
+import java.math.BigInteger
 class CredentialRevocationUtil {
     data class StatusModel(
         val statusUri: String,
@@ -39,7 +38,7 @@ class CredentialRevocationUtil {
 
             for (credential in credentials) {
                 if (credential.isNullOrBlank()) continue // Skip null or blank credentials
-                val (idx, uri) = extractStatusDetailsFromJWT(credential) ?: continue
+                val (idx, uri) = extractStatusDetails(credential) ?: continue
                 for (statusModel in statusModels) {
                     if (statusModel.statusUri == uri) {
                         val correspondingStatusList = statusModel.statusList
@@ -66,7 +65,7 @@ class CredentialRevocationUtil {
         for (credential in credentials) {
             if (credential.isNullOrBlank()) continue
 
-            val (idx, uri) = extractStatusDetailsFromJWT(credential) ?: continue
+            val (idx, uri) = extractStatusDetails(credential) ?: continue
             if (uri != null) {
                 statusUris.add(uri)
             }
@@ -156,49 +155,66 @@ class CredentialRevocationUtil {
         return Pair(statusListString, bitsValue)
     }
 
-    private fun extractStatusDetailsFromJWT(credential: String): Pair<Int?, String?>? {
+    private fun extractStatusDetails(credential: String): Pair<Int?, String?>? {
+        return try {
+            if (JwtUtils.isValidJWT(credential)) {
+                val jwtParts = credential.split(".")
+                val payloadBase64 = jwtParts[1]
+                val decodedPayload = try {
+                    String(Base64.getDecoder().decode(payloadBase64))
+                } catch (e: IllegalArgumentException) {
+                    Log.e("Base64 Decoding Error", e.message.toString())
+                    return null
+                }
 
-        val jwtParts = credential.split(".")
-        if (jwtParts.size != 3) {
-            println("Invalid JWT token format.")
-            return null
-        }
+                val jsonPayload = try {
+                    Gson().fromJson(decodedPayload, JsonObject::class.java)
+                } catch (e: Exception) {
+                    Log.e("Error parsing JWT payload", e.message.toString())
+                    return null
+                }
 
+                val status = jsonPayload.getAsJsonObject("status") ?: run {
+                    Log.e("Error", "'status' field not found in JWT payload.")
+                    return null
+                }
 
-        val payloadBase64 = jwtParts[1]
-        val decodedPayload = String(Base64.getDecoder().decode(payloadBase64))
+                val statusList = status.getAsJsonObject("status_list") ?: run {
+                    Log.e("Error", "'status_list' field not found in 'status' object.")
+                    return null
+                }
 
+                val idx = statusList.get("idx")?.asInt
+                val uri = statusList.get("uri")?.asString
 
-        val jsonPayload = try {
-            Gson().fromJson(decodedPayload, JsonObject::class.java)
+                if (idx == null || uri == null) {
+                    Log.e("Error", "Missing 'idx' or 'uri' in 'status_list'.")
+                    return null
+                }
+
+                return Pair(idx, uri)
+            } else  {
+                return try {
+                    val issuerAuth = CborUtils.processExtractIssuerAuth(listOf(credential))
+                    val statusList = CborUtils.getStatusList(issuerAuth)
+
+                    val idx = (statusList?.get("idx") as? BigInteger)?.toInt()
+                    val uri = statusList?.get("uri") as? String
+
+                    if (idx == null || uri == null) {
+                        Log.e("Error", "Missing 'idx' or 'uri' in 'status_list'.")
+                        return null
+                    }
+                    Pair(idx, uri)
+                } catch (e: Exception) {
+                    Log.e("CBOR Processing Error", e.message.toString())
+                    null
+                }
+            }
         } catch (e: Exception) {
-            println("Error parsing JWT payload: ${e.message}")
-            return null
+            Log.e("extractStatusDetails", "Unexpected error: ${e.message}")
+            null
         }
-
-
-        val status = jsonPayload.getAsJsonObject("status") ?: run {
-            println("'status' field not found in JWT payload.")
-            return null
-        }
-
-        val statusList = status.getAsJsonObject("status_list") ?: run {
-            println("'status_list' field not found in 'status' object.")
-            return null
-        }
-
-
-        val idx = statusList.get("idx")?.asInt
-        val uri = statusList.get("uri")?.asString
-
-
-        if (idx == null || uri == null) {
-            println("Missing 'idx' or 'uri' in 'status_list'.")
-            return null
-        }
-
-
-        return Pair(idx, uri)
     }
 
 }

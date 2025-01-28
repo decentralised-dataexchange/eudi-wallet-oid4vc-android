@@ -199,6 +199,46 @@ class CborUtils {
 
             return docType
         }
+        fun getStatusList(cborData: DataItem): Map<String, Any>? {
+            var statusList: Map<String, Any>? = null
+            if (cborData is CborArray) {
+                // Iterate over elements in the array
+                for (element in cborData.dataItems) { // Using getDataItems() to access the elements
+                    // Check if the element is a ByteString
+                    if (element is CborByteString) {
+                        try {
+                            // Decode the ByteString as CBOR
+                            val nestedCBORStream = ByteArrayInputStream(element.bytes)
+                            // Decode next CBOR data item
+                            val nestedCBOR = CborDecoder(nestedCBORStream).decodeNext()
+                            if (nestedCBOR.tag.value == 24L) {
+                                // Check if the item under the tag is a ByteString
+                                if (nestedCBOR is CborByteString) {
+                                    try {
+                                        // Decode the inner ByteString
+                                        val decodedInnerCBORStream =
+                                            ByteArrayInputStream(nestedCBOR.bytes)
+                                        val decodedInnerCBOR = CborDecoder(decodedInnerCBORStream).decodeNext()
+
+                                        // Extract the status list
+                                        statusList = extractStatusList(decodedInnerCBOR ?: continue)
+                                        if (statusList != null) break
+                                    } catch (e: Exception) {
+                                        println("Failed to decode inner ByteString under Tag 24.")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("Could not decode ByteString as CBOR, inspecting data directly.")
+                            println("ByteString data: ${element.bytes.joinToString(", ") { it.toString() }}")
+                        }
+                    } else {
+                        println("Element is not a ByteString: $element")
+                    }
+                }
+            }
+            return statusList
+        }
 
         private fun getDocType(cborData: DataItem): String? {
 
@@ -272,6 +312,56 @@ class CborUtils {
             }
             return null
         }
+        private fun extractStatusList(cborData: DataItem): Map<String, Any>? {
+            // Check if the input is a CborMap (Map class from the CBOR library)
+            if (cborData is CborMap) {
+                // Iterate over the keys in the map
+                for (key in cborData.getKeys()) {
+                    // Check if the key is "status"
+                    if (key is CborUnicodeString && key.string == "status") {
+                        // Get the value associated with "status"
+                        val statusValue = cborData.get(key)
+
+                        // Check if the value is a CborMap
+                        if (statusValue is CborMap) {
+                            // Now, look for the "status_list" inside the "status" map
+                            for (nestedKey in statusValue.getKeys()) {
+                                if (nestedKey is CborUnicodeString && nestedKey.string == "status_list") {
+                                    // Found "status_list", return it as a map
+                                    val statusListValue = statusValue.get(nestedKey)
+                                    if (statusListValue is CborMap) {
+                                        return cborMapToJsonMap(statusListValue)
+                                    } else {
+                                        println("The value associated with 'status_list' is not a map.")
+                                        return null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            println("'status_list' not found in the CBOR data.")
+            return null
+        }
+
+        //convert CborMap to a Kotlin Map
+        private fun cborMapToJsonMap(cborMap: CborMap): Map<String, Any> {
+            val resultMap = mutableMapOf<String, Any>()
+            for (key in cborMap.getKeys()) {
+                if (key is CborUnicodeString) {
+                    resultMap[key.string] = when (val value = cborMap.get(key)) {
+                        is CborUnicodeString -> value.string
+                        is CBORInteger -> value.value
+                        is CborMap -> cborMapToJsonMap(value)
+                        is CborByteString -> value.bytes
+                        else -> value.toString()
+                    }
+                }
+            }
+            return resultMap
+        }
+
 
         @OptIn(ExperimentalEncodingApi::class)
         fun extractCredentialExpiryFromIssuerAuth(allCredentialList: List<String?>?): String? {
