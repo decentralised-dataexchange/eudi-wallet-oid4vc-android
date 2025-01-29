@@ -1,8 +1,10 @@
 //package io.igrant.mobileagent.utils.credentialRevocation
 package com.ewc.eudi_wallet_oidc_android.services.utils.credentialRevocation
+import java.io.ByteArrayOutputStream
 import java.util.Base64
 import java.util.zip.Deflater
 import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 class StatusList(private var size: Int, private var bits: Int) {
     private var list: ByteArray
@@ -88,11 +90,15 @@ class StatusList(private var size: Int, private var bits: Int) {
 
     private fun decompress(data: ByteArray): ByteArray {
         val inflater = Inflater()
-        inflater.setInput(data)
-        val output = ByteArray(data.size * 4)
-        val decompressedSize = inflater.inflate(output)
-        inflater.end()
-        return output.copyOf(decompressedSize)
+        val outputStream = ByteArrayOutputStream()
+        InflaterInputStream(data.inputStream(), inflater).use { input ->
+            val buffer = ByteArray(1024) // Read in chunks
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
+            }
+        }
+        return outputStream.toByteArray()
     }
 
     private fun cborToBytes(cbor: Map<String, Any>): ByteArray {
