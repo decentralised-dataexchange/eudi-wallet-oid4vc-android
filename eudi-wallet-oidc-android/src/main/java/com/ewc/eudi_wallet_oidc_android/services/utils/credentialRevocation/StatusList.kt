@@ -64,10 +64,14 @@ class StatusList(private var size: Int, private var bits: Int) {
     }
 
     fun get(pos: Int): Int {
-        val rest = pos % divisor
-        val floored = pos / divisor
-        val shift = rest * bits
-        return (list[floored].toInt() and (((1 shl bits) - 1) shl shift)) shr shift
+        return try {
+            val rest = pos % divisor
+            val floored = pos / divisor
+            val shift = rest * bits
+            return (list[floored].toInt() and (((1 shl bits) - 1) shl shift)) shr shift
+        }catch (e:Exception){
+            0
+        }
     }
 
     override fun toString(): String {
