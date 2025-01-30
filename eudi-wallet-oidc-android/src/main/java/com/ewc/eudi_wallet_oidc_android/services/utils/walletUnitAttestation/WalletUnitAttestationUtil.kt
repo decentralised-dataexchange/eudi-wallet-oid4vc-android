@@ -246,7 +246,7 @@ object WalletAttestationUtil {
     }
 
 
-    private fun generateClientAssertion(
+     fun generateClientAssertion(
         ecKey: ECKey,
         did: String?
     ): String {
