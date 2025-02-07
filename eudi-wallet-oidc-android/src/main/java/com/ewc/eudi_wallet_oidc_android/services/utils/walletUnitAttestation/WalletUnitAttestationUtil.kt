@@ -384,12 +384,13 @@ object WalletAttestationUtil {
         aud: String?,
         credential: String,
         subJwk: JWK?,
-        claims: Map<String, Any>?
+        claims: Map<String, Any>?,
+        nonce: String?
     ): String? {
         try {
             // Start building the JWT claims
             val claimsSetBuilder = JWTClaimsSet.Builder()
-                .claim("nonce", UUID.randomUUID().toString())
+                .claim("nonce",nonce ?: UUID.randomUUID().toString())
                 .claim("aud", aud)
                 .claim("iat", Date())
                 .claim("sd_hash", SDJWTService().calculateSHA256Hash(credential))

@@ -972,7 +972,9 @@ class VerificationService : VerificationServiceInterface {
                                 aud = presentationRequest.clientId,
                                 credential = credential,
                                 subJwk = subJwk,
-                                claims = if (claims.isNotEmpty()) claims else null
+                                claims = if (claims.isNotEmpty()) claims else null,
+                                nonce = presentationRequest?.nonce
+
                             )
                             if (keyBindingResponse != null) {
                                 // Append "~" only if it's not present at the end of the credential, then append keyBindingResponse
@@ -1284,7 +1286,8 @@ class VerificationService : VerificationServiceInterface {
                             aud = presentationRequest.clientId,
                             credential = credential,
                             subJwk = subJwk,
-                            claims = if (claims.isNotEmpty()) claims else null
+                            claims = if (claims.isNotEmpty()) claims else null,
+                            nonce = presentationRequest?.nonce
                         )
 
                         Log.d("ProcessToken:", "keyBindingResponse $keyBindingResponse")
