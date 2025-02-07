@@ -9,10 +9,10 @@ import java.text.ParseException
 
 class ProcessEbsiJWKFromKID {
     // This function fetches and processes the DID Document, and extracts the P-256 JWK if present.
-    suspend fun processEbsiJWKFromKID(did: String?): ECKey? {
+    suspend fun processEbsiJWKFromKID(kid: String?): ECKey? {
         return try {
             // Validate DID format
-            if (did == null || !did.startsWith("did:ebsi:z")) {
+            if (kid == null || !kid.startsWith("did:ebsi:z")) {
                 throw IllegalArgumentException("Invalid DID format")
             }
 
@@ -20,25 +20,26 @@ class ProcessEbsiJWKFromKID {
                 ?: throw IllegalStateException("API service not available")
 
             // First attempt with conformance API
+            val did = runCatching { kid?.split("#")?.getOrNull(0) }.getOrElse { kid }
             var response: Response<DIDDocument>? = service.ebsiDIDResolver(
                 "https://api-conformance.ebsi.eu/did-registry/v5/identifiers/$did"
             )
-
+            if (response != null && response.isSuccessful) {
+                val ecKey = extractJWK(response.body(), kid)
+                if (ecKey!=null)
+                    return ecKey
+            }
             // If the conformance API call is not successful, attempt the pilot API
-            if (response == null || !response.isSuccessful) {
-                response = service.ebsiDIDResolver(
-                    "https://api-pilot.ebsi.eu/did-registry/v5/identifiers/$did"
-                )
-            }
 
-            // If the second API call also fails, throw an exception
-            if (response == null || !response.isSuccessful) {
-                throw IllegalStateException("Failed to fetch DID Document from both endpoints")
+            response = service.ebsiDIDResolver(
+                "https://api-pilot.ebsi.eu/did-registry/v5/identifiers/$did"
+            )
+            if (response != null && response.isSuccessful) {
+                val ecKey = extractJWK(response.body(), kid)
+                if (ecKey!=null)
+                    return ecKey
             }
-
-            // Extract the P-256 JWK from the JSON response
-            val didDocument = response.body() ?: throw IllegalStateException("Empty response body")
-            extractJWK(didDocument)
+            throw IllegalStateException("Failed to fetch DID Document from both endpoints")
         } catch (e: Exception) {
             // Handle errors, possibly log or rethrow as needed
             println("Error processing DID: ${e.message}")
@@ -46,7 +47,9 @@ class ProcessEbsiJWKFromKID {
         }
     }
 
-    private fun extractJWK(didDocument: DIDDocument): ECKey? {
+    private fun extractJWK(didDocument: DIDDocument?, kid: String): ECKey? {
+        if (didDocument == null)
+            return null
         return try {
             // Iterate through each verification method
             for (method in didDocument.verificationMethods) {
@@ -54,7 +57,7 @@ class ProcessEbsiJWKFromKID {
                     val publicKeyJwk = method.publicKeyJwk
 
                     // Check if 'crv' is 'P-256'
-                    if (publicKeyJwk.crv == "P-256") {
+                    if (method.id == kid && publicKeyJwk.crv == "P-256") {
                         // Convert the JSON JWK to a Nimbus JWK
                         val jwk = JWK.parse(
                             """{
