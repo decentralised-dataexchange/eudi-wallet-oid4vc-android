@@ -931,7 +931,7 @@ class IssueService : IssueServiceInterface {
                         val format =
                             if (credentialSupported.has("format")) credentialSupported.getString("format") else ""
 
-                        if (format == "vc+sd-jwt") {
+                        if (format == "vc+sd-jwt" || format == "dc+sd-jwt") {
                             return credentialSupported.getJSONObject("credential_definition")
                                 .getString("vct")
                         } else {
@@ -963,7 +963,7 @@ class IssueService : IssueServiceInterface {
                                     val format =
                                         if (jsonObject.has("format")) jsonObject.getString("format") else ""
 
-                                    if (format == "vc+sd-jwt") {
+                                    if (format == "vc+sd-jwt" || format == "dc+sd-jwt") {
                                         return jsonObject.getJSONObject("credential_definition")
                                             .getString("vct")
                                     } else {
@@ -1035,7 +1035,7 @@ class IssueService : IssueServiceInterface {
                                         "format"
                                     ) else ""
 
-                                if (format == "vc+sd-jwt") {
+                                if (format == "vc+sd-jwt" || format == "dc+sd-jwt") {
                                     return credentialSupported.getString("vct")
                                 } else {
                                     val typeFromCredentialIssuer: JSONArray =
