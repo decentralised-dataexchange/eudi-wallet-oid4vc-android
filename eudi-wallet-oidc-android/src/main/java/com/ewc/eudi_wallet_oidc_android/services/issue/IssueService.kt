@@ -17,6 +17,7 @@ import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
 import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
+import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEbsiV1
@@ -57,7 +58,7 @@ class IssueService : IssueServiceInterface {
      *     credential offer uri
      * @return Credential Offer
      */
-    override suspend fun resolveCredentialOffer(data: String?): CredentialOffer? {
+    override suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer? {
         if (data.isNullOrBlank()) return null
         try {
             val uri = Uri.parse(data)
@@ -67,17 +68,22 @@ class IssueService : IssueServiceInterface {
                 val response =
                     ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
                 return if (response?.isSuccessful == true) {
-                    parseCredentialOffer(credentialOfferJson = response.body()?.string())
+                    WrappedCredentialOffer(
+                        credentialOffer =  parseCredentialOffer(credentialOfferJson = response.body()?.string())
+                    )
+
                 } else {
-                    null
+                    WrappedCredentialOffer(
+                        errorResponse = processError(response?.errorBody()?.string())
+                    )
                 }
             }
 
             val credentialOfferString = uri.getQueryParameter("credential_offer")
             if (!credentialOfferString.isNullOrBlank()) {
-                return Gson().fromJson(credentialOfferString, CredentialOffer::class.java)
+                return WrappedCredentialOffer(credentialOffer =  Gson().fromJson(credentialOfferString, CredentialOffer::class.java) )
             }
-            return null
+            return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
         } catch (exc: UriValidationFailed) {
             return null
         }catch (e:Exception){

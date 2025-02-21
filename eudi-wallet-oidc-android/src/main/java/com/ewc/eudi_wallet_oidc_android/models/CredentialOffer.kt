@@ -4,7 +4,10 @@ import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEbsiV1
 import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEwcV1
 import com.ewc.eudi_wallet_oidc_android.models.v2.CredentialOfferEwcV2
 import com.google.gson.annotations.SerializedName
-
+data class WrappedCredentialOffer(
+    var credentialOffer: CredentialOffer?=null,
+    var errorResponse: ErrorResponse? = null,
+)
 data class CredentialOffer(
     @SerializedName("credential_issuer") var credentialIssuer: String? = null,
     @SerializedName("credentials") var credentials: ArrayList<Credentials>? = null,
