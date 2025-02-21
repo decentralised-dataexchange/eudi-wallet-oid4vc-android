@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfi
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.JWK
@@ -17,7 +18,7 @@ interface IssueServiceInterface {
      *                  The data can contain credential offer or credential offer uri
      * @return Credential Offer
      */
-    suspend fun resolveCredentialOffer(data: String?): CredentialOffer?
+    suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer?
 
     /**
      * To process the authorisation request
