@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
 import android.util.Base64
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
@@ -13,6 +14,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.JsonPrimitive
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -23,11 +25,20 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.UUID
+import kotlinx.coroutines.awaitAll
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class SDJWTService : SDJWTServiceInterface {
 
@@ -65,53 +76,13 @@ class SDJWTService : SDJWTServiceInterface {
      * @return The SD-JWT-R string.
      * @throws IllegalArgumentException if an error occurs during processing or signing.
      */
-    override fun createSDJWTR(
+    override suspend fun createSDJWTR(
         credential: String?,
         presentationRequest: PresentationRequest,
         subJwk: ECKey
     ): String? {
-        try {
-            val presentationDefinition =
-                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
-            val processedCredentialWithRequiredDisclosures =
-                processDisclosuresWithPresentationDefinition(
-                    credential,
-                    presentationDefinition
-                )
-            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
-                val iat = Date()
 
-                val claimsSet = JWTClaimsSet.Builder()
-                    .audience(presentationRequest.clientId)
-                    .issueTime(iat)
-                    .claim("nonce", UUID.randomUUID().toString())
-                    .claim(
-                        "sd_hash",
-                        SDJWTService().calculateSHA256Hash(
-                            processedCredentialWithRequiredDisclosures
-                        )
-                    )
-                    .build()
-
-                // Create JWT for ES256K alg
-                val jwsHeader = JWSHeader.Builder(JWSAlgorithm.ES256)
-                    .type(JOSEObjectType("kb_jwt"))
-                    .build()
-
-                val jwt = SignedJWT(
-                    jwsHeader,
-                    claimsSet
-                )
-
-                // Sign with private EC key
-                jwt.sign(ECDSASigner(subJwk))
-                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
-            }
-
-            return processedCredentialWithRequiredDisclosures
-        } catch (e: Exception) {
-            throw IllegalArgumentException("Error creating SD-JWT-R", e)
-        }
+        return ""
     }
 
 
@@ -123,48 +94,49 @@ class SDJWTService : SDJWTServiceInterface {
      * @param subJwk
      * @return
      */
-    override fun createSDJWTR(
+    override suspend fun createSDJWTR(
         credential: String?,
-        presentationRequest: PresentationRequest,
+        inputDescriptors: InputDescriptors,
+        format: String,
         subJwk: JWK
     ): String? {
         try {
-            val presentationDefinition =
-                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+//            val presentationDefinition =
+//                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
             val processedCredentialWithRequiredDisclosures =
                 processDisclosuresWithPresentationDefinition(
                     credential,
-                    presentationDefinition
+                    inputDescriptors, format
                 )
-            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
-                val iat = Date()
-
-                val claimsSet = JWTClaimsSet.Builder()
-                    .audience(presentationRequest.clientId)
-                    .issueTime(iat)
-                    .claim("nonce", UUID.randomUUID().toString())
-                    .claim(
-                        "sd_hash",
-                        SDJWTService().calculateSHA256Hash(
-                            processedCredentialWithRequiredDisclosures
-                        )
-                    )
-                    .build()
-
-                // Create JWT for ES256K alg
-                val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-                    .type(JOSEObjectType("kb_jwt"))
-                    .build()
-
-                val jwt = SignedJWT(
-                    jwsHeader,
-                    claimsSet
-                )
-
-                // Sign with private EC key
-                jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
-                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
-            }
+//            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
+//                val iat = Date()
+//
+//                val claimsSet = JWTClaimsSet.Builder()
+//                    .audience(presentationRequest.clientId)
+//                    .issueTime(iat)
+//                    .claim("nonce", UUID.randomUUID().toString())
+//                    .claim(
+//                        "sd_hash",
+//                        SDJWTService().calculateSHA256Hash(
+//                            processedCredentialWithRequiredDisclosures
+//                        )
+//                    )
+//                    .build()
+//
+//                // Create JWT for ES256K alg
+//                val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+//                    .type(JOSEObjectType("kb_jwt"))
+//                    .build()
+//
+//                val jwt = SignedJWT(
+//                    jwsHeader,
+//                    claimsSet
+//                )
+//
+//                // Sign with private EC key
+//                jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
+//                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
+//            }
 
             return processedCredentialWithRequiredDisclosures
         } catch (e: Exception) {
@@ -180,128 +152,279 @@ class SDJWTService : SDJWTServiceInterface {
      * @return The processed JWT containing only the disclosures matching the requested parameters.
      * @throws IllegalArgumentException if the processing fails due to invalid inputs or other errors.
      */
-    override fun processDisclosuresWithPresentationDefinition(
+//    override  fun processDisclosuresWithPresentationDefinition(
+//        credential: String?,
+//        presentationDefinition: PresentationDefinition
+//    ): String? {
+//        if (credential == null) return ""
+//        try {
+//            val disclosureList: MutableList<String> = mutableListOf()
+//            // Split the credential into disclosures and the issued JWT
+//
+//            val disclosures = getDisclosuresFromSDJWT(credential)
+//            var issuedJwt = getIssuerJwtFromSDJWT(credential)
+//
+//            // Extract requested parameters from the presentation definition
+//            val requestedParams: MutableList<String> = mutableListOf()
+//            presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
+//                it.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
+//                    requestedParams.add(paramName)
+//                }
+//            }
+//
+//            // Filter disclosures based on requested parameters
+//            disclosures?.forEach { disclosure ->
+//                try {
+//                    val list =
+//                        JSONArray(
+//                            Base64.decode(disclosure, Base64.URL_SAFE).toString(charset("UTF-8"))
+//                        )
+//                    if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
+//                        disclosureList.add(disclosure)
+//                    }
+//                    val thirdElement = list.opt(2)
+//                    if (thirdElement is JSONObject) { // Checks if it's a JSON object
+//                        val keys = thirdElement.keys() // Get keys from the JSONObject
+//
+//                        while (keys.hasNext()) {
+//                            val key = keys.next()
+//                            if (requestedParams.contains(key)) {
+//                                disclosureList.add(disclosure)
+//                            }
+//                        }
+//                    }
+//                    val pex = PresentationExchange()
+//                    val sdList = mutableListOf<String>()
+//                    presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
+//                        // Retrieve formatMap from presentationDefinition or from inputDescriptors
+//                        val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
+//                            ?: presentationDefinition.inputDescriptors
+//                                ?.flatMap { it.format?.toList() ?: emptyList() }
+//                                ?.toMap()
+//
+//                        // Initialize processed credentials and credentialList
+//                        var processedCredentials: List<String> = emptyList()
+//                        var credentialList: ArrayList<String?> = arrayListOf()
+//
+//                        if (formatMap != null) {
+//                            if (formatMap.containsKey("mso_mdoc")) {
+//                                credentialList = arrayListOf(credential)
+//                                processedCredentials = CborUtils.processMdocCredentialToJsonString(credentialList) ?: emptyList()
+//                            } else {
+//                                credentialList = VerificationService().splitCredentialsBySdJWT(listOf(credential), inputDescriptors.constraints?.limitDisclosure != null)
+//                                processedCredentials = VerificationService().processCredentialsToJsonString(credentialList)
+//                            }
+//                        }
+//                        val inputDescriptor = Gson().toJson(inputDescriptors)
+//
+//                        val matches: List<MatchedCredential> =
+//                            pex.matchCredentials(inputDescriptor, processedCredentials)
+//                        for (match in matches) {
+//                            for (field in match.fields) {
+//                                val value = field.path.value
+//                                // Check if the value is a Map or JSONObject
+//                                if (value is JSONObject) {
+//                                    // If it's a JSONObject, check for "_sd" key
+//                                    if (value.has("_sd")) {
+//                                        val sdArray = value.getJSONArray("_sd")
+//                                        // Create a list to hold the _sd values
+//                                        for (i in 0 until sdArray.length()) {
+//                                            val sdItem = sdArray.get(i)
+//                                            // You can process each item here if needed
+//                                            if (sdItem is String) {
+//                                                // Append each _sd item to the sdList
+//                                                sdList.add(sdItem)
+//                                            }
+//                                        }
+//                                    }
+//                                } else if (value is Map<*, *>) {
+//                                    // If it's a Map, check for "_sd" key
+//                                    val map = value as Map<String, Any>
+//                                    val sdArray = map["_sd"]
+//                                    if (sdArray is List<*>) {
+//                                        // Handle the _sd array if it exists
+//                                        for (sdItem in sdArray) {
+//                                            if (sdItem is String) {
+//                                                // Append each _sd item to the sdList
+//                                                sdList.add(sdItem)
+//                                            }
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                        }
+//
+//                    }
+//                    val response =  calculateSHA256Hash(disclosure)
+//                    if(sdList.contains(response)){
+//                        disclosureList.add(disclosure)
+//                    }
+//
+//
+//                } catch (e: Exception) { }
+//            }
+//
+//            for(disclosureValue in disclosureList){
+//                issuedJwt = "$issuedJwt~$disclosureValue"
+//            }
+//
+//            return issuedJwt ?: ""
+//        } catch (e: Exception) {
+//            throw IllegalArgumentException(
+//                "Error processing disclosures with presentation definition",
+//                e
+//            )
+//        }
+//    }
+
+
+
+    override suspend fun processDisclosuresWithPresentationDefinition(
         credential: String?,
-        presentationDefinition: PresentationDefinition
+        inputDescriptors: InputDescriptors,
+        format: String
     ): String? {
         if (credential == null) return ""
-        try {
-            val disclosureList: MutableList<String> = mutableListOf()
-            // Split the credential into disclosures and the issued JWT
+        return withContext(Dispatchers.Default) {
 
-            val disclosures = getDisclosuresFromSDJWT(credential)
-            var issuedJwt = getIssuerJwtFromSDJWT(credential)
+            try {
+                val disclosureList: MutableList<String> = mutableListOf()
+                val disclosures = getDisclosuresFromSDJWT(credential)
+                var issuedJwt = getIssuerJwtFromSDJWT(credential)
 
-            // Extract requested parameters from the presentation definition
-            val requestedParams: MutableList<String> = mutableListOf()
-            presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
-                it.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
-                    requestedParams.add(paramName)
-                }
-            }
+//                if (inputDescriptors.constraints?.limitDisclosure == null){
+//                    if (issuedJwt.isNullOrEmpty())
+//                    {
+//                        return@withContext null
+//                    }
+//                    else{
+//                        return@withContext credential
+//                    }
+//
+//                }
+//                else{
+                    // Extract requested parameters from the presentation definition
+                    val requestedParams: MutableList<String> = mutableListOf()
+//                presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
+//                    it.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
+//                        requestedParams.add(paramName)
+//                    }
+//                }
 
-            // Filter disclosures based on requested parameters
-            disclosures?.forEach { disclosure ->
-                try {
-                    val list =
-                        JSONArray(
-                            Base64.decode(disclosure, Base64.URL_SAFE).toString(charset("UTF-8"))
-                        )
-                    if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
-                        disclosureList.add(disclosure)
-                    }
-                    val thirdElement = list.opt(2)
-                    if (thirdElement is JSONObject) { // Checks if it's a JSON object
-                        val keys = thirdElement.keys() // Get keys from the JSONObject
-
-                        while (keys.hasNext()) {
-                            val key = keys.next()
-                            if (requestedParams.contains(key)) {
-                                disclosureList.add(disclosure)
-                            }
+                    inputDescriptors.constraints?.fields?.forEach { field ->
+                        field.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
+                            requestedParams.add(paramName)
                         }
                     }
-                    val pex = PresentationExchange()
+
                     val sdList = mutableListOf<String>()
-                    presentationDefinition.inputDescriptors?.forEach { inputDescriptors ->
-                        // Retrieve formatMap from presentationDefinition or from inputDescriptors
-                        val formatMap = presentationDefinition.format?.takeIf { it.isNotEmpty() }
-                            ?: presentationDefinition.inputDescriptors
-                                ?.flatMap { it.format?.toList() ?: emptyList() }
-                                ?.toMap()
+                    val pex = PresentationExchange()
 
-                        // Initialize processed credentials and credentialList
-                        var processedCredentials: List<String> = emptyList()
-                        var credentialList: ArrayList<String?> = arrayListOf()
 
-                        if (formatMap != null) {
-                            if (formatMap.containsKey("mso_mdoc")) {
-                                credentialList = arrayListOf(credential)
-                                processedCredentials = CborUtils.processMdocCredentialToJsonString(credentialList) ?: emptyList()
-                            } else {
-                                credentialList = VerificationService().splitCredentialsBySdJWT(listOf(credential), inputDescriptors.constraints?.limitDisclosure != null)
-                                processedCredentials = VerificationService().processCredentialsToJsonString(credentialList)
-                            }
+                    var processedCredentials: List<String> = emptyList()
+                    var credentialList: ArrayList<String?> = arrayListOf()
+
+                    if (format != null) {
+                        if (format == "mso_mdoc") {
+                            credentialList = arrayListOf(credential)
+                            processedCredentials =
+                                CborUtils.processMdocCredentialToJsonString(credentialList)
+                                    ?: emptyList()
+                        } else {
+                            credentialList = VerificationService().splitCredentialsBySdJWT(
+                                listOf(credential),
+                                inputDescriptors.constraints?.limitDisclosure != null
+                            )
+                            processedCredentials =
+                                VerificationService().processCredentialsToJsonString(
+                                    credentialList
+                                )
                         }
-                        val inputDescriptor = Gson().toJson(inputDescriptors)
+                    }
 
-                        val matches: List<MatchedCredential> =
-                            pex.matchCredentials(inputDescriptor, processedCredentials)
-                        for (match in matches) {
-                            for (field in match.fields) {
-                                val value = field.path.value
-                                // Check if the value is a Map or JSONObject
-                                if (value is JSONObject) {
-                                    // If it's a JSONObject, check for "_sd" key
-                                    if (value.has("_sd")) {
-                                        val sdArray = value.getJSONArray("_sd")
-                                        // Create a list to hold the _sd values
-                                        for (i in 0 until sdArray.length()) {
-                                            val sdItem = sdArray.get(i)
-                                            // You can process each item here if needed
-                                            if (sdItem is String) {
-                                                // Append each _sd item to the sdList
-                                                sdList.add(sdItem)
-                                            }
+                    val inputDescriptor = Gson().toJson(inputDescriptors)
+                    val matches: List<MatchedCredential> =
+                        pex.matchCredentials(inputDescriptor, processedCredentials)
+
+                    for (match in matches) {
+                        for (field in match.fields) {
+                            val value = field.path.value
+                            if (value is JSONObject) {
+                                if (value.has("_sd")) {
+                                    val sdArray = value.getJSONArray("_sd")
+                                    for (i in 0 until sdArray.length()) {
+                                        val sdItem = sdArray.get(i)
+                                        if (sdItem is String) {
+                                            sdList.add(sdItem)
                                         }
                                     }
-                                } else if (value is Map<*, *>) {
-                                    // If it's a Map, check for "_sd" key
-                                    val map = value as Map<String, Any>
-                                    val sdArray = map["_sd"]
-                                    if (sdArray is List<*>) {
-                                        // Handle the _sd array if it exists
-                                        for (sdItem in sdArray) {
-                                            if (sdItem is String) {
-                                                // Append each _sd item to the sdList
-                                                sdList.add(sdItem)
-                                            }
+                                }
+                            } else if (value is Map<*, *>) {
+                                val map = value as Map<String, Any>
+                                val sdArray = map["_sd"]
+                                if (sdArray is List<*>) {
+                                    for (sdItem in sdArray) {
+                                        if (sdItem is String) {
+                                            sdList.add(sdItem)
                                         }
                                     }
                                 }
                             }
                         }
-
-                    }
-                    val response =  calculateSHA256Hash(disclosure)
-                    if(sdList.contains(response)){
-                        disclosureList.add(disclosure)
                     }
 
 
-                } catch (e: Exception) { }
-            }
+                    // Process disclosures concurrently using async
+                    val deferredResults = disclosures?.map { disclosure ->
+                        async {
+                            try {
+                                val list = JSONArray(
+                                    Base64.decode(disclosure, Base64.URL_SAFE)
+                                        .toString(charset("UTF-8"))
+                                )
 
-            for(disclosureValue in disclosureList){
-                issuedJwt = "$issuedJwt~$disclosureValue"
-            }
+                                if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
+                                    disclosureList.add(disclosure)
+                                }
+                                val thirdElement = list.opt(2)
+                                if (thirdElement is JSONObject) {
+                                    val keys = thirdElement.keys()
+                                    while (keys.hasNext()) {
+                                        val key = keys.next()
+                                        if (requestedParams.contains(key)) {
+                                            disclosureList.add(disclosure)
+                                        }
+                                    }
+                                }
 
-            return issuedJwt ?: ""
-        } catch (e: Exception) {
-            throw IllegalArgumentException(
-                "Error processing disclosures with presentation definition",
-                e
-            )
+                                val response = calculateSHA256Hash(disclosure)
+                                if (sdList.contains(response)) {
+                                    disclosureList.add(disclosure)
+                                }
+                            } catch (e: Exception) {
+                                println(e.message.toString())
+                            }
+                        }
+                    }
+
+                    // Wait for all async tasks to complete
+                    deferredResults?.awaitAll()
+
+                    // Combine the results with the issued JWT
+                    for (disclosureValue in disclosureList) {
+                        issuedJwt = "$issuedJwt~$disclosureValue"
+                    }
+
+                    return@withContext issuedJwt ?: ""
+              //  }
+
+
+            } catch (e: Exception) {
+                throw IllegalArgumentException(
+                    "Error processing disclosures with presentation definition",
+                    e
+                )
+            }
         }
     }
 
@@ -415,6 +538,7 @@ class SDJWTService : SDJWTServiceInterface {
             }
         }
     }
+
 
     private fun addDisclosuresToCredentialForFiltering(
         jsonElement: JsonElement,

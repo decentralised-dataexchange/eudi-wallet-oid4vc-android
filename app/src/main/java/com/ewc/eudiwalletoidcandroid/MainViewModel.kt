@@ -277,6 +277,7 @@ class MainViewModel : ViewModel() {
                             subJwk = subJwk,
                             presentationRequest = it,
                             credentialList = listOf("eyJhbGciOiJFUzI1NiIsImtpZCI6Ii1hZzAxSmNJTjBYOGhNWjV6UE8tVG13N1BMUnRuSWpIZW5MSVRRTnlZUzgiLCJ0eXAiOiJKV1QifQ.eyJfc2QiOlsiakZYSGx4U3lfdDFiU0hpRk44Q3U2d1RUNDN3aXBsSzdDTjhueUc5SmF4VSIsImtLb3NxMk1KVWZlZG9HckhaXzlJa1dacUc0SVpvQTREekkyVkdtRjVKRTgiXSwiZXhwIjoxNzM1Nzk4NDAxLCJpYXQiOjE3MzMyMDY0MDEsImlzcyI6Imh0dHBzOi8vc3RhZ2luZy1vaWQ0dmMuaWdyYW50LmlvL29yZ2FuaXNhdGlvbi8zMGUzMjE5OS02YWIzLTQ1NDMtOTllMC04OWQzYTRkYjU2YmUvc2VydmljZSIsImp0aSI6InVybjpkaWQ6YzMxNDYwNmUtNjMyNy00NTJiLTgzOGQtMzllYzg1OTRlOTYxIiwibmJmIjoxNzMzMjA2NDAxLCJzdGF0dXMiOnsic3RhdHVzX2xpc3QiOnsiaWR4IjoxNTA2LCJ1cmkiOiJodHRwczovL3N0YWdpbmctb2lkNHZjLmlncmFudC5pby9vcmdhbmlzYXRpb24vMzBlMzIxOTktNmFiMy00NTQzLTk5ZTAtODlkM2E0ZGI1NmJlL3NlcnZpY2UvcmV2b2NhdGlvbi1zdGF0dXNsaXN0cy8yYmRiNmI4ZS0yZGU3LTQ0ZDYtYjc2NC1mZmZkYmQwNDQ2ZDIifX0sInN1YiI6ImRpZDprZXk6ejJkbXpEODFjZ1B4OFZraTdKYnV1TW1GWXJXUGdZb3l0eWtVWjNleXFodDFqOUtidEEzRkFOWDZ5SHduSkxicWlXNUsxaXhkWEQ0cktCcFJQdG4za29OZm9zZmZWZm1OV3F4akhIVFI5OGhGNVVVd0pXTTNwaUV3eUdYeEVLOUZrWDdocmlqSG5YWE1heFM2R1k2RXdVd1JwNnA2TVZObTlKNGtvb21MaU1ZSll6ODFwRyIsInZjdCI6IkxlZ2FsUGVyc29uYWxJZGVudGlmaWNhdGlvbkRhdGEifQ.nSee2ZHkEaeZGvFVVGm_7Mtj5cnGXYrI1UamtHdvBeC5a5k4PP3FAo1igXCRB3CSzJJ7poMUBo5IXG7lIwAbfQ~WyJiZDhkYjNmMmI1MjUxOGJhMzQ0ZGUxZDNiZjc5MWQyYWM1MGMyODc3Y2M4OGVjMjBiNDU2YTY3YTExZWY4N2ExIiwiaWRlbnRpZmllciIsImRmZCJd~WyIwMDZkMGFmYzJhOGRlYjRhM2RiYjIxNTVlNzdiY2QzMjE0ZGY0ZmE4NDYyZmQ3YzhmZDUxNDA3Y2MxODU4YWNlIiwibGVnYWxOYW1lIiwiZGZkZiJd")
+                        ,walletUnitAttestationJWT = null, walletUnitProofOfPossession = null
                         )
                 }
 
@@ -295,30 +296,30 @@ class MainViewModel : ViewModel() {
     }
 
     //since we are doing selection of cards here, we pick the latest card
-    private fun takeFirstElementInEachList(
-        filterCredentials: List<List<String>>,
-        isSdJwt: Boolean,
-        presentationRequest: WrappedPresentationRequest?,
-        subJwk: ECKey
-    ): List<String> {
-        val response: MutableList<String> = mutableListOf()
-        filterCredentials.forEach {
-            if (it.isNotEmpty())
-                if (isSdJwt)
-                    response.add(
-                        WrappedPresentationRequest(). presentationRequest?.let { it1 ->
-                            SDJWTService().createSDJWTR(
-                                it.first(),
-                                it1,
-                                subJwk
-                            )
-                        } ?: ""
-                    )
-                else {
-                    response.add(it.first())
-                }
-
-        }
-        return response
-    }
+//    private fun takeFirstElementInEachList(
+//        filterCredentials: List<List<String>>,
+//        isSdJwt: Boolean,
+//        presentationRequest: WrappedPresentationRequest?,
+//        subJwk: ECKey
+//    ): List<String> {
+//        val response: MutableList<String> = mutableListOf()
+//        filterCredentials.forEach {
+//            if (it.isNotEmpty())
+//                if (isSdJwt)
+//                    response.add(
+//                        WrappedPresentationRequest(). presentationRequest?.let { it1 ->
+//                            SDJWTService().createSDJWTR(
+//                                it.first(),
+//                                it1,
+//                                subJwk
+//                            )
+//                        } ?: ""
+//                    )
+//                else {
+//                    response.add(it.first())
+//                }
+//
+//        }
+//        return response
+//    }
 }

@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
+import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
@@ -10,21 +11,23 @@ interface SDJWTServiceInterface {
 
     fun calculateSHA256Hash(inputString: String?): String?
 
-    fun createSDJWTR(
+    suspend  fun createSDJWTR(
         credential: String?,
         presentationRequest: PresentationRequest,
         subJwk: ECKey
     ): String?
 
-    fun createSDJWTR(
+    suspend  fun createSDJWTR(
         credential: String?,
-        presentationRequest: PresentationRequest,
+        inputDescriptors: InputDescriptors,
+        format: String,
         subJwk: JWK
     ): String?
 
-    fun processDisclosuresWithPresentationDefinition(
+    suspend  fun processDisclosuresWithPresentationDefinition(
         credential: String?,
-        presentationDefinition: PresentationDefinition
+        inputDescriptors: InputDescriptors,
+        format:String
     ): String?
 
     fun updateIssuerJwtWithDisclosures(

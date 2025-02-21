@@ -967,10 +967,10 @@ class VerificationService : VerificationServiceInterface {
                                     "transaction data not added to claims"
                                 )
                             }
-
+                            val tempCredenital = "$credential${if (credential.endsWith("~")) "" else "~"}"
                             val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
                                 aud = presentationRequest.clientId,
-                                credential = credential,
+                                credential = tempCredenital,
                                 subJwk = subJwk,
                                 claims = if (claims.isNotEmpty()) claims else null,
                                 nonce = presentationRequest?.nonce
@@ -979,7 +979,7 @@ class VerificationService : VerificationServiceInterface {
                             if (keyBindingResponse != null) {
                                 // Append "~" only if it's not present at the end of the credential, then append keyBindingResponse
                                 val updatedCredential =
-                                    "$credential${if (credential.endsWith("~")) "" else "~"}$keyBindingResponse"
+                                    "$tempCredenital$keyBindingResponse"
 
                                 vpTokenList.add(updatedCredential)
                                 val currentVpTokenIndex = vpTokenList.lastIndex
@@ -1281,10 +1281,10 @@ class VerificationService : VerificationServiceInterface {
                         } else {
                             Log.d("processToken:", "transaction data not added to claims")
                         }
-
+                        val tempCredenital = "$credential${if (credential.endsWith("~")) "" else "~"}"
                         val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
                             aud = presentationRequest.clientId,
-                            credential = credential,
+                            credential = tempCredenital,
                             subJwk = subJwk,
                             claims = if (claims.isNotEmpty()) claims else null,
                             nonce = presentationRequest?.nonce
@@ -1294,7 +1294,7 @@ class VerificationService : VerificationServiceInterface {
                         if (keyBindingResponse != null) {
                             // Append "~" only if it's not present at the end of the credential, then append keyBindingResponse
                             val updatedCredential =
-                                "$credential${if (credential.endsWith("~")) "" else "~"}$keyBindingResponse"
+                                "$tempCredenital$keyBindingResponse"
 
 
                             // Add the updated credential to the list
@@ -1511,19 +1511,32 @@ class VerificationService : VerificationServiceInterface {
         return response
     }
 
-    fun splitCredentialsBySdJWT(
-        allCredentials: List<String?>,
-        isSdJwt: Boolean
-    ): ArrayList<String?> {
-        val filteredCredentials: ArrayList<String?> = arrayListOf()
-        for (item in allCredentials) {
-            if (isSdJwt && item?.contains("~") == true)
-                filteredCredentials.add(item)
-            else if (!isSdJwt && item?.contains("~") == false)
-                filteredCredentials.add(item)
-        }
-        return filteredCredentials
-    }
+//    fun splitCredentialsBySdJWT(
+//        allCredentials: List<String?>,
+//        isSdJwt: Boolean
+//    ): ArrayList<String?> {
+//        val filteredCredentials: ArrayList<String?> = arrayListOf()
+//        for (item in allCredentials) {
+//            if (isSdJwt && item?.contains("~") == true)
+//                filteredCredentials.add(item)
+//            else if (!isSdJwt && item?.contains("~") == false)
+//                filteredCredentials.add(item)
+//        }
+//        return filteredCredentials
+//    }
+fun splitCredentialsBySdJWT(
+    allCredentials: List<String?>,
+    isSdJwt: Boolean
+): ArrayList<String?> {
+//        val filteredCredentials: ArrayList<String?> = arrayListOf()
+//        for (item in allCredentials) {
+//            if (isSdJwt && item?.contains("~") == true)
+//                filteredCredentials.add(item)
+//            else if (!isSdJwt && item?.contains("~") == false)
+//                filteredCredentials.add(item)
+//        }
+    return ArrayList(allCredentials)
+}
 
     fun processCredentialsToJsonString(credentialList: ArrayList<String?>): List<String> {
         var processedCredentials: List<String> = mutableListOf()
