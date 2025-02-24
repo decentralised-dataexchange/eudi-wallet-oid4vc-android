@@ -292,17 +292,17 @@ class SDJWTService : SDJWTServiceInterface {
                 val disclosures = getDisclosuresFromSDJWT(credential)
                 var issuedJwt = getIssuerJwtFromSDJWT(credential)
 
-//                if (inputDescriptors.constraints?.limitDisclosure == null){
-//                    if (issuedJwt.isNullOrEmpty())
-//                    {
-//                        return@withContext null
-//                    }
-//                    else{
-//                        return@withContext credential
-//                    }
-//
-//                }
-//                else{
+                if (inputDescriptors.constraints?.limitDisclosure == null){
+                    if (issuedJwt.isNullOrEmpty())
+                    {
+                        return@withContext null
+                    }
+                    else{
+                        return@withContext credential
+                    }
+
+                }
+               else{
                     // Extract requested parameters from the presentation definition
                     val requestedParams: MutableList<String> = mutableListOf()
 //                presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
@@ -416,7 +416,7 @@ class SDJWTService : SDJWTServiceInterface {
                     }
 
                     return@withContext issuedJwt ?: ""
-              //  }
+                }
 
 
             } catch (e: Exception) {
@@ -538,7 +538,6 @@ class SDJWTService : SDJWTServiceInterface {
             }
         }
     }
-
 
     private fun addDisclosuresToCredentialForFiltering(
         jsonElement: JsonElement,
