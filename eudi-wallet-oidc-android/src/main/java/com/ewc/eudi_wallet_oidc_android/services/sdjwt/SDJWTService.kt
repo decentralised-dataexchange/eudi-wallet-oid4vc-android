@@ -410,8 +410,8 @@ class SDJWTService : SDJWTServiceInterface {
                     // Wait for all async tasks to complete
                     deferredResults?.awaitAll()
 
-                    // Combine the results with the issued JWT
-                    for (disclosureValue in disclosureList) {
+                    // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
+                    for (disclosureValue in disclosureList.toSet()) {
                         issuedJwt = "$issuedJwt~$disclosureValue"
                     }
 
