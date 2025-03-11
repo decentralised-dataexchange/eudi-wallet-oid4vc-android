@@ -27,9 +27,12 @@ class DiscoveryService : DiscoveryServiceInterface {
 
         try {
             UrlUtils.validateUri(credentialIssuer)
-            val response =
+            val response = try {
                 ApiManager.api.getService()
                     ?.fetchIssuerConfig("$credentialIssuer")
+            } catch (e: javax.net.ssl.SSLHandshakeException) {
+                return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(errorDescription = "Unable to establish a secure connection."))
+            }
             return if (response?.isSuccessful == true) {
                 parseIssuerConfigurationResponse(issuerConfigResponseJson =response.body()?.string())
 
@@ -84,9 +87,12 @@ class DiscoveryService : DiscoveryServiceInterface {
         try {
             UrlUtils.validateUri(authorizationServer)
 
-            val response =
+            val response = try {
                 ApiManager.api.getService()
                     ?.fetchAuthConfig("$authorizationServer")
+            } catch (e: javax.net.ssl.SSLHandshakeException) {
+                return WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(errorDescription = "Unable to establish a secure connection."))
+            }
             return if (response?.isSuccessful == true) {
                 WrappedAuthConfigResponse(authConfig = response.body(), errorResponse = null)
             } else {
