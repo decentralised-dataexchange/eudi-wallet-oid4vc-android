@@ -63,8 +63,8 @@ class IssueService : IssueServiceInterface {
         try {
             val uri = Uri.parse(data)
             val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
-            UrlUtils.validateUri(credentialOfferUri)
             if (!credentialOfferUri.isNullOrBlank()) {
+                UrlUtils.validateUri(credentialOfferUri)
                 val response =
                     ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
                 return if (response?.isSuccessful == true) {
@@ -81,7 +81,7 @@ class IssueService : IssueServiceInterface {
 
             val credentialOfferString = uri.getQueryParameter("credential_offer")
             if (!credentialOfferString.isNullOrBlank()) {
-                return WrappedCredentialOffer(credentialOffer =  Gson().fromJson(credentialOfferString, CredentialOffer::class.java) )
+                return WrappedCredentialOffer(credentialOffer =  parseCredentialOffer(credentialOfferJson = credentialOfferString))
             }
             return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
         } catch (exc: UriValidationFailed) {
@@ -179,22 +179,26 @@ class IssueService : IssueServiceInterface {
         var response: Response<HashMap<String, Any>>?=null
         if (authConfig?.requirePushedAuthorizationRequests == true){
 
-            val parResponse = ApiManager.api.getService()?.processParAuthorisationRequest(
-                authConfig.pushedAuthorizationRequestEndpoint ?: "",
-                mapOf(
-                    "response_type" to responseType,
-                    "scope" to scope.trim(),
-                    "state" to state,
-                    "client_id" to (clientId ?: ""),
-                    "authorization_details" to authorisationDetails,
-                    "redirect_uri" to redirectUri,
-                    "nonce" to nonce,
-                    "code_challenge" to (codeChallenge ?: ""),
-                    "code_challenge_method" to codeChallengeMethod,
-                    "client_metadata" to clientMetadata,
-                    "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-                ),
-            )
+            val parResponse = try {
+                ApiManager.api.getService()?.processParAuthorisationRequest(
+                    authConfig.pushedAuthorizationRequestEndpoint ?: "",
+                    mapOf(
+                        "response_type" to responseType,
+                        "scope" to scope.trim(),
+                        "state" to state,
+                        "client_id" to (clientId ?: ""),
+                        "authorization_details" to authorisationDetails,
+                        "redirect_uri" to redirectUri,
+                        "nonce" to nonce,
+                        "code_challenge" to (codeChallenge ?: ""),
+                        "code_challenge_method" to codeChallengeMethod,
+                        "client_metadata" to clientMetadata,
+                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
+                    ),
+                )
+            } catch (e: javax.net.ssl.SSLHandshakeException) {
+                null
+            }
             // Check if the PAR request was successful
             parResponse?.code()
             if (parResponse?.isSuccessful == true) {
@@ -248,14 +252,16 @@ class IssueService : IssueServiceInterface {
             null
         }
 
-        return if (location != null && Uri.parse(location).getQueryParameter("error") != null) {
+        return if (location == null){
+            null
+        } else if (Uri.parse(location).getQueryParameter("error") != null) {
             location
-        } else if (location != null && (Uri.parse(location).getQueryParameter("code") != null
-                    || Uri.parse(location).getQueryParameter("presentation_definition") != null
-                    || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
-                    || (Uri.parse(location).getQueryParameter("request_uri") != null &&
+        } else if (Uri.parse(location).getQueryParameter("code") != null
+            || Uri.parse(location).getQueryParameter("presentation_definition") != null
+            || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
+            || (Uri.parse(location).getQueryParameter("request_uri") != null &&
                     Uri.parse(location).getQueryParameter("response_type") == null &&
-                    Uri.parse(location).getQueryParameter("state") == null))
+                    Uri.parse(location).getQueryParameter("state") == null)
         ) {
             location
         } else {
