@@ -1,11 +1,13 @@
 package com.ewc.eudi_wallet_oidc_android.services.network
 
 import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
+import com.ewc.eudi_wallet_oidc_android.models.RefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
+import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
 import com.ewc.eudi_wallet_oidc_android.models.ParResponse
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
@@ -116,5 +118,18 @@ interface ApiService {
     ): Response<CredentialOfferResponse>
     @GET
     suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
+    @FormUrlEncoded
+    @POST("")
+    suspend fun getRefreshTokenFromCode(
+        @Url url: String,
+        @FieldMap map: Map<String, String?>,
+       // @HeaderMap headers: Map<String, String> = emptyMap()
+    ): Response<RefreshTokenResponse>
+    @POST("")
+    suspend fun sendNotificationRequest(
+        @Url url: String,
+        @Header("Authorization") authorization: String,
+        @Body body: NotificationRequest
+    ): Response<ResponseBody>
 
 }
