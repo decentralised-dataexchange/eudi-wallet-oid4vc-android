@@ -143,7 +143,8 @@ class IssueService : IssueServiceInterface {
         authConfig: AuthorisationServerWellKnownConfiguration?,
         format: String?,
         docType: String?,
-        issuerConfig: IssuerWellKnownConfiguration?
+        issuerConfig: IssuerWellKnownConfiguration?,
+        redirectUri: String?
     ): String? {
         val authorisationEndPoint =authConfig?.authorizationEndpoint
         val responseType = "code"
@@ -162,7 +163,7 @@ class IssueService : IssueServiceInterface {
             issuerConfig = issuerConfig,
             version = credentialOffer?.version
         )
-        val redirectUri = "http://localhost:8080"
+        val redirectURI = redirectUri ?: "openid://callback"
         val nonce = UUID.randomUUID().toString()
 
         val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
@@ -173,7 +174,7 @@ class IssueService : IssueServiceInterface {
                     jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
                 ), responseTypesSupported = arrayListOf(
                     "vp_token", "id_token"
-                ), authorizationEndpoint = redirectUri
+                ), authorizationEndpoint = redirectURI
             )
         )
         var response: Response<HashMap<String, Any>>?=null
@@ -188,7 +189,7 @@ class IssueService : IssueServiceInterface {
                         "state" to state,
                         "client_id" to (clientId ?: ""),
                         "authorization_details" to authorisationDetails,
-                        "redirect_uri" to redirectUri,
+                        "redirect_uri" to redirectURI,
                         "nonce" to nonce,
                         "code_challenge" to (codeChallenge ?: ""),
                         "code_challenge_method" to codeChallengeMethod,
@@ -226,7 +227,7 @@ class IssueService : IssueServiceInterface {
                     "state" to state,
                     "client_id" to (clientId ?: ""),
                     "authorization_details" to authorisationDetails,
-                    "redirect_uri" to redirectUri,
+                    "redirect_uri" to (redirectURI ?: ""),
                     "nonce" to nonce,
                     "code_challenge" to (codeChallenge ?: ""),
                     "code_challenge_method" to codeChallengeMethod,
@@ -263,6 +264,8 @@ class IssueService : IssueServiceInterface {
                     Uri.parse(location).getQueryParameter("response_type") == null &&
                     Uri.parse(location).getQueryParameter("state") == null)
         ) {
+            location
+        } else if (!location.startsWith(redirectURI)) {
             location
         } else {
             processAuthorisationRequestUsingIdToken(
@@ -459,8 +462,9 @@ class IssueService : IssueServiceInterface {
         clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
+        redirectUri: String?
     ): WrappedTokenResponse? {
-        val redirectUri = "http://localhost:8080"
+        val redirectURI = redirectUri ?: "openid://callback"
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
@@ -490,7 +494,7 @@ class IssueService : IssueServiceInterface {
                     "code" to (code ?: ""),
                     "client_id" to (did ?: ""),
                     "code_verifier" to (codeVerifier ?: ""),
-                    "redirect_uri" to (redirectUri ?: "")
+                    "redirect_uri" to (redirectURI ?: "")
                 ).apply {
                     if (clientAssertion != null) {
                         this["client_assertion"] = clientAssertion ?: ""
