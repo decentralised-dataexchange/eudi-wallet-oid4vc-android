@@ -39,7 +39,8 @@ interface IssueServiceInterface {
         authConfig: AuthorisationServerWellKnownConfiguration?,
         format: String? = "jwt_vc_json",
         docType: String? =null,
-        issuerConfig: IssuerWellKnownConfiguration?
+        issuerConfig: IssuerWellKnownConfiguration?,
+        redirectUri: String? = null
     ): String?
 
     /**
@@ -68,6 +69,7 @@ interface IssueServiceInterface {
         clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
+        redirectUri: String? = null
     ): WrappedTokenResponse?
 
     /**
