@@ -16,7 +16,8 @@ data class CredentialResponse(
     @SerializedName("isPinRequired") var isPinRequired: Boolean? = null,
     @SerializedName("issuerConfig") var issuerConfig: IssuerWellKnownConfiguration? = null,
     @SerializedName("authorizationConfig") var authorizationConfig: AuthorisationServerWellKnownConfiguration? = null,
-    @SerializedName("credentialOffer") var credentialOffer: CredentialOffer? = null
+    @SerializedName("credentialOffer") var credentialOffer: CredentialOffer? = null,
+    @SerializedName("notification_id") var notificationId: String? = null,
 )
 
 

@@ -11,7 +11,8 @@ data class TokenResponse(
     @SerializedName("c_nonce") var cNonce: String? = null,
     @SerializedName("c_nonce_expires_in") var cNonceExpiresIn: Long? = null,
     @SerializedName("error") var error: String? = null,
-    @SerializedName("error_description") var errorDescription: String? = null
+    @SerializedName("error_description") var errorDescription: String? = null,
+    @SerializedName("refresh_token") var refreshToken: String? = null,
 )
 
 data class WrappedTokenResponse(
