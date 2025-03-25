@@ -80,13 +80,17 @@ data class CredentialOffer(
         grants = Grants(
             authorizationCode = if (ewcV2.grants?.authorizationCode == null) null else AuthorizationCode(
                 issuerState = ewcV2.grants?.authorizationCode?.issuerState,
-                authorizationServer = ewcV2.grants?.authorizationCode?.authorizationServer
+                authorizationServer = ewcV2.grants?.authorizationCode?.authorizationServer?.let {
+                        if (it is String) arrayListOf(it) else it as? ArrayList<String>
+                    }
             ),
             preAuthorizationCode = if (ewcV2.grants?.preAuthorizationCode == null) null else
                 PreAuthorizationCode(
                     preAuthorizedCode = ewcV2.grants?.preAuthorizationCode?.preAuthorizedCode,
                     transactionCode = ewcV2.grants?.preAuthorizationCode?.transactionCode,
-                    authorizationServer = ewcV2.grants?.authorizationCode?.authorizationServer
+                    authorizationServer = ewcV2.grants?.preAuthorizationCode?.authorizationServer?.let {
+                        if (it is String) arrayListOf(it) else it as? ArrayList<String>
+                    }
                 )
         ),
         version = 2
@@ -112,13 +116,13 @@ data class Grants(
 
 data class AuthorizationCode(
     @SerializedName("issuer_state") var issuerState: String? = null,
-    @SerializedName("authorization_server") var authorizationServer: ArrayList<String>? = null
+    @SerializedName("authorization_server") var authorizationServer: Any? = null
 )
 
 data class PreAuthorizationCode(
     @SerializedName("pre-authorized_code") var preAuthorizedCode: String? = null,
     @SerializedName("tx_code") var transactionCode: TxCode? = null,
-    @SerializedName("authorization_server") var authorizationServer: ArrayList<String>? = null
+    @SerializedName("authorization_server") var authorizationServer: Any? = null
 )
 
 data class TxCode(
