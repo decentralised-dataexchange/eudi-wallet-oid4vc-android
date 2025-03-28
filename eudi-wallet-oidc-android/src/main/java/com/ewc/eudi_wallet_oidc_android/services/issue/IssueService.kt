@@ -265,7 +265,19 @@ class IssueService : IssueServiceInterface {
                     Uri.parse(location).getQueryParameter("state") == null)
         ) {
             location
-        } else if (!location.startsWith(redirectURI)) {
+        } else if (
+            Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
+            Uri.parse(location).getQueryParameter("state") != null &&
+            Uri.parse(location).getQueryParameter("redirect_uri") != null
+        ){
+            processAuthorisationRequestUsingIdToken(
+                did = did,
+                authorisationEndPoint = authorisationEndPoint,
+                location = location,
+                subJwk = subJwk
+            )
+        }
+        else if (!location.startsWith(redirectURI)) {
             location
         } else {
             processAuthorisationRequestUsingIdToken(
