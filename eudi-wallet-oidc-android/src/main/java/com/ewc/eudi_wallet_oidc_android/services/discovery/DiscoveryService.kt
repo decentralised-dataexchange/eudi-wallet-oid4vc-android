@@ -32,6 +32,8 @@ class DiscoveryService : DiscoveryServiceInterface {
                     ?.fetchIssuerConfig("$credentialIssuer")
             } catch (e: javax.net.ssl.SSLHandshakeException) {
                 return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(errorDescription = "Unable to establish a secure connection."))
+            }catch (e:Exception){
+                return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(errorDescription = e.message.toString()))
             }
             return if (response?.isSuccessful == true) {
                 parseIssuerConfigurationResponse(issuerConfigResponseJson =response.body()?.string())
