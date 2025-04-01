@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyE
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromJwksUri
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromKID
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessKeyJWKFromKID
+import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessTDWFromKID
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessWebJWKFromKID
 import com.ewc.eudi_wallet_oidc_android.services.exceptions.SignatureException
 import com.ewc.eudi_wallet_oidc_android.services.utils.X509SanRequestVerifier
@@ -66,6 +67,11 @@ class SignatureValidator {
                 }
                 if (kid != null && kid.startsWith("did:jwk")){
                     ProcessJWKFromKID().processJWKFromKID(kid)?.let { jwk ->
+                        responseList.add(jwk)
+                    }
+                }
+                if(kid !=null && kid.startsWith("did:tdw")){
+                    ProcessTDWFromKID().processTrustDIDWebFromKID(kid)?.let { jwk ->
                         responseList.add(jwk)
                     }
                 }
