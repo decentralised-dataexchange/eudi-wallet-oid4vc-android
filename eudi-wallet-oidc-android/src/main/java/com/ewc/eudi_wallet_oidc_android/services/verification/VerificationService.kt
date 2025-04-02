@@ -1497,10 +1497,11 @@ class VerificationService : VerificationServiceInterface {
             }
 
             val filteredCredentialList: MutableList<String> = mutableListOf()
-            val inputDescriptor = Gson().toJson(inputDescriptors)
+            val updatedInputDescriptor =  updatePath(inputDescriptors)
+            val inputDescriptorString = Gson().toJson(updatedInputDescriptor)
 
             val matches: List<MatchedCredential> =
-                pex.matchCredentials(inputDescriptor, processedCredentials)
+                pex.matchCredentials(inputDescriptorString, processedCredentials)
             for (match in matches) {
                 filteredCredentialList.add(credentialList[match.index] ?: "")
             }
@@ -1509,6 +1510,30 @@ class VerificationService : VerificationServiceInterface {
         }
 
         return response
+    }
+
+    private fun updatePath(descriptor: InputDescriptors): InputDescriptors {
+        var updatedDescriptor = descriptor.copy()
+        val constraints = updatedDescriptor.constraints ?: return updatedDescriptor
+        val fields = constraints.fields ?: return updatedDescriptor
+
+        val updatedFields = ArrayList(fields.map { field ->  // Convert to ArrayList
+            val pathList = field.path?.toMutableList() ?: mutableListOf()
+            val newPathList = ArrayList(pathList) // Ensure ArrayList type
+
+            pathList.forEach { path ->
+                if (path.contains("$.vc.")) {
+                    val newPath = path.replace("$.vc.", "$.")
+                    if (!newPathList.contains(newPath)) {
+                        newPathList.add(newPath)
+                    }
+                }
+            }
+            field.copy(path = newPathList) // Ensure correct type
+        })
+
+        val updatedConstraints = constraints.copy(fields = updatedFields) // Now it's ArrayList<Fields>?
+        return updatedDescriptor.copy(constraints = updatedConstraints)
     }
 
 //    fun splitCredentialsBySdJWT(
