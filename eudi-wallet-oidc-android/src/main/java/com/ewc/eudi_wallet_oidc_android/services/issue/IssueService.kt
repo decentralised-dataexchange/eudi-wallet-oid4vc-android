@@ -4,10 +4,8 @@ import android.net.Uri
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
-import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDataas
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
-import com.ewc.eudi_wallet_oidc_android.models.CredentialDetails
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
@@ -28,8 +26,8 @@ import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialMetaDataConverter
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -40,13 +38,13 @@ import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
-import okhttp3.internal.format
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import retrofit2.Response
 import java.util.Date
 import java.util.UUID
+import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 
 class IssueService : IssueServiceInterface {
 
@@ -581,35 +579,8 @@ class IssueService : IssueServiceInterface {
         } else {
             null
         }
-        // val doctype = if (format == "mso_mdoc") "org.iso.18013.5.1.mDL" else null
 
-        // Add claims
-        val claimsSet = JWTClaimsSet
-            .Builder()
-            .issueTime(Date())
-            .expirationTime(Date(Date().time + 86400))
-            .issuer(did)
-            .audience(issuerConfig?.credentialIssuer ?: "")
-            .claim("nonce", nonce).build()
-
-        // Add header
-        val jwsHeader = JWSHeader
-            .Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-            .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .keyID("$did#${did?.replace("did:key:", "")}")
-//            .jwk(subJwk?.toPublicJWK())
-            .build()
-
-
-        // Sign with private EC key
-        val jwt = SignedJWT(
-            jwsHeader, claimsSet
-        )
-        jwt.sign(
-            if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(
-                subJwk as ECKey
-            )
-        )
+        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig,credentialOffer)
 
         // Construct credential request
         val body = buildCredentialRequest(
@@ -617,7 +588,7 @@ class IssueService : IssueServiceInterface {
             issuerConfig = issuerConfig,
             format = format,
             doctype = doctype,
-            jwt = jwt.serialize()
+            jwt = jwt
         )
         // API call
         val response = ApiManager.api.getService()?.getCredential(
@@ -664,28 +635,10 @@ class IssueService : IssueServiceInterface {
         val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
         // Find the matching credential in the credentialsSupported map
         val matchingCredentialMap = credentialsSupported[credentialType] as? Map<String, Any>
-        val matchingCredential = matchingCredentialMap?.let { convertToCredentialDetails(it) }
+        val matchingCredential = matchingCredentialMap?.let {CredentialMetaDataConverter().convertToCredentialDetails(it) }
 
         return matchingCredential?.doctype
     }
-
-    private fun convertToCredentialDetails(map: Map<String, Any>): CredentialDetails? {
-        return try {
-            val gson = GsonBuilder()
-                .setLenient()
-                .serializeNulls()
-                .create()
-
-            val jsonString = gson.toJson(map)
-            gson.fromJson(jsonString, CredentialDetails::class.java)
-        } catch (e: Exception) {
-            // Print the exception message to understand what went wrong
-            println("Error converting map to CredentialDetails: ${e.message}")
-            null
-        }
-    }
-
-
     private fun buildCredentialRequest(
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
