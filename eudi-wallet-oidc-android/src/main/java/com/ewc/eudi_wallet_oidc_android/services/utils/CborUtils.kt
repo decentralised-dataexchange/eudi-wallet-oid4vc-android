@@ -18,6 +18,7 @@ import co.nstant.`in`.cbor.model.UnsignedInteger
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import org.json.JSONArray
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import co.nstant.`in`.cbor.model.UnsignedInteger as CBORInteger
@@ -62,7 +63,9 @@ class CborUtils {
                                 if (identifier == "driving_privileges") {
                                     Log.d("TAG", "extractIssuerNamespacedElements: ")
                                 }
-                                newJson.put(identifier, value.toString())
+                               // newJson.put(identifier, value.toString())
+                                newJson.put(identifier, convertCborToJson(value))
+
                             }
                         }
                         jsonObject.put(key, newJson)
@@ -73,6 +76,30 @@ class CborUtils {
             }
             return jsonObject
         }
+        private fun convertCborToJson(value: DataItem): Any {
+            return when (value) {
+                is CborMap -> {
+                    val jsonObject = JSONObject()
+                    value.keys.forEach { key ->
+                        val keyStr = (key as? CborUnicodeString)?.string ?: key.toString()
+                        jsonObject.put(keyStr, convertCborToJson(value[key]!!))
+                    }
+                    jsonObject
+                }
+                is CborArray -> {
+                    val jsonArray = JSONArray()
+                    value.dataItems.forEach { item ->
+                        jsonArray.put(convertCborToJson(item))
+                    }
+                    jsonArray
+                }
+                is CborUnicodeString -> value.string
+                is CBORInteger -> value.value
+                is CborByteString -> Base64.encodeToString(value.bytes, Base64.NO_WRAP)
+                else -> value.toString()
+            }
+        }
+
 
         @OptIn(ExperimentalEncodingApi::class)
         fun processMdocCredentialToJsonString(allCredentialList: List<String?>?): List<String>? {
