@@ -131,5 +131,8 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Body body: NotificationRequest
     ): Response<ResponseBody>
-
+    @GET
+    fun getVerifiableCredentialStatusList(
+        @Url url: String, // Dynamically set the URL
+    ): Call<ResponseBody>
 }
