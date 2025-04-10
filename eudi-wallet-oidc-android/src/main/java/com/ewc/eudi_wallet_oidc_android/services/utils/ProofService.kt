@@ -24,13 +24,18 @@ class ProofService {
         issuerConfig: IssuerWellKnownConfiguration?,
         credentialOffer: CredentialOffer?,
     ): String {
-        val credentialsSupported = issuerConfig?.credentialsSupported as? Map<String, Any>
+        val credentialsSupported = issuerConfig?.credentialsSupported
         val credentials = credentialOffer?.credentials
         val bindingMethod: String? = when (credentialsSupported) {
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
                 val map = credentialsSupported as? Map<String, Any>
                 getCryptographicBindingMethodsSupported(map, credentials)
+            }
+            is List<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                val list = credentialsSupported as? List<Map<String, Any>>
+                getCryptographicBindingMethodsSupported(list, credentials)
             }
 
             else -> null
@@ -83,19 +88,37 @@ class ProofService {
     }
 
     private fun getCryptographicBindingMethodsSupported(
-        credentialsSupported: Map<String, Any>?,
+        credentialsSupported: Any?, // Can be either a Map or List of Maps
         credentials: ArrayList<Credentials>?
     ): String? {
-        if (credentialsSupported.isNullOrEmpty() || credentials.isNullOrEmpty()) {
+        if (credentialsSupported == null || credentials.isNullOrEmpty()) {
+            return null
+        }
+
+        // Check if credentialsSupported is empty
+        if ((credentialsSupported is Map<*, *> && credentialsSupported.isEmpty()) ||
+            (credentialsSupported is List<*> && credentialsSupported.isEmpty())) {
             return null
         }
 
         // Extract the first credential type from the credentials list
         val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
-        // Find the matching credential in the credentialsSupported map
-        val matchingCredentialMap = credentialsSupported[credentialType] as? Map<String, Any>
-        val matchingCredential = matchingCredentialMap?.let { CredentialMetaDataConverter().convertToCredentialDetails(it) }
+
+        // Find the matching credential map based on id or map key
+        val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {
+            is Map<*, *> -> credentialsSupported[credentialType] as? Map<String, Any>
+            is List<*> -> (credentialsSupported as? List<Map<String, Any>>)?.find {
+                val id = it["id"] as? String
+                id?.contains(credentialType) == true
+            }
+            else -> null
+        }
+
+        val matchingCredential = matchingCredentialMap?.let {
+            CredentialMetaDataConverter().convertToCredentialDetails(it)
+        }
 
         return matchingCredential?.cryptographicBindingMethodsSupported?.getOrNull(0)
     }
+
 }
