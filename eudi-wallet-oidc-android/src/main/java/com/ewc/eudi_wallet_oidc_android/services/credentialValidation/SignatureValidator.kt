@@ -80,7 +80,7 @@ class SignatureValidator {
                         responseList.add(jwk)
                     }
                 }
-                if (kid != null && jwksUri!=null) {
+                if (jwksUri!=null) {
                     ProcessJWKFromJwksUri().processJWKFromJwksUri(kid, jwksUri)?.let { jwk ->
                         responseList.add(jwk)
                     }

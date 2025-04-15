@@ -46,9 +46,14 @@ class ProcessJWKFromJwksUri {
                 var jwkKey = jwksResponse.keys.firstOrNull { it.use == "sig" }
 
                 // If no "sig" key is found, find by kid
-                if (jwkKey == null && kid != null) {
-                    jwkKey = jwksResponse.keys.firstOrNull { it.kid == kid }
+                if (jwkKey == null) {
+                    jwkKey = if (kid != null) {
+                        jwksResponse.keys.firstOrNull { it.kid == kid }
+                    } else {
+                        jwksResponse.keys.firstOrNull()
+                    }
                 }
+
                 return@withContext jwkKey
             } catch (e: Exception) {
                 println(e.toString())
