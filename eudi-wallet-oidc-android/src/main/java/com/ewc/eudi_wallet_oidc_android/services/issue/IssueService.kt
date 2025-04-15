@@ -265,7 +265,6 @@ class IssueService : IssueServiceInterface {
             location
         } else if (
             Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
-            Uri.parse(location).getQueryParameter("state") != null &&
             Uri.parse(location).getQueryParameter("redirect_uri") != null
         ){
             processAuthorisationRequestUsingIdToken(
