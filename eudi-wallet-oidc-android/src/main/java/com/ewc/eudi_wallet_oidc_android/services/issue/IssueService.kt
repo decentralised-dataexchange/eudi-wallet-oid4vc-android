@@ -1173,6 +1173,16 @@ class IssueService : IssueServiceInterface {
                         return false
                     }
                 }
+                is JSONArray -> {
+                    for (i in 0 until credentialsSupported.length()) {
+                        val item = credentialsSupported.optJSONObject(i) ?: continue
+                        val typesArray = item.optJSONArray("types") ?: continue
+                        if ((0 until typesArray.length()).any { typesArray.optString(it) == type }) {
+                            return true
+                        }
+                    }
+                    return false
+                }
             }
         } catch (e: Exception) {
 
