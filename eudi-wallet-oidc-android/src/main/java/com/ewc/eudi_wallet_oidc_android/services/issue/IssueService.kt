@@ -298,7 +298,7 @@ class IssueService : IssueServiceInterface {
                 .expirationTime(Date(Date().time + 60000))
                 .issuer(did)
                 .subject(did)
-                .audience(authorisationEndPoint)
+                .audience( Uri.parse(location).getQueryParameter("client_id")?:authorisationEndPoint)
                 .claim("nonce", Uri.parse(location).getQueryParameter("nonce"))
                 .build()
 
@@ -674,7 +674,7 @@ class IssueService : IssueServiceInterface {
         val gson = Gson()
         var credentialDefinitionNeeded = false
         try {
-            if (credentialOffer?.credentials?.get(0)?.trustFramework == null)
+            if (issuerConfig?.credentialsSupported is Map<*, *>)
                 credentialDefinitionNeeded = true
 
         } catch (e: Exception) {
