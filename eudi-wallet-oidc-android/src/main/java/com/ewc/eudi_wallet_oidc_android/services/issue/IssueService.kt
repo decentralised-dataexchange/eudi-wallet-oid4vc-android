@@ -674,7 +674,7 @@ class IssueService : IssueServiceInterface {
         val gson = Gson()
         var credentialDefinitionNeeded = false
         try {
-            if (credentialOffer?.credentials?.get(0)?.trustFramework == null)
+            if (issuerConfig?.credentialsSupported is Map<*, *>)
                 credentialDefinitionNeeded = true
 
         } catch (e: Exception) {
