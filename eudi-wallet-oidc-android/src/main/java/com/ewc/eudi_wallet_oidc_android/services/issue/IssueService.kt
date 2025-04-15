@@ -645,9 +645,17 @@ class IssueService : IssueServiceInterface {
         // Find the matching credential in the credentialsSupported map
         val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {
             is Map<*, *> -> credentialsSupported[credentialType] as? Map<String, Any>
-            is List<*> -> (credentialsSupported as? List<Map<String, Any>>)?.find {
-                val id = it["id"] as? String
-                id?.contains(credentialType) == true
+            is List<*> -> {
+                try {
+                    val matchedList = (credentialsSupported as? List<Map<String, Any>>)?.filter {
+                        val types = it["types"] as? List<*>
+                        val lastType = types?.lastOrNull() as? String
+                        lastType == credentialType
+                    }
+                    matchedList?.getOrNull(0)
+                }catch (e:Exception){
+                    null
+                }
             }
             else -> null
         }
