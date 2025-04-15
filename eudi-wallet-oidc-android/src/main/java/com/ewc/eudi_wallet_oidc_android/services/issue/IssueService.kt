@@ -298,7 +298,7 @@ class IssueService : IssueServiceInterface {
                 .expirationTime(Date(Date().time + 60000))
                 .issuer(did)
                 .subject(did)
-                .audience(authorisationEndPoint)
+                .audience( Uri.parse(location).getQueryParameter("client_id")?:authorisationEndPoint)
                 .claim("nonce", Uri.parse(location).getQueryParameter("nonce"))
                 .build()
 
