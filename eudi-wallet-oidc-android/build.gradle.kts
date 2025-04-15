@@ -74,7 +74,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.decentraliseddataexchange"
             artifactId = "eudi-wallet-oidc-android"
-            version = "2025.4.4"
+            version = "2025.4.5"
 
             afterEvaluate {
                 from(components["release"])
