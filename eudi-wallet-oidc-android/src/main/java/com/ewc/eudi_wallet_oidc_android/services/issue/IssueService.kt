@@ -363,7 +363,7 @@ class IssueService : IssueServiceInterface {
                 return gson.toJson(
                     arrayListOf(
                         AuthorizationDetails(
-                            format = "jwt_vc_json",
+                            format = format,
                             locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
                             credentialDefinition = CredentialTypeDefinition(
                                 type = getTypesFromCredentialOffer(credentialOffer)
@@ -376,7 +376,7 @@ class IssueService : IssueServiceInterface {
                 return gson.toJson(
                     arrayListOf(
                         AuthorizationDetails(
-                            format = "jwt_vc",
+                            format = format,
                             types = getTypesFromCredentialOffer(credentialOffer),
                             locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
                         )
