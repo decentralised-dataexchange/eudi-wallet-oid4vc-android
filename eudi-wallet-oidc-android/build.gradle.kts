@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.ewc.eudi_wallet_oidc_android"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 28
