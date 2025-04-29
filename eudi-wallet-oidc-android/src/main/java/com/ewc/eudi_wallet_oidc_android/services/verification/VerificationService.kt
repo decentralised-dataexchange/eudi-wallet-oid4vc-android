@@ -873,10 +873,10 @@ class VerificationService : VerificationServiceInterface {
 //        jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
 //        return jwt.serialize()
 //    }
-    private fun processTokenRequest(
+    override fun processTokenRequest(
         presentationRequest: PresentationRequest,
         did: String?,
-        credentialList: List<String>? = null,
+        credentialList: List<String>?,
         subJwk: JWK?
     ): Triple<List<String>?, String?, PresentationSubmission?> {
 
@@ -1398,7 +1398,7 @@ class VerificationService : VerificationServiceInterface {
             val documentList = mutableListOf<Document>()
 
             // Iterate over each credential
-            for (credential in credentialList) {
+            for (credential in credentialList ?: emptyList()) {
                 // Extract issuer authentication, docType, and namespaces for each credential
                 val issuerAuth = CborUtils.processExtractIssuerAuth(listOf(credential))
                 val docType = CborUtils.extractDocTypeFromIssuerAuth(listOf(credential))

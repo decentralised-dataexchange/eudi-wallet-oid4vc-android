@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -59,6 +60,22 @@ interface VerificationServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse?
+
+    /**
+     * Process vp token, id token and presentation submission
+     *
+     * @param presentationRequest
+     * @param did
+     * @param credentialList
+     * @param subJwk
+     * @return
+     */
+    fun processTokenRequest(
+        presentationRequest: PresentationRequest,
+        did: String?,
+        credentialList: List<String>? = null,
+        subJwk: JWK?
+    ): Triple<List<String>?, String?, PresentationSubmission?>
 
 
     suspend fun processAndSendAuthorisationResponse(
