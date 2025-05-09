@@ -40,7 +40,8 @@ interface ApiService {
     suspend fun processAuthorisationRequest(
         @Url url: String,
         @QueryMap map: Map<String, String>
-    ): Response<HashMap<String, Any>>
+    ): Response<ResponseBody>
+
     @FormUrlEncoded
     @POST
     suspend fun processParAuthorisationRequest(
