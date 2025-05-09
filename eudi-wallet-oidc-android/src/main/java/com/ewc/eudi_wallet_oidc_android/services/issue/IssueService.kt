@@ -45,6 +45,7 @@ import retrofit2.Response
 import java.util.Date
 import java.util.UUID
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
+import okhttp3.ResponseBody
 
 class IssueService : IssueServiceInterface {
 
@@ -175,7 +176,7 @@ class IssueService : IssueServiceInterface {
                 ), authorizationEndpoint = redirectURI
             )
         )
-        var response: Response<HashMap<String, Any>>?=null
+        var response: Response<ResponseBody>?=null
         if (authConfig?.requirePushedAuthorizationRequests == true){
 
             val parResponse = try {
@@ -212,6 +213,13 @@ class IssueService : IssueServiceInterface {
                         "request_uri" to requestUri
                     )
                 )
+                if (response?.isSuccessful == true) {
+                    val contentType = response.headers()["Content-Type"]
+
+                    if (contentType?.contains("text/html") == true) {
+                       return response.raw().request.url.toString()
+                    }
+                }
             }
 
         }
