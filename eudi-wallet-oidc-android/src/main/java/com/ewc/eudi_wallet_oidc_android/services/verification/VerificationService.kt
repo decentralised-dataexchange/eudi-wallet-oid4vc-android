@@ -57,7 +57,6 @@ import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 
 class VerificationService : VerificationServiceInterface {
 
@@ -825,6 +824,24 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
+    private fun checkTransactionDataWithInputDescriptor(
+        inputDescriptors: InputDescriptors?,
+        transactionDataItem: String?
+    ): Boolean {
+        return try {
+            val decodedData = String(Base64.decode(transactionDataItem, Base64.URL_SAFE), StandardCharsets.UTF_8)
+            val jsonObject = JSONObject(decodedData)
+            val credentialIds = jsonObject.optJSONArray("credential_ids")?.let { array ->
+                List(array.length()) { array.getString(it) }
+            } ?: emptyList()
+
+            inputDescriptors?.id in credentialIds
+        } catch (e: Exception) {
+            Log.e("VerificationService", "Error processing transaction data: ${e.message}")
+            false
+        }
+    }
+
     //    private fun processToken(
 //        presentationRequest: PresentationRequest,
 //        did: String?,
@@ -942,14 +959,16 @@ class VerificationService : VerificationServiceInterface {
                             if (presentationRequest.transactionDdata?.isNotEmpty() == true) {
                                 val transactionDataItem =
                                     presentationRequest.transactionDdata?.getOrNull(0)
-                                val hash = generateHash(transactionDataItem ?: "")
-                                Log.d(
-                                    "ProcessTokenRequest:",
-                                    "transactionDataItem has added:${hash}"
-                                )
-                                if (transactionDataItem != null) {
-                                    claims["transaction_data_hashes"] = listOf(hash)
-                                    claims["transaction_data_hashes_alg"] = "sha-256"
+                                if (checkTransactionDataWithInputDescriptor(presentationDefinition.inputDescriptors?.get(credentialIndex), transactionDataItem)) {
+                                    val hash = generateHash(transactionDataItem ?: "")
+                                    Log.d(
+                                        "ProcessTokenRequest:",
+                                        "transactionDataItem has added:${hash}"
+                                    )
+                                    if (transactionDataItem != null) {
+                                        claims["transaction_data_hashes"] = listOf(hash)
+                                        claims["transaction_data_hashes_alg"] = "sha-256"
+                                    }
                                 }
                             } else {
                                 Log.d(
