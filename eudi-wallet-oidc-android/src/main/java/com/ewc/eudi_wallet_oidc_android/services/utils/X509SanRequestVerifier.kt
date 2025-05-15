@@ -89,14 +89,16 @@ class X509SanRequestVerifier private constructor() {
                 segments[2]
             }
 
-            val signature: ByteArray = if (algorithm != null && algorithm.name.startsWith("ES")) {
+            val signature: ByteArray =
+
+//                if (algorithm != null && algorithm.name.startsWith("ES")) {
                 convertRawSignatureToASN1DER(
                     // Base64.decode(segments[2], Base64.DEFAULT)
                     Base64.decode(base64UrlToBase64(signatureWithoutTilda), Base64.DEFAULT)
                 ) ?: return false
-            } else {
-                Base64.decode(base64UrlToBase64(signatureWithoutTilda), Base64.DEFAULT)
-            }
+//            } else {
+//                Base64.decode(base64UrlToBase64(signatureWithoutTilda), Base64.DEFAULT)
+//            }
 
             // Validate signature before verifying
             if (signature.isEmpty()) {

@@ -27,6 +27,7 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.utils.X509SanRequestVerifier
+import com.ewc.eudi_wallet_oidc_android.services.utils.X509VerifierNimbus
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.generateHash
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -164,8 +165,7 @@ class VerificationService : VerificationServiceInterface {
                             val payload = parseJWTForPayload(responseString ?: "{}")
                             val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
                             return processPresentationRequest(jwtJson,responseString)
-                        }
-                        else {
+                        } else {
                            return WrappedPresentationRequest(
                                 presentationRequest = null,
                                 errorResponse = ErrorResponse(
@@ -212,7 +212,10 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
-    private suspend fun processPresentationRequest(json: PresentationRequest, responseString: String):WrappedPresentationRequest {
+    private suspend fun processPresentationRequest(
+        json: PresentationRequest,
+        responseString: String
+    ): WrappedPresentationRequest {
         if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
             val resolvedPresentationDefinition =
                 getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
@@ -248,11 +251,7 @@ class VerificationService : VerificationServiceInterface {
                         presentationRequest.presentationRequest?.clientId
                     )
 
-                val isSignatureValid =
-                    X509SanRequestVerifier.instance.validateSignatureWithCertificate(
-                        responseString,
-                        x5cChain
-                    )
+                val isSignatureValid = X509VerifierNimbus().verifyJwtWithX5C(responseString)
 
                 val isTrustChainValid =
                     X509SanRequestVerifier.instance.validateTrustChain(x5cChain)
