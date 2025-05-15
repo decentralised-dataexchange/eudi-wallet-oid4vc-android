@@ -253,10 +253,12 @@ class VerificationService : VerificationServiceInterface {
 
                 val isSignatureValid = X509VerifierNimbus().verifyJwtWithX5C(responseString)
 
-                val isTrustChainValid =
-                    X509SanRequestVerifier.instance.validateTrustChain(x5cChain)
+                //This will be enabled once all the Verifiers are production ready
+//                val isTrustChainValid =
+//                    X509SanRequestVerifier.instance.validateTrustChain(x5cChain)
+//               return if (isClientIdInDnsNames && isSignatureValid && isTrustChainValid) {
 
-                return if (isClientIdInDnsNames && isSignatureValid && isTrustChainValid) {
+                return if (isClientIdInDnsNames && isSignatureValid) {
                     presentationRequest
                 } else {
                     WrappedPresentationRequest(
