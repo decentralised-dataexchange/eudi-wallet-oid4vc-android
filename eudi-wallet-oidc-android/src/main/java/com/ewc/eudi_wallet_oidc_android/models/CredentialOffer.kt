@@ -100,7 +100,9 @@ data class CredentialOffer(
 data class Credentials(
     @SerializedName("format") var format: String? = null,
     @SerializedName("types") var types: ArrayList<String>? = null,
-    @SerializedName("trust_framework") var trustFramework: TrustFramework? = null
+    @SerializedName("doctype") var doctype: String? = null,
+    @SerializedName("trust_framework") var trustFramework: TrustFramework? = null,
+
 )
 
 data class TrustFramework(
