@@ -5,7 +5,9 @@ data class ClientMetaDetails(
     @SerializedName("cover_uri") var coverUri: String? = null,
     @SerializedName("description") var description: String? = null,
     @SerializedName("location") var location: String? = null,
-    @SerializedName("logo_uri") var logoUri: String? = null
+    @SerializedName("logo_uri") var logoUri: String? = null,
+    @SerializedName("legal_pid_attestation") var legalPidAttestation: String? = null,
+    @SerializedName("legal_pid_attestation_pop") var legalPidAttestationPop: String? = null,
 )
 data class PresentationRequest(
     @SerializedName("state") var state: String? = null,

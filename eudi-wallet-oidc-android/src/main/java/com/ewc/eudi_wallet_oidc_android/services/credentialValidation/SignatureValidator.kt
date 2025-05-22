@@ -124,7 +124,7 @@ class SignatureValidator {
      * @return
      */
     @Throws(IllegalArgumentException::class)
-    private fun verifyJwtSignature(jwt: String, jwkJson: String): Boolean {
+     fun verifyJwtSignature(jwt: String, jwkJson: String): Boolean {
         try {
             // Parse the JWK (JSON Web Key) from the JSON string
             val jwk = JWK.parse(jwkJson)
