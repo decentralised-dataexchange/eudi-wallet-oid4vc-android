@@ -6,6 +6,7 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfi
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDataas
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
+import com.ewc.eudi_wallet_oidc_android.models.CredentialDetails
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
@@ -45,6 +46,7 @@ import retrofit2.Response
 import java.util.Date
 import java.util.UUID
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
+import com.google.gson.GsonBuilder
 import okhttp3.ResponseBody
 
 class IssueService : IssueServiceInterface {
@@ -642,23 +644,43 @@ class IssueService : IssueServiceInterface {
         if (credentialsSupported == null || credentials.isNullOrEmpty()) {
             return null
         }
-        // Check if credentialsSupported is empty
+
         if ((credentialsSupported is Map<*, *> && credentialsSupported.isEmpty()) ||
             (credentialsSupported is List<*> && credentialsSupported.isEmpty())) {
             return null
         }
 
-        // Extract the first credential type from the credentials list
-        val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
-        // Find the matching credential in the credentialsSupported map
-        val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {
+        val credentialType = extractCredentialType(credentials)
+
+        val matchingCredentialMap: Map<String, Any>? =
+            credentialType?.let { getMatchingCredentialMap(credentialsSupported, it) }
+
+        val matchingCredential = matchingCredentialMap?.let { convertToCredentialDetails(it) }
+        return matchingCredential?.doctype
+    }
+    private fun extractCredentialType(credentials: ArrayList<Credentials>): String? {
+        return credentials
+            .asReversed()
+            .firstOrNull { it?.types?.isNotEmpty() == true || it?.doctype != null }
+            ?.let {
+                (it.types?.lastOrNull { t -> t != null } as? String) ?: it.doctype
+            } ?: null
+    }
+    private fun getMatchingCredentialMap(credentialsSupported: Any, credentialType: String): Map<String, Any>? {
+        return when (credentialsSupported) {
             is Map<*, *> -> credentialsSupported[credentialType] as? Map<String, Any>
             is List<*> -> {
                 try {
-                    val matchedList = (credentialsSupported as? List<Map<String, Any>>)?.filter {
-                        val types = it["types"] as? List<*>
+                    val matchedList = (credentialsSupported as? List<Map<String, Any>>)?.filter { item ->
+                        val types = item["types"] as? List<*>
                         val lastType = types?.lastOrNull() as? String
-                        lastType == credentialType
+
+                        if (lastType == credentialType) {
+                            true
+                        } else {
+                            val docType = item["doctype"] as? String
+                            docType != null && docType == credentialType
+                        }
                     }
                     matchedList?.getOrNull(0)
                 }catch (e:Exception){
@@ -667,9 +689,20 @@ class IssueService : IssueServiceInterface {
             }
             else -> null
         }
-        val matchingCredential = matchingCredentialMap?.let {CredentialMetaDataConverter().convertToCredentialDetails(it) }
+    }
+    private fun convertToCredentialDetails(map: Map<String, Any>): CredentialDetails? {
+        return try {
+            val gson = GsonBuilder()
+                .setLenient()
+                .serializeNulls()
+                .create()
 
-        return matchingCredential?.doctype
+            val jsonString = gson.toJson(map)
+            gson.fromJson(jsonString, CredentialDetails::class.java)
+        } catch (e: Exception) {
+            println("Error converting map to CredentialDetails: ${e.message}")
+            null
+        }
     }
     private fun buildCredentialRequest(
         credentialOffer: CredentialOffer?,
@@ -883,24 +916,29 @@ class IssueService : IssueServiceInterface {
                 } catch (e: Exception) {
                 }
             }
-
             is JSONArray -> {
                 try {
                     for (i in 0 until credentialsSupported.length()) {
-                        val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
+                        val item = credentialsSupported.optJSONObject(i) ?: continue
 
-                        // Get the "types" JSONArray
-                        val typesArray = jsonObject.getJSONArray("types")
-
-                        // Check if the string is present in the "types" array
-                        for (j in 0 until typesArray.length()) {
-                            if (typesArray.getString(j) == type) {
-                                format = jsonObject.getString("format")
+                        // First check "types" array
+                        val typesArray = item.optJSONArray("types")
+                        if (typesArray != null) {
+                            if ((0 until typesArray.length()).any { typesArray.optString(it) == type }) {
+                                format = item.optString("format", format)
+                                break
+                            }
+                        } else {
+                            // Fallback: check "doctype" string
+                            val docType = item.optString("doctype", "")
+                            if (docType.isNotEmpty() && docType == type) {
+                                format = item.optString("format", format)
                                 break
                             }
                         }
                     }
                 } catch (e: Exception) {
+                    // ignore or log
                 }
             }
 
@@ -1089,7 +1127,15 @@ class IssueService : IssueServiceInterface {
             try {
                 val credentialOffer =
                     Gson().fromJson(credentialOfferJsonString, CredentialOffer::class.java)
-                types = credentialOffer.credentials?.get(0)?.types ?: ArrayList()
+               if( credentialOffer.credentials?.get(0)?.format == "mso_mdoc")
+               {
+                   credentialOffer.credentials?.get(0)?.doctype?.let {
+                       types.add(it)
+                   }
+               }else{
+                   types = credentialOffer.credentials?.get(0)?.types ?: ArrayList()
+               }
+
             } catch (e: Exception) {
             }
         } catch (e: Exception) {
@@ -1192,9 +1238,19 @@ class IssueService : IssueServiceInterface {
                 is JSONArray -> {
                     for (i in 0 until credentialsSupported.length()) {
                         val item = credentialsSupported.optJSONObject(i) ?: continue
-                        val typesArray = item.optJSONArray("types") ?: continue
-                        if ((0 until typesArray.length()).any { typesArray.optString(it) == type }) {
-                            return true
+
+                        // First check "types" array
+                        val typesArray = item.optJSONArray("types")
+                        if (typesArray != null) {
+                            if ((0 until typesArray.length()).any { typesArray.optString(it) == type }) {
+                                return true
+                            }
+                        } else {
+                            // Fallback: check "docType" string
+                            val docType = item.optString("doctype", "")
+                            if (docType.isNotEmpty() && docType == type) {
+                                return true
+                            }
                         }
                     }
                     return false
