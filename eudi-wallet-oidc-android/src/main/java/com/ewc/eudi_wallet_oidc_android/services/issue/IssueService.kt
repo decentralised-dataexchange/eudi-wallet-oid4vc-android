@@ -526,8 +526,12 @@ class IssueService : IssueServiceInterface {
 
         val tokenResponse = when {
             response?.isSuccessful == true -> {
+                val lpid = response.headers()["legal-pid-attestation"]
+                val lpidPoP = response.headers()["legal-pid-attestation-pop"]
                 WrappedTokenResponse(
-                    tokenResponse = response.body()
+                    tokenResponse = response.body(),
+                    legalPidAttestation = lpid,
+                    legalPidAttestationPoP = lpidPoP
                 )
             }
 

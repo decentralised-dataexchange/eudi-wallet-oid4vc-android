@@ -18,4 +18,6 @@ data class TokenResponse(
 data class WrappedTokenResponse(
     var tokenResponse: TokenResponse? = null,
     var errorResponse: ErrorResponse? = null,
+    var legalPidAttestation: String? = null,
+    var legalPidAttestationPoP: String? = null
 )
