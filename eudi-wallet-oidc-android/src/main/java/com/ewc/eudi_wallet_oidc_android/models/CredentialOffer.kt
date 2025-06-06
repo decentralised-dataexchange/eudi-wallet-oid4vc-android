@@ -70,13 +70,13 @@ data class CredentialOffer(
 
     constructor(ewcV2: CredentialOfferEwcV2) : this(
         credentialIssuer = ewcV2.credentialIssuer,
-        credentials = arrayListOf(
+        credentials = ewcV2.credentialConfigurationIds?.map { configId ->
             Credentials(
                 format = null,
-                types = ewcV2.credentialConfigurationIds,
+                types = arrayListOf(configId),
                 trustFramework = null
             )
-        ),
+        }?.let { ArrayList(it) },
         grants = Grants(
             authorizationCode = if (ewcV2.grants?.authorizationCode == null) null else AuthorizationCode(
                 issuerState = ewcV2.grants?.authorizationCode?.issuerState,

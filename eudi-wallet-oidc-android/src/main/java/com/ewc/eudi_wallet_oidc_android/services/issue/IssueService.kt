@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue
 import android.net.Uri
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetails
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDataas
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
@@ -405,53 +406,59 @@ class IssueService : IssueServiceInterface {
         version: Int? = 2,
         issuerConfig: IssuerWellKnownConfiguration?
     ): String {
-        val credentialConfigurationId = credentialOffer?.credentials?.get(0)?.types?.firstOrNull()
         val gson = Gson()
-        if (format == "mso_mdoc" && doctype != null) {
-            return gson.toJson(
-                arrayListOf(
-                    AuthorizationDetails(
-                        type = "openid_credential",
-                        doctype = doctype,
-                        credentialConfigurationId = credentialConfigurationId,
-                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                    )
-                )
-            )
-        } else {
-            when (version) {
-                1 -> {
-                    return buildAuthorizationRequest(
-                        credentialOffer = credentialOffer,
-                        format = format,
-                        doctype = doctype
-                    )
-                }
 
-                else -> {
-                    return gson.toJson(
-                        arrayListOf(
-                            AuthorizationDetails(
-                                format = if (format?.contains("sd-jwt") == true) format else null ,
-                                credentialConfigurationId =  if (format?.contains("sd-jwt") == true) null else credentialConfigurationId,
-                                credentialDefinition = if (format?.contains("sd-jwt") == true) null else CredentialTypeDefinition(
-                                    type = getTypesFromIssuerConfig(
-                                        issuerConfig = issuerConfig,
-                                        type = credentialConfigurationId,
-                                        version = version
-                                    ) as ArrayList<String>
-                                ),
-                                vct = if (format?.contains("sd-jwt") == true) getTypesFromIssuerConfig(
-                                    issuerConfig = issuerConfig,
-                                    type = credentialConfigurationId,
-                                    version = version
-                                ) as String else null
-                            )
-                        )
-                    )
+        when (version) {
+            1 -> {
+                return buildAuthorizationRequest(
+                    credentialOffer = credentialOffer,
+                    format = format,
+                    doctype = doctype
+                )
+            }
+            else -> {
+                val authorizationDetailList: ArrayList<AuthorizationDetails> = ArrayList()
+                for (credential in credentialOffer?.credentials ?: arrayListOf()) {
+                    authorizationDetailList.add(AuthorizationDetails(
+                        credentialConfigurationId = credential.types?.firstOrNull(),
+                    ))
                 }
+                return gson.toJson(authorizationDetailList)
             }
         }
+//        if (format == "mso_mdoc" && doctype != null) {
+//            return gson.toJson(
+//                arrayListOf(
+//                    AuthorizationDetails(
+//                        type = "openid_credential",
+//                        doctype = doctype,
+//                        credentialConfigurationId = credentialConfigurationId,
+//                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
+//                    )
+//                )
+//            )
+//        } else {
+//            when (version) {
+//                1 -> {
+//                    return buildAuthorizationRequest(
+//                        credentialOffer = credentialOffer,
+//                        format = format,
+//                        doctype = doctype
+//                    )
+//                }
+//
+//                else -> {
+//                    return gson.toJson(
+//                        arrayListOf(
+//                            AuthorizationDetails(
+//                                format = null ,
+//                                credentialConfigurationId = credentialConfigurationId,
+//                            )
+//                        )
+//                    )
+//                }
+//            }
+//        }
     }
 
     /**
@@ -605,8 +612,9 @@ class IssueService : IssueServiceInterface {
             credentialOffer = credentialOffer,
             issuerConfig = issuerConfig,
             format = format,
+            jwt = jwt,
             doctype = doctype,
-            jwt = jwt
+            index = 0
         )
         // API call
         val response = ApiManager.api.getService()?.getCredential(
@@ -639,6 +647,91 @@ class IssueService : IssueServiceInterface {
         }
 
         return credentialResponse
+    }
+
+    /**
+     * To process the credential, credentials can be issued in two ways,
+     *     intime and deferred
+     *
+     *     If its intime, then we will receive the credential as the response
+     *     If its deferred, then we will get he acceptance token and use this acceptance token to call deferred
+     *
+     * @param did
+     * @param subJwk
+     * @param nonce
+     * @param credentialOffer
+     * @param issuerConfig
+     * @param accessToken
+     * @param format
+     *
+     * @return credential response
+     */
+    override suspend fun processCredentialRequest(
+        did: String?,
+        subJwk: JWK?,
+        nonce: String?,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
+        accessToken: String?,
+        authorizationDetail: AuthorizationDetail?,
+        index: Int
+    ): WrappedCredentialResponse? {
+
+        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer)
+
+            val request: CredentialRequest = if (authorizationDetail != null && authorizationDetail.type == "openid_credential" && !authorizationDetail.credentialIdentifiers.isNullOrEmpty()) {
+                CredentialRequest(
+                    credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
+                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
+                )
+            } else {
+                var types: ArrayList<String> = ArrayList()
+                var format: String? = null
+                try {
+                    types = credentialOffer?.credentials?.get(index)?.types ?: ArrayList()
+                    format = IssueService().getFormatFromIssuerConfig(
+                        issuerConfig,
+                        types.lastOrNull() ?: ""
+                    )
+                } catch (e: Exception) {
+                }
+                buildCredentialRequest(
+                    credentialOffer = credentialOffer,
+                    issuerConfig = issuerConfig,
+                    format = format,
+                    doctype = null,
+                    jwt = jwt, index = index
+                )
+            }
+
+            val response = ApiManager.api.getService()?.getCredential(
+                issuerConfig?.credentialEndpoint ?: "",
+                "application/json",
+                "Bearer $accessToken",
+                request
+            )
+            val credentialResponse = when {
+                (response?.code() ?: 0) >= 400 -> {
+                    try {
+                        WrappedCredentialResponse(
+                            errorResponse = processError(response?.errorBody()?.string())
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                response?.isSuccessful == true -> {
+                    WrappedCredentialResponse(
+                        credentialResponse = response.body()
+                    )
+                }
+
+                else -> {
+                    null
+                }
+            }
+            return credentialResponse
     }
 
     fun getDocType(
@@ -708,12 +801,14 @@ class IssueService : IssueServiceInterface {
             null
         }
     }
+
     private fun buildCredentialRequest(
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
         format: String?,
         jwt: String,
-        doctype: String?
+        doctype: String?,
+        index: Int
     ): CredentialRequest {
 
         val gson = Gson()
@@ -1124,22 +1219,24 @@ class IssueService : IssueServiceInterface {
      * @param credentialOffer
      * @return
      */
-    override fun getTypesFromCredentialOffer(credentialOffer: CredentialOffer?): ArrayList<String> {
+    override fun getTypesFromCredentialOffer(
+        credentialOffer: CredentialOffer?,
+        index: Int?
+    ): ArrayList<String> {
         var types: ArrayList<String> = ArrayList()
         val credentialOfferJsonString = Gson().toJson(credentialOffer)
         try {
             try {
                 val credentialOffer =
                     Gson().fromJson(credentialOfferJsonString, CredentialOffer::class.java)
-               if( credentialOffer.credentials?.get(0)?.format == "mso_mdoc")
+               if( credentialOffer.credentials?.get(index?:0)?.format == "mso_mdoc")
                {
-                   credentialOffer.credentials?.get(0)?.doctype?.let {
+                   credentialOffer.credentials?.get(index?:0)?.doctype?.let {
                        types.add(it)
                    }
                }else{
-                   types = credentialOffer.credentials?.get(0)?.types ?: ArrayList()
+                   types = credentialOffer.credentials?.get(index?:0)?.types ?: ArrayList()
                }
-
             } catch (e: Exception) {
             }
         } catch (e: Exception) {
