@@ -1,9 +1,11 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
@@ -99,6 +101,17 @@ interface IssueServiceInterface {
         format: String
     ): WrappedCredentialResponse?
 
+    suspend fun processCredentialRequest(
+        did: String?,
+        subJwk: JWK?,
+        nonce: String?,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
+        accessToken: TokenResponse?,
+        authorizationDetail: AuthorizationDetail?,
+        index: Int
+    ): WrappedCredentialResponse?
+
     /**
      * For issuance of the deferred credential.
      * @param acceptanceToken - token which we got from credential request
@@ -134,7 +147,8 @@ interface IssueServiceInterface {
      * @return
      */
     fun getTypesFromCredentialOffer(
-        credentialOffer: CredentialOffer?
+        credentialOffer: CredentialOffer?,
+        index: Int? = 0
     ): ArrayList<String>
 
     /**

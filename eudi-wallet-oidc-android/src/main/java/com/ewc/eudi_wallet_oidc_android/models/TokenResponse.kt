@@ -13,6 +13,7 @@ data class TokenResponse(
     @SerializedName("error") var error: String? = null,
     @SerializedName("error_description") var errorDescription: String? = null,
     @SerializedName("refresh_token") var refreshToken: String? = null,
+    @SerializedName("authorization_details") var authorizationDetails: List<AuthorizationDetail>? = null
 )
 
 data class WrappedTokenResponse(
@@ -20,4 +21,10 @@ data class WrappedTokenResponse(
     var errorResponse: ErrorResponse? = null,
     var legalPidAttestation: String? = null,
     var legalPidAttestationPoP: String? = null
+)
+
+data class AuthorizationDetail(
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("credential_configuration_id") val credentialConfigurationId: String? = null,
+    @SerializedName("credential_identifiers") val credentialIdentifiers: List<String>? = null
 )
