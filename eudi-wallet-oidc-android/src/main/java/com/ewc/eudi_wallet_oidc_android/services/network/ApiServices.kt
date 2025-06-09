@@ -124,7 +124,7 @@ interface ApiService {
     suspend fun getRefreshTokenFromCode(
         @Url url: String,
         @FieldMap map: Map<String, String?>,
-       // @HeaderMap headers: Map<String, String> = emptyMap()
+        // @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<RefreshTokenResponse>
     @POST("")
     suspend fun sendNotificationRequest(
@@ -136,4 +136,10 @@ interface ApiService {
     fun getVerifiableCredentialStatusList(
         @Url url: String, // Dynamically set the URL
     ): Call<ResponseBody>
+    @POST
+    suspend fun fetchNonce(
+        @Url url: String,
+        @Header("Authorization") authorization: String,
+    ): Response<ResponseBody>
+
 }
