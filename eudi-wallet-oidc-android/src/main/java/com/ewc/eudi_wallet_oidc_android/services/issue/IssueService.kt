@@ -29,7 +29,6 @@ import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
-import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialMetaDataConverter
 import com.google.gson.Gson
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -691,6 +690,7 @@ class IssueService : IssueServiceInterface {
                     proof = ProofV3(jwt = jwt, proofType = "jwt"),
                     )
             } else {
+                val doctype = fetchDoctype(index,credentialOffer,issuerConfig)
                 var types: ArrayList<String> = ArrayList()
                 var format: String? = null
                 try {
@@ -705,7 +705,7 @@ class IssueService : IssueServiceInterface {
                     credentialOffer = credentialOffer,
                     issuerConfig = issuerConfig,
                     format = format,
-                    doctype = null,
+                    doctype = doctype,
                     jwt = jwt, index = index
                 )
             }
@@ -739,6 +739,46 @@ class IssueService : IssueServiceInterface {
             }
             return credentialResponse
     }
+
+    private fun fetchDoctype(
+        index: Int,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?
+    ): String? {
+        return try {
+            val credentials = credentialOffer?.credentials
+            val types = credentials?.get(index)?.types
+                ?: credentials?.get(index)?.doctype?.let { arrayListOf(it) }
+                ?: arrayListOf()
+
+            val format = IssueService().getFormatFromIssuerConfig(
+                issuerConfig,
+                types.lastOrNull().orEmpty()
+            )
+
+            val credentialsSupported = issuerConfig?.credentialsSupported
+
+            if (format == "mso_mdoc") {
+                when (credentialsSupported) {
+                    is Map<*, *> -> {
+                        @Suppress("UNCHECKED_CAST")
+                        getDocType(credentialsSupported as? Map<String, Any>, credentials)
+                    }
+                    is List<*> -> {
+                        @Suppress("UNCHECKED_CAST")
+                        getDocType(credentialsSupported as? List<Map<String, Any>>, credentials)
+                    }
+                    else -> null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("doctypefetch", "Error: ${e.message}", e)
+            null
+        }
+    }
+
 
     fun getDocType(
         credentialsSupported: Any?,
