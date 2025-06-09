@@ -16,6 +16,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
@@ -672,7 +673,7 @@ class IssueService : IssueServiceInterface {
         nonce: String?,
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
-        accessToken: String?,
+        accessToken: TokenResponse?,
         authorizationDetail: AuthorizationDetail?,
         index: Int
     ): WrappedCredentialResponse? {
@@ -684,6 +685,11 @@ class IssueService : IssueServiceInterface {
                     credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
                     proof = ProofV3(jwt = jwt, proofType = "jwt"),
                 )
+            } else if (accessToken?.cNonce==null && issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
+                CredentialRequest(
+                    credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
+                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
+                    )
             } else {
                 var types: ArrayList<String> = ArrayList()
                 var format: String? = null
@@ -707,7 +713,7 @@ class IssueService : IssueServiceInterface {
             val response = ApiManager.api.getService()?.getCredential(
                 issuerConfig?.credentialEndpoint ?: "",
                 "application/json",
-                "Bearer $accessToken",
+                "Bearer ${accessToken?.accessToken}",
                 request
             )
             val credentialResponse = when {

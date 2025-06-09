@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
@@ -106,7 +107,7 @@ interface IssueServiceInterface {
         nonce: String?,
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
-        accessToken: String?,
+        accessToken: TokenResponse?,
         authorizationDetail: AuthorizationDetail?,
         index: Int
     ): WrappedCredentialResponse?
