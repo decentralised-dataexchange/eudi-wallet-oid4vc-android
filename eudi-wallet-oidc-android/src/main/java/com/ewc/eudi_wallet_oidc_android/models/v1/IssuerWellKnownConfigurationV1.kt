@@ -13,7 +13,8 @@ data class IssuerWellKnownConfigurationV1(
     @SerializedName("deferred_credential_endpoint") var deferredCredentialEndpoint: String? = null,
     @SerializedName("display") var display: Any? = null,
     @SerializedName("credentials_supported") var credentialsSupported: Any? = null,
-    @SerializedName("notification_endpoint") var notificationEndpoint: String? = null
+    @SerializedName("notification_endpoint") var notificationEndpoint: String? = null,
+    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null
 )
 
 data class CredentialsSupportedV1(
