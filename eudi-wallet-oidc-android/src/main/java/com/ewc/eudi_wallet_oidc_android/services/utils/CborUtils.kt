@@ -30,13 +30,27 @@ class CborUtils {
             if (cbor.isNullOrBlank()) {
                 return null
             }
-            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(cbor ?: "")
+           // val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(cbor ?: "")
+
+            val paddedCbor = padBase64Url(cbor ?: "")
+
+            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor ?: "")
             return extractCborDataElements(cborInBytes)
         }
-
+        private fun padBase64Url(input: String): String {
+            val mod = input.length % 4
+            return if (mod == 0) input else input + "=".repeat(4 - mod)
+        }
         private fun extractCborDataElements(cborBytes: ByteArray): JSONObject {
             val cbors = CborDecoder(ByteArrayInputStream(cborBytes)).decode()
-            val nameSpaces = cbors[0]["nameSpaces"]
+            var nameSpaces = cbors[0]["nameSpaces"]
+            if (nameSpaces==null){
+                val documents = cbors[0]["documents"]
+                val firstDocument = documents?.get(0)
+                val issuerSigned = firstDocument?.get("issuerSigned")
+                 nameSpaces = issuerSigned?.get("nameSpaces")
+            }
+
             val jsonObject = JSONObject()
             if (nameSpaces is CborMap) {
                 Log.d("TAG", "extractIssuerNamespacedElements: Map")
@@ -53,7 +67,7 @@ class CborUtils {
                                 CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
                             val identifier = decoded[0]["elementIdentifier"].toString()
                             val value = decoded[0]["elementValue"]
-                            if (value.majorType == MajorType.BYTE_STRING) {
+                            if (value?.majorType == MajorType.BYTE_STRING) {
                                 // Convert the ByteString into a readable format, e.g., hex string or Base64
                                 val byteValue = value as CborByteString
                                 val base64String =
@@ -64,7 +78,7 @@ class CborUtils {
                                     Log.d("TAG", "extractIssuerNamespacedElements: ")
                                 }
                                // newJson.put(identifier, value.toString())
-                                newJson.put(identifier, convertCborToJson(value))
+                                newJson.put(identifier, value?.let { convertCborToJson(it) })
 
                             }
                         }
@@ -153,7 +167,7 @@ class CborUtils {
                             val identifier = decoded[0]["elementIdentifier"].toString()
                             val value = decoded[0]["elementValue"]
 
-                            if (value.majorType == MajorType.BYTE_STRING) {
+                            if (value?.majorType == MajorType.BYTE_STRING) {
                                 // Convert the ByteString into a readable format (Base64 here)
                                 val byteValue = value as CborByteString
                                 val base64String =
@@ -215,7 +229,7 @@ class CborUtils {
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
-                        docType = getDocType(issuerAuth)
+                        docType = issuerAuth?.let { getDocType(it) }
 
 
                     } catch (e: Exception) {
@@ -405,7 +419,7 @@ class CborUtils {
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
-                        expiryUntil = getCredentialExpiry(issuerAuth)
+                        expiryUntil = issuerAuth?.let { getCredentialExpiry(it) }
 
 
                     } catch (e: Exception) {
@@ -534,7 +548,7 @@ class CborUtils {
                 val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
                 val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                 val issuerAuth = cbors[0]["issuerAuth"]
-                getCredentialIssuedAt(issuerAuth)
+                issuerAuth?.let {  getCredentialIssuedAt(it)}
             } catch (e: Exception) {
                 Log.e("TAG", "Error processing credential: ${e.message}")
                 null
@@ -841,15 +855,14 @@ class CborUtils {
 
     }
 }
-
-operator fun DataItem.get(name: String): DataItem {
-    check(this.majorType == MajorType.MAP)
+operator fun DataItem.get(name: String): DataItem? {
+    if (this.majorType != MajorType.MAP) return null
     this as CborMap
     return this.get(CborUnicodeString(name))
 }
 
-operator fun DataItem.get(index: Int): DataItem {
-    check(this.majorType == MajorType.ARRAY)
+operator fun DataItem.get(index: Int): DataItem? {
+    if (this.majorType != MajorType.ARRAY) return null
     this as CborArray
-    return this.dataItems[index]
+    return this.dataItems.getOrNull(index)
 }
