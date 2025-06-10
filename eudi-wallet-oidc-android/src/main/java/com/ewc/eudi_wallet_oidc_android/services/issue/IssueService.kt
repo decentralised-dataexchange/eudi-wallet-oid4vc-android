@@ -970,13 +970,36 @@ class IssueService : IssueServiceInterface {
                     errorDescription = jsonObject.getString("error")
                 )
             }
-
             jsonObject?.has("detail") == true -> {
-                ErrorResponse(
-                    error = -1,
-                    errorDescription = jsonObject.getString("detail")
-                )
+                val detailValue = jsonObject.get("detail")
+                if (detailValue is JSONObject) {
+                    // If "detail" is a nested JSON object, extract error_description or error
+                    val detailJson = detailValue
+                    val detailErrorDescription = detailJson.optString("error_description")
+                    val detailError = detailJson.optString("error")
+                    val description = when {
+                        detailErrorDescription.isNotEmpty() -> detailErrorDescription
+                        detailError.isNotEmpty() -> detailError
+                        else -> detailJson.toString()
+                    }
+                    ErrorResponse(
+                        error = -1,
+                        errorDescription = description
+                    )
+                } else {
+                    // If "detail" is a string or something else
+                    ErrorResponse(
+                        error = -1,
+                        errorDescription = detailValue.toString()
+                    )
+                }
             }
+//            jsonObject?.has("detail") == true -> {
+//                ErrorResponse(
+//                    error = -1,
+//                    errorDescription = jsonObject.getString("detail")
+//                )
+//            }
 
             else -> {
                 ErrorResponse(
