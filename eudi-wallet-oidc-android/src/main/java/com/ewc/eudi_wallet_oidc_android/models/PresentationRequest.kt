@@ -24,7 +24,9 @@ data class PresentationRequest(
     @SerializedName("client_metadata") var clientMetaDetails: Any? = null,
     @SerializedName("client_metadata_uri") var clientMetadataUri: String? = null,
     @SerializedName("client_id_scheme") var clientIdScheme: String? = null,
-    @SerializedName("transaction_data") var transactionDdata: ArrayList<String>? = null
+    @SerializedName("transaction_data") var transactionDdata: ArrayList<String>? = null,
+    @Transient var responseString: String? = null
+
 
 )
 data class WrappedPresentationRequest(

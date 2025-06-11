@@ -158,12 +158,14 @@ class VerificationService : VerificationServiceInterface {
                     }
 
                     if (json!=null){
+                        json.responseString = responseString
                        return processPresentationRequest(json,responseString)
                     }
                     else{
                         if (isValidJWT(responseString ?: "")) {
                             val payload = parseJWTForPayload(responseString ?: "{}")
                             val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
+                            jwtJson.responseString = responseString
                             return processPresentationRequest(jwtJson,responseString)
                         } else {
                            return WrappedPresentationRequest(
@@ -193,6 +195,7 @@ class VerificationService : VerificationServiceInterface {
                 parseJWTForPayload(data),
                 PresentationRequest::class.java
             )
+            json.responseString = data
             if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
                 val resolvedPresentationDefinition =
                     getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
