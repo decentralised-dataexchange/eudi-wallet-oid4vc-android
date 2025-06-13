@@ -142,4 +142,8 @@ interface ApiService {
         @Header("Authorization") authorization: String,
     ): Response<ResponseBody>
 
+    @GET
+    suspend fun getTrustServiceProviders(
+        @Url url: String // Dynamically set the URL
+    ): Response<ResponseBody>
 }
