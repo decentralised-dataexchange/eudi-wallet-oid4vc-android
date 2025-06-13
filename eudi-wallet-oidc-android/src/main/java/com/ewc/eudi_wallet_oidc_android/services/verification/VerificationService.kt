@@ -99,6 +99,7 @@ class VerificationService : VerificationServiceInterface {
         } else {
             null
         }
+        val request = Uri.parse(data).getQueryParameter("request")
         if (presentationDefinition != null || presentationDefinitionUri != null) {
             val presentationRequest = PresentationRequest(
                 clientId = clientId,
@@ -113,7 +114,8 @@ class VerificationService : VerificationServiceInterface {
                 requestUri = requestUri,
                 responseUri = responseUri,
                 clientMetaDetails = clientMetadetails,
-                clientIdScheme = clientIdScheme
+                clientIdScheme = clientIdScheme,
+                request = request
             )
             if (presentationDefinition.isNullOrBlank() && !presentationDefinitionUri.isNullOrBlank()) {
                 val resolvedPresentationDefinition =
@@ -158,14 +160,14 @@ class VerificationService : VerificationServiceInterface {
                     }
 
                     if (json!=null){
-                        json.responseString = responseString
+                        json.request = json.request ?: responseString
                        return processPresentationRequest(json,responseString)
                     }
                     else{
                         if (isValidJWT(responseString ?: "")) {
                             val payload = parseJWTForPayload(responseString ?: "{}")
                             val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
-                            jwtJson.responseString = responseString
+                            jwtJson.request = jwtJson.request ?: responseString
                             return processPresentationRequest(jwtJson,responseString)
                         } else {
                            return WrappedPresentationRequest(
@@ -195,7 +197,7 @@ class VerificationService : VerificationServiceInterface {
                 parseJWTForPayload(data),
                 PresentationRequest::class.java
             )
-            json.responseString = data
+            json.request = json.request ?: data
             if (json.presentationDefinition == null && !json.presentationDefinitionUri.isNullOrBlank()) {
                 val resolvedPresentationDefinition =
                     getPresentationDefinitionFromDefinitionUri(json.presentationDefinitionUri)
