@@ -21,6 +21,7 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationServic
 import org.json.JSONArray
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.security.cert.CertificateFactory
 import co.nstant.`in`.cbor.model.UnsignedInteger as CBORInteger
 
 class CborUtils {
@@ -851,6 +852,29 @@ class CborUtils {
             println("CBOR encoded VP Token: ${cborBytes.contentToString()}")
 
             return outputStream.toByteArray()
+        }
+        @OptIn(ExperimentalEncodingApi::class)
+        fun extractX5CFromCoseBase64(coseBase64: String): List<String> {
+            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(coseBase64 ?: "")
+            val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
+            val issuerAuth = cbors[0]["issuerAuth"]
+            val coseArray = issuerAuth as? CborArray ?: throw IllegalArgumentException("Expected COSE_Sign1 array")
+            if (coseArray.dataItems.size < 4) throw IllegalArgumentException("Invalid COSE_Sign1 structure")
+            val unprotectedMap = coseArray.dataItems[1] as? CborMap ?: throw IllegalArgumentException("Unprotected header not a map")
+            val x5chainKey = UnsignedInteger(33)
+            val x5chainValue = unprotectedMap[x5chainKey]
+            Log.d("CBOR", "x5chain (33) value type: ${x5chainValue?.javaClass}, value: $x5chainValue")
+            val certList = when (x5chainValue) {
+                is CborArray -> x5chainValue
+                is CborByteString -> CborArray().apply { add(x5chainValue) }
+                else -> throw IllegalArgumentException("x5chain (33) not found or not a CborArray/ByteString")
+            }
+            val certFactory = CertificateFactory.getInstance("X.509")
+            return certList.dataItems.map {
+                val certBytes = (it as CborByteString).bytes
+                val cert = certFactory.generateCertificate(certBytes.inputStream()) as java.security.cert.X509Certificate
+                java.util.Base64.getEncoder().encodeToString(cert.encoded)
+            }
         }
 
     }
