@@ -302,7 +302,7 @@ class SDJWTService : SDJWTServiceInterface {
                     }
 
                 }
-               else{
+                else{
                     // Extract requested parameters from the presentation definition
                     val requestedParams: MutableList<String> = mutableListOf()
 //                presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
@@ -373,42 +373,35 @@ class SDJWTService : SDJWTServiceInterface {
                         }
                     }
 
+                    disclosures?.map { disclosure ->
+                        try {
+                            val list = JSONArray(
+                                Base64.decode(disclosure, Base64.URL_SAFE)
+                                    .toString(charset("UTF-8"))
+                            )
 
-                    // Process disclosures concurrently using async
-                    val deferredResults = disclosures?.map { disclosure ->
-                        async {
-                            try {
-                                val list = JSONArray(
-                                    Base64.decode(disclosure, Base64.URL_SAFE)
-                                        .toString(charset("UTF-8"))
-                                )
-
-                                if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
-                                    disclosureList.add(disclosure)
-                                }
-                                val thirdElement = list.opt(2)
-                                if (thirdElement is JSONObject) {
-                                    val keys = thirdElement.keys()
-                                    while (keys.hasNext()) {
-                                        val key = keys.next()
-                                        if (requestedParams.contains(key)) {
-                                            disclosureList.add(disclosure)
-                                        }
+                            if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
+                                disclosureList.add(disclosure)
+                            }
+                            val thirdElement = list.opt(2)
+                            if (thirdElement is JSONObject) {
+                                val keys = thirdElement.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    if (requestedParams.contains(key)) {
+                                        disclosureList.add(disclosure)
                                     }
                                 }
-
-                                val response = calculateSHA256Hash(disclosure)
-                                if (sdList.contains(response)) {
-                                    disclosureList.add(disclosure)
-                                }
-                            } catch (e: Exception) {
-                                println(e.message.toString())
                             }
+
+                            val response = calculateSHA256Hash(disclosure)
+                            if (sdList.contains(response)) {
+                                disclosureList.add(disclosure)
+                            }
+                        } catch (e: Exception) {
+                            println(e.message.toString())
                         }
                     }
-
-                    // Wait for all async tasks to complete
-                    deferredResults?.awaitAll()
 
                     // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
                     for (disclosureValue in disclosureList.toSet()) {
