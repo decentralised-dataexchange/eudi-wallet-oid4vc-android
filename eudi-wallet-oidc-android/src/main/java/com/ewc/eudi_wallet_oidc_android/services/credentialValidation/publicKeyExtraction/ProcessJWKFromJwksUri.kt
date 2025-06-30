@@ -34,7 +34,7 @@ class ProcessJWKFromJwksUri {
      * @param kid
      * @return
      */
-    suspend fun fetchJwks(jwksUri: String, kid: String?): JwkKey? {
+    suspend fun fetchJwks(jwksUri: String, kid: String?,keyUse: String?="sig"): JwkKey? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL(jwksUri)
@@ -43,7 +43,7 @@ class ProcessJWKFromJwksUri {
                 val jwksResponse =  Gson().fromJson(json, JwksResponse::class.java)
 
                 // Find the JWK with "use" = "sig"
-                var jwkKey = jwksResponse.keys.firstOrNull { it.use == "sig" }
+                var jwkKey = jwksResponse.keys.firstOrNull { it.use == keyUse }
 
                 // If no "sig" key is found, find by kid
                 if (jwkKey == null) {

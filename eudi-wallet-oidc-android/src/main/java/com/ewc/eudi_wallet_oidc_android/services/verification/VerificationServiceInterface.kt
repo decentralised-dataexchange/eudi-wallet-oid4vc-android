@@ -61,22 +61,6 @@ interface VerificationServiceInterface {
         walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse?
 
-    /**
-     * Process vp token, id token and presentation submission
-     *
-     * @param presentationRequest
-     * @param did
-     * @param credentialList
-     * @param subJwk
-     * @return
-     */
-    fun processTokenRequest(
-        presentationRequest: PresentationRequest,
-        did: String?,
-        credentialList: List<String>? = null,
-        subJwk: JWK?
-    ): Triple<List<String>?, String?, PresentationSubmission?>
-
 
     suspend fun processAndSendAuthorisationResponse(
         did: String?,
