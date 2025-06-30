@@ -70,6 +70,7 @@ dependencies {
     implementation ("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.+")
     implementation("com.fasterxml.woodstox:woodstox-core:7.1.0")
     implementation ("javax.xml.stream:stax-api:1.0-2")
+    implementation("com.jayway.jsonpath:json-path:2.9.0")
 
 }
 

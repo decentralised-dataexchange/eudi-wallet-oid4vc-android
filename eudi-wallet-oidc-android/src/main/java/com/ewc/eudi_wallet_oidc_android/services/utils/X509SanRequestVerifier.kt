@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
 import android.util.Base64
+import com.ewc.eudi_wallet_oidc_android.services.verification.ClientIdScheme
+import com.ewc.eudi_wallet_oidc_android.services.verification.clientIdSchemeHandling.ClientIdParser
 import com.nimbusds.jose.JWSAlgorithm
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -39,14 +41,14 @@ class X509SanRequestVerifier private constructor() {
         }
     }
 
-    fun validateClientIDInCertificate(x5cChain: List<String>?, clientID: String?): Boolean {
-        val leafCertData = Base64.decode(x5cChain?.firstOrNull() ?: "", Base64.DEFAULT)
-        val certificate = CertificateFactory.getInstance("X.509")
-            .generateCertificate(leafCertData.inputStream()) as X509Certificate
-
-        val dnsNames = extractDNSNamesFromCertificate(certificate)
-        return dnsNames.contains(clientID)
-    }
+//    fun validateClientIDInCertificate(x5cChain: List<String>?, clientID: String?): Boolean {
+//        val leafCertData = Base64.decode(x5cChain?.firstOrNull() ?: "", Base64.DEFAULT)
+//        val certificate = CertificateFactory.getInstance("X.509")
+//            .generateCertificate(leafCertData.inputStream()) as X509Certificate
+//
+//        val dnsNames = extractDNSNamesFromCertificate(certificate)
+//        return dnsNames.contains(clientID)
+//    }
 
     private fun extractDNSNamesFromCertificate(certificate: X509Certificate): List<String> {
         val dnsNames = mutableListOf<String>()
@@ -221,6 +223,51 @@ class X509SanRequestVerifier private constructor() {
             return false
         }
 
+    }
+
+    fun validateClientIDInCertificate(x5cChain: List<String>?, clientID: String?): Boolean {
+        if (x5cChain.isNullOrEmpty() || clientID.isNullOrEmpty()) return false
+
+        val scheme = ClientIdParser.getClientIdScheme(clientID) ?: return false
+        val identifier = ClientIdParser.getSchemeSpecificIdentifier(clientID) ?: return false
+
+        return try {
+            val leafCertData = Base64.decode(x5cChain.first(), Base64.DEFAULT)
+            val certificate = CertificateFactory.getInstance("X.509")
+                .generateCertificate(leafCertData.inputStream()) as X509Certificate
+
+            val matched = when (scheme) {
+                ClientIdScheme.X509_SAN_DNS -> {
+                    val dnsNames = extractDNSNamesFromCertificate(certificate)
+                    dnsNames.contains(identifier)
+                }
+                ClientIdScheme.X509_SAN_URI -> {
+                    val uriNames = extractUriSANsFromCertificate(certificate)
+                    uriNames.any { it.equals(identifier, ignoreCase = true) }
+                }
+                else -> false
+            }
+
+            matched
+        } catch (e: Exception) {
+            println("Error validating ClientID against SAN: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Extract URI SAN (Subject Alternative Name) entries (type 6) from the certificate.
+     */
+    private fun extractUriSANsFromCertificate(certificate: X509Certificate): List<String> {
+        val uriSANs = mutableListOf<String>()
+        val sanList = certificate.subjectAlternativeNames ?: return uriSANs
+
+        for (san in sanList) {
+            if (san[0] == 6) { // 6 = URI per RFC 5280
+                uriSANs.add(san[1] as String)
+            }
+        }
+        return uriSANs
     }
 
 }
