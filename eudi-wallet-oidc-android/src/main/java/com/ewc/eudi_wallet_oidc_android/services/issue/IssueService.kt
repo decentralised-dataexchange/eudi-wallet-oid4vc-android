@@ -684,6 +684,11 @@ class IssueService : IssueServiceInterface {
                     credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
                     proof = ProofV3(jwt = jwt, proofType = "jwt"),
                 )
+            }  else if (authorizationDetail !=null && authorizationDetail.type == "openid_credential" && issuerConfig?.nonceEndpoint!=null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()) {
+                CredentialRequest(
+                    credentialConfigurationId = authorizationDetail.credentialConfigurationId,
+                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
+                )
             } else if (accessToken?.cNonce==null && issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
                 CredentialRequest(
                     credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
