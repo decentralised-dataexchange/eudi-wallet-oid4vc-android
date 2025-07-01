@@ -2,6 +2,9 @@ package com.ewc.eudi_wallet_oidc_android.services
 
 import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.DCQL
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedField
+import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedPath
 import com.jayway.jsonpath.JsonPath
 import com.jayway.jsonpath.PathNotFoundException
 
@@ -11,8 +14,8 @@ object DCQLFiltering {
     fun filterCredentialsUsingDCQL(
         dcql: DCQL,
         credentials: List<String>
-    ): List<List<String>> {
-        val filteredList: MutableList<List<String>> = mutableListOf()
+    ): List<List<MatchedCredential>> {
+        val filteredList: MutableList<List<MatchedCredential>> = mutableListOf()
         dcql.credentials?.let { credentialsList ->
             for (credentialFilter in credentialsList) {
                 val list = filterCredentialUsingSingleDCQLCredentialFilter(
@@ -29,13 +32,14 @@ object DCQLFiltering {
     private fun filterCredentialUsingSingleDCQLCredentialFilter(
         credentialFilter: CredentialList,
         credentialList: List<String>
-    ): List<String> {
-        val filteredList: MutableList<String> = mutableListOf()
+    ): List<MatchedCredential> {
+        val filteredList: MutableList<MatchedCredential> = mutableListOf()
 
         //need to check if $ is needed at the beginning of the path
         if (credentialFilter.format == "dc+sd-jwt") {
-            credentialLoop@ for (credential in credentialList) { // loop A
+            credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) { // loop A
 
+                val matchedFields = mutableListOf<MatchedField>()
                 val vctValues = credentialFilter.meta?.vctValues
                 try {
                     val matchedVct = JsonPath.read<String>(credential, "$.vct")
@@ -45,53 +49,69 @@ object DCQLFiltering {
                 } catch (e: PathNotFoundException) {
                     continue@credentialLoop
                 }
-
-                for (claim in credentialFilter.claims) { // loop B
+                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) { // loop B
                     val paths = claim.path
-                    var found = false
                     val joinedPath = paths?.joinToString(separator = ".") ?: ""
                     try {
-                        JsonPath.read<Any>(credential, ensureJsonPathPrefix(joinedPath))
-                        found = true
+                        val matchedPathValue = JsonPath.read<Any>(credential, ensureJsonPathPrefix(joinedPath))
+
+                        matchedFields.add(
+                            MatchedField(
+                                index = credentialIndex,
+                                path = MatchedPath(
+                                    index = pathIndex,
+                                    path = joinedPath,
+                                    value = matchedPathValue
+                                )
+                            )
+                        )
                     } catch (e: PathNotFoundException) {
                         println(e.stackTraceToString())
+                        continue@credentialLoop
                     }
-                    if (!found) continue@credentialLoop // if no path matched, skip to next credential
                 }
                 // If all claims matched, add credential to filteredList
-                filteredList.add(credential)
+                filteredList.add(MatchedCredential(
+                    index = credentialIndex,
+                    fields = matchedFields
+                ))
             }
         } else if (credentialFilter.format == "mso_mdoc") {
-            // if the credential is mdoc, check the doc type from credentialFilter.meta.doctype_value
-            val docTypeValue = credentialFilter.meta?.doctypeValue
-            credentialLoop@ for (credential in credentialList) {
-                try {
-                    val matchedDocType = JsonPath.read<String>(credential, "$.docType")
-                    if (docTypeValue != null && docTypeValue != matchedDocType) {
+            credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) {
+
+                val matchedFields = mutableListOf<MatchedField>()
+                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
+                    val namespace = claim.namespace
+                    val claimName = claim.claimName
+
+                    if (namespace.isNullOrBlank() || claimName.isNullOrBlank()) {
                         continue@credentialLoop
                     }
 
-                    for (claim in credentialFilter.claims) {
-                        val namespace = claim.namespace
-                        val claimName = claim.claimName
+                    val path = "$['$namespace']['$claimName']"
+                    try {
+                        val matchedPathValue = JsonPath.read<Any>(credential, path)
 
-                        if (namespace.isNullOrBlank() || claimName.isNullOrBlank()) {
-                            continue@credentialLoop
-                        }
-
-                        val path = "$['$namespace']['$claimName']"
-                        try {
-                            JsonPath.read<Any>(credential, path)
-                        } catch (e: PathNotFoundException) {
-                            println("Claim not found: $path")
-                            continue@credentialLoop
-                        }
+                        matchedFields.add(
+                            MatchedField(
+                                index = credentialIndex,
+                                path = MatchedPath(
+                                    index = pathIndex,
+                                    path = path,
+                                    value = matchedPathValue
+                                )
+                            )
+                        )
+                    } catch (e: PathNotFoundException) {
+                        println("Claim not found: $path")
+                        continue@credentialLoop
                     }
-
-                    filteredList.add(credential)
-                } catch (e: PathNotFoundException) {
-                    continue@credentialLoop
                 }
+
+                filteredList.add(MatchedCredential(
+                    index = credentialIndex,
+                    fields = matchedFields
+                ))
             }
         }
 
