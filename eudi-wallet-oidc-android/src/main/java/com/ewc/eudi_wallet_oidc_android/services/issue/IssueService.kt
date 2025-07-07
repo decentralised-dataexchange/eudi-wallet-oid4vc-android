@@ -606,6 +606,10 @@ class IssueService : IssueServiceInterface {
         }
 
         val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig,credentialOffer)
+        if (jwt == null) {
+            Log.e("IssueService", "Failed to create proof for credential request")
+            return null
+        }
 
         // Construct credential request
         val body = buildCredentialRequest(
@@ -678,6 +682,10 @@ class IssueService : IssueServiceInterface {
     ): WrappedCredentialResponse? {
 
         val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer)
+        if (jwt == null) {
+            Log.e("IssueService", "Failed to create proof for credential request")
+            return null
+        }
 
             val request: CredentialRequest = if (authorizationDetail != null && authorizationDetail.type == "openid_credential" && !authorizationDetail.credentialIdentifiers.isNullOrEmpty()) {
                 CredentialRequest(

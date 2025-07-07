@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
@@ -23,7 +24,7 @@ class ProofService {
         nonce: String?,
         issuerConfig: IssuerWellKnownConfiguration?,
         credentialOffer: CredentialOffer?,
-    ): String {
+    ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
         val credentials = credentialOffer?.credentials
         val bindingMethod: String? = when (credentialsSupported) {
@@ -63,10 +64,16 @@ class ProofService {
             jwsHeader, claimsSet
         )
         jwt.sign(
-            if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(
-                subJwk as ECKey
-            )
+            when (subJwk) {
+                is OctetKeyPair -> Ed25519Signer(subJwk)
+                is ECKey -> ECDSASigner(subJwk)
+                else -> {
+                    Log.d("ProofService", "Invalid subJwk: not ECKey or OctetKeyPair")
+                    return null
+                }
+            }
         )
+
         return jwt.serialize()
     }
     private fun generateKeyId(bindingMethod: String?, subJwk: JWK?, did: String?): String {
