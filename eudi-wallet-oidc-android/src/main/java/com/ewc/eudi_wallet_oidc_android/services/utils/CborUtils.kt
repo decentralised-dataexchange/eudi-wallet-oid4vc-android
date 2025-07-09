@@ -17,6 +17,7 @@ import co.nstant.`in`.cbor.model.UnicodeString as CborUnicodeString
 import co.nstant.`in`.cbor.model.UnsignedInteger
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
+import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import org.json.JSONArray
 import java.io.BufferedInputStream
@@ -675,8 +676,7 @@ class CborUtils {
                 for (credential in allCredentialList) {
                     if (credential.isNullOrBlank()) continue
                     // Process the presentation definition
-                    val presentationDefinition =
-                        VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+                    val presentationDefinition = processPresentationDefinition(presentationRequest.presentationDefinition)
 
                     try {
                         // Decode each CBOR credential from Base64 URL Safe encoding
