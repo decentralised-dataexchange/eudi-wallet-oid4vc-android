@@ -32,7 +32,6 @@ class CborUtils {
             if (cbor.isNullOrBlank()) {
                 return null
             }
-           // val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(cbor ?: "")
 
             val paddedCbor = padBase64Url(cbor ?: "")
 
@@ -132,8 +131,9 @@ class CborUtils {
                 }
 
                 try {
+                    val paddedCbor = padBase64Url(credential ?: "")
                     // Decode each CBOR credential from Base64 URL Safe encoding
-                    val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                    val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
 
                     // Extract the CBOR data elements and convert them into a JSONObject
                     val jsonObject = parseCborNamespaces(cborInBytes)
@@ -202,8 +202,9 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         // Extract the CBOR data elements and convert them into a JSONObject
                         issuerAuthObject = extractIssuerAuth(cborInBytes)
                     } catch (e: Exception) {
@@ -226,8 +227,9 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
@@ -327,7 +329,7 @@ class CborUtils {
                 }
             }
 
-            return docType ?: ""
+            return docType
         }
 
         private fun extractDocType(cborData: DataItem): String? {
@@ -416,8 +418,9 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
@@ -546,8 +549,9 @@ class CborUtils {
             if (credential.isNullOrBlank()) return null
 
             return try {
+                val paddedCbor = padBase64Url(credential ?: "")
                 // Decode the CBOR credential from Base64 URL Safe encoding
-                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                 val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                 val issuerAuth = cbors[0]["issuerAuth"]
                 issuerAuth?.let {  getCredentialIssuedAt(it)}
@@ -679,8 +683,9 @@ class CborUtils {
                     val presentationDefinition = processPresentationDefinition(presentationRequest.presentationDefinition)
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
 
                         // Extract the full CBOR data elements
                         var nameSpaces = extractNameSpaces(cborInBytes)
@@ -855,7 +860,8 @@ class CborUtils {
         }
         @OptIn(ExperimentalEncodingApi::class)
         fun extractX5CFromCoseBase64(coseBase64: String): List<String> {
-            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(coseBase64 ?: "")
+            val paddedCbor = padBase64Url(coseBase64 ?: "")
+            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor ?: "")
             val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
             val issuerAuth = cbors[0]["issuerAuth"]
             val coseArray = issuerAuth as? CborArray ?: throw IllegalArgumentException("Expected COSE_Sign1 array")
