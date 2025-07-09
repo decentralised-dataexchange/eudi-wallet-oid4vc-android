@@ -7,6 +7,7 @@ import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
+import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.nimbusds.jose.jwk.JWK
 
@@ -19,7 +20,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         inputDescriptors: InputDescriptors?
     ): String? {
         if (presentationRequest == null) return null
-        val processPresentationDefinition = VerificationService().processPresentationDefinition(
+        val processPresentationDefinition = processPresentationDefinition(
             presentationRequest.presentationDefinition
         )
 

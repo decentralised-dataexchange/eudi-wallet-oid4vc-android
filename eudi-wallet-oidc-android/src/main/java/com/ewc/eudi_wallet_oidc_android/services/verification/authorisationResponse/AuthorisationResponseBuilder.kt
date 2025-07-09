@@ -11,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.generateHash
+import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.ewc.eudi_wallet_oidc_android.services.verification.idToken.IdTokenGenerator
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentationSubMission.PresentationSubmissionGenerator
@@ -129,10 +130,10 @@ class AuthorisationResponseBuilder {
             val descriptorMap: ArrayList<DescriptorMap> = ArrayList()
 
             val presentationDefinitionProcess: PresentationDefinition? =
-                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+                processPresentationDefinition(presentationRequest.presentationDefinition)
             credentialList?.let { credentials ->
                 val presentationDefinition =
-                    VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+                    processPresentationDefinition(presentationRequest.presentationDefinition)
 
                 credentials.forEachIndexed { credentialIndex, credential ->
                     try {

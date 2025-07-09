@@ -26,42 +26,6 @@ interface VerificationServiceInterface {
      */
     suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest?
 
-    /**
-     * Authorisation response is sent by constructing the vp_token and presentation_submission values.
-     * @param did
-     * @param subJwk
-     * @param presentationRequest
-     * @param credentialList - filtered credential list by presentationRequest
-     *
-     * @return String - url
-     */
-    suspend fun sendVPToken(
-        did: String?,
-        subJwk: ECKey?,
-        presentationRequest: PresentationRequest,
-        credentialList: List<String>
-    ): String?
-
-
-    /**
-     * Send VP token
-     *
-     * @param did
-     * @param subJwk
-     * @param presentationRequest
-     * @param credentialList
-     * @return
-     */
-    suspend fun sendVPToken(
-        did: String?,
-        subJwk: JWK?,
-        presentationRequest: PresentationRequest,
-        credentialList: List<String>,
-        walletUnitAttestationJWT: String? ,
-        walletUnitProofOfPossession: String?,
-    ): WrappedVpTokenResponse?
-
-
     suspend fun processAndSendAuthorisationResponse(
         did: String?,
         subJwk: JWK?,
@@ -82,6 +46,4 @@ interface VerificationServiceInterface {
         credentialList: List<String?>,
         presentationDefinition: PresentationDefinition
     ): List<List<String>>
-
-    fun processPresentationDefinition(presentationDefinition: Any?): PresentationDefinition?
 }

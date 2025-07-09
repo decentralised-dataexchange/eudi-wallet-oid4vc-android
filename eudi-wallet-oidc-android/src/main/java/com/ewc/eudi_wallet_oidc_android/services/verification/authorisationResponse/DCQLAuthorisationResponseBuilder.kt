@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResp
 import android.R
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.MDocVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.SDJWTVpTokenBuilder
@@ -21,7 +22,7 @@ class DCQLAuthorisationResponseBuilder {
     ): Map<String, String> {
         val params = mutableMapOf<String, String>()
         val presentationDefinition =
-            VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
