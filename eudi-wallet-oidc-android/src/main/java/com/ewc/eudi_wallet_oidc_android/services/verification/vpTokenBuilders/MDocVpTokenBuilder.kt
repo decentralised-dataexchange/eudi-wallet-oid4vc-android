@@ -26,7 +26,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val documentList = mutableListOf<Document>()
         val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList)
+        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition.docType
         val nameSpaces = CborUtils.processExtractNameSpaces(
             credentialList, presentationRequest
         )
