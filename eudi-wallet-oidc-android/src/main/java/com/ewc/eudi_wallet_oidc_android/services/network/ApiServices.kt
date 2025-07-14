@@ -117,8 +117,7 @@ interface ApiService {
         @Header("X-Wallet-Unit-Nonce") nonce: String,
         @Body body: ClientAssertion
     ): Response<CredentialOfferResponse>
-    @GET
-    suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
+
     @FormUrlEncoded
     @POST("")
     suspend fun getRefreshTokenFromCode(
@@ -139,7 +138,7 @@ interface ApiService {
     @POST
     suspend fun fetchNonce(
         @Url url: String,
-        @Header("Authorization") authorization: String,
+        @Header("Authorization") authorization: String?=null,
     ): Response<ResponseBody>
 
     @GET

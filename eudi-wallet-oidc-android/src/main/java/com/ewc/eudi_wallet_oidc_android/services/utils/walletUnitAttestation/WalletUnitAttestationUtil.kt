@@ -11,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.WalletAttestationResult
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.nonceRequest.NonceService
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.StandardIntegrityManager
@@ -162,53 +163,6 @@ object WalletAttestationUtil {
         }
     }
 
-//    private suspend fun prepareIntegrityTokenProvider(
-//        context: Context,
-//        cloudProjectNumber: Long
-//    ): StandardIntegrityManager.StandardIntegrityTokenProvider =
-//        suspendCancellableCoroutine { cont ->
-//            val integrityManager = IntegrityManagerFactory.createStandard(context)
-//
-//            val prepareRequest = StandardIntegrityManager.PrepareIntegrityTokenRequest.builder()
-//                .setCloudProjectNumber(cloudProjectNumber)
-//                .build()
-//
-//            integrityManager.prepareIntegrityToken(prepareRequest)
-//                .addOnSuccessListener { provider ->
-//                    cont.resume(provider)
-//                }
-//                .addOnFailureListener { exception ->
-//                    cont.resumeWithException(exception)
-//                }
-//        }
-//
-//
-//    private suspend fun requestIntegrityToken(
-//        tokenProvider: StandardIntegrityManager.StandardIntegrityTokenProvider,
-//        requestHash: String?
-//    ): String = suspendCancellableCoroutine { cont ->
-//        GlobalScope.launch(Dispatchers.IO) {
-//            try {
-//
-//                // Build the token request
-//                val tokenRequest = StandardIntegrityManager.StandardIntegrityTokenRequest.builder()
-//                    .setRequestHash(requestHash)
-//                    .build()
-//
-//                // Request the integrity token
-//                tokenProvider.request(tokenRequest)
-//                    .addOnSuccessListener { response ->
-//                        cont.resume(response.token())
-//                    }
-//                    .addOnFailureListener { exception ->
-//                        cont.resumeWithException(exception)
-//                    }
-//            } catch (e: Exception) {
-//                cont.resumeWithException(e)
-//            }
-//        }
-//    }
-
     private suspend fun processWalletUnitAttestationRequest(
         token: String?,
         nonce: String?,
@@ -315,22 +269,9 @@ object WalletAttestationUtil {
     private suspend fun fetchNonceForDeviceIntegrityToken(url: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                // Make the API call to fetch the nonce
-                val response = ApiManager.api.getService()?.fetchNonce(url = url)
+                val nonceResponse = NonceService().fetchNonce(nonceEndPoint = url)
+                return@withContext nonceResponse
 
-                if (response?.isSuccessful == true) {
-                    // Parse the response body into the NonceResponse model
-                    val responseBody = response.body()?.string()
-                    responseBody?.let {
-                        val nonceResponse = Gson().fromJson(it, NonceResponse::class.java)
-                        Log.d(TAG, "Nonce fetched successfully: ${nonceResponse.nonce}")
-                        return@withContext nonceResponse.nonce
-                    }
-                } else {
-                    // Log the error if the response is unsuccessful
-                    Log.e(TAG, "Failed to fetch nonce: ${response?.errorBody()?.string()}")
-                    return@withContext null
-                }
             } catch (e: Exception) {
                 // Handle any exceptions that occur during the API call
                 Log.e(TAG, "Error fetching nonce: ${e.localizedMessage}")
@@ -461,62 +402,6 @@ object WalletAttestationUtil {
 
         return keyPair
     }
-
-
-//    private fun generateES256Key(): KeyPair? {
-//        val keyGenParameterSpecBuilder = KeyGenParameterSpec.Builder(
-//            "MyES256Key", // Replace with your unique key alias
-//            KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
-//        )
-//            .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-//            .setDigests(KeyProperties.DIGEST_SHA256)
-//            .setUserAuthenticationRequired(false) // Adjust based on your app's requirements
-//
-//        try {
-//            // Attempt StrongBox-backed key pair generation
-//            keyGenParameterSpecBuilder.setIsStrongBoxBacked(true)
-//            val keyPairStrongBox = generateKeyPairWithSpec(keyGenParameterSpecBuilder.build())
-//            if (keyPairStrongBox != null) return keyPairStrongBox
-//        } catch (e: Exception) {
-//            e.printStackTrace() // StrongBox not available
-//        }
-//
-//        try {
-//            // Attempt TEE-backed key pair generation
-//            keyGenParameterSpecBuilder.setIsStrongBoxBacked(false)
-//            val keyPairTEE = generateKeyPairWithSpec(keyGenParameterSpecBuilder.build())
-//            if (keyPairTEE != null) return keyPairTEE
-//        } catch (e: Exception) {
-//            e.printStackTrace() // TEE not available
-//        }
-//
-//        // Fallback to software-backed key pair generation
-//        return generateSoftwareKeyPair()
-//    }
-//
-//    private fun generateKeyPairWithSpec(spec: KeyGenParameterSpec): KeyPair? {
-//        return try {
-//            val keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
-//            keyPairGenerator.initialize(spec)
-//            keyPairGenerator.generateKeyPair()
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//            null
-//        }
-//    }
-//
-//    private fun generateSoftwareKeyPair(): KeyPair? {
-//        return try {
-//            val keyPairGenerator = KeyPairGenerator.getInstance("EC")
-//            keyPairGenerator.initialize(ECGenParameterSpec("secp256r1"))
-//            keyPairGenerator.generateKeyPair()
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//            null
-//        }
-//    }
-
-
 
 }
 
