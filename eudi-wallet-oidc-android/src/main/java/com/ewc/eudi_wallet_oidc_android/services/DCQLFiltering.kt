@@ -12,11 +12,11 @@ object DCQLFiltering {
 
     //Here am going to filter for all the credentials, not considering the credential set
     fun filterCredentialsUsingDCQL(
-        dcql: DCQL,
+        dcql: DCQL?,
         credentials: List<String>
     ): List<List<MatchedCredential>> {
         val filteredList: MutableList<List<MatchedCredential>> = mutableListOf()
-        dcql.credentials?.let { credentialsList ->
+        dcql?.credentials?.let { credentialsList ->
             for (credentialFilter in credentialsList) {
                 val list = filterCredentialUsingSingleDCQLCredentialFilter(
                     credentialFilter,
@@ -29,7 +29,7 @@ object DCQLFiltering {
         return filteredList
     }
 
-    private fun filterCredentialUsingSingleDCQLCredentialFilter(
+     fun filterCredentialUsingSingleDCQLCredentialFilter(
         credentialFilter: CredentialList,
         credentialList: List<String>
     ): List<MatchedCredential> {
