@@ -44,6 +44,6 @@ interface VerificationServiceInterface {
      */
     suspend fun filterCredentials(
         credentialList: List<String?>,
-        presentationDefinition: PresentationDefinition
+        queryItem: Any?
     ): List<List<String>>
 }

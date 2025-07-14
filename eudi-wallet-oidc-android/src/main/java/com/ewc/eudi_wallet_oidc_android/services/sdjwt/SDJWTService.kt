@@ -2,10 +2,15 @@ package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
 import android.util.Base64
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.CredentialList
+import com.ewc.eudi_wallet_oidc_android.models.DCQL
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.services.DCQLFiltering
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
+import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.processCredentialsToJsonString
+import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.splitCredentialsBySdJWT
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
@@ -67,83 +72,49 @@ class SDJWTService : SDJWTServiceInterface {
     }
 
     /**
-     * Creates a SD-JWT-R using the provided credential, presentation request,
-     * and private key.
-     *
-     * @param credential The credential string containing the disclosures.
-     * @param presentationRequest The presentation request containing the presentation definition.
-     * @param subJwk The private key used for signing.
-     * @return The SD-JWT-R string.
-     * @throws IllegalArgumentException if an error occurs during processing or signing.
-     */
-    override suspend fun createSDJWTR(
-        credential: String?,
-        presentationRequest: PresentationRequest,
-        subJwk: ECKey
-    ): String? {
-
-        return ""
-    }
-
-
-    /**
      * Create SDJWT R
      *
      * @param credential
-     * @param presentationRequest
+     * @param queryItem
      * @param subJwk
      * @return
      */
     override suspend fun createSDJWTR(
         credential: String?,
-        inputDescriptors: InputDescriptors,
+        queryItem : Any,
         format: String,
         subJwk: JWK
     ): String? {
         try {
-//            val presentationDefinition =
-//                VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
             val processedCredentialWithRequiredDisclosures =
-                processDisclosuresWithPresentationDefinition(
-                    credential,
-                    inputDescriptors, format
-                )
-//            if (presentationDefinition.format?.containsKey("kb_jwt") == true) {
-//                val iat = Date()
-//
-//                val claimsSet = JWTClaimsSet.Builder()
-//                    .audience(presentationRequest.clientId)
-//                    .issueTime(iat)
-//                    .claim("nonce", UUID.randomUUID().toString())
-//                    .claim(
-//                        "sd_hash",
-//                        SDJWTService().calculateSHA256Hash(
-//                            processedCredentialWithRequiredDisclosures
-//                        )
-//                    )
-//                    .build()
-//
-//                // Create JWT for ES256K alg
-//                val jwsHeader = JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-//                    .type(JOSEObjectType("kb_jwt"))
-//                    .build()
-//
-//                val jwt = SignedJWT(
-//                    jwsHeader,
-//                    claimsSet
-//                )
-//
-//                // Sign with private EC key
-//                jwt.sign(if (subJwk is OctetKeyPair) Ed25519Signer(subJwk) else ECDSASigner(subJwk as ECKey))
-//                return "${processedCredentialWithRequiredDisclosures}~${jwt.serialize()}"
-//            }
 
+                when (queryItem ) {
+                    is InputDescriptors -> {
+                        // Handle as InputDescriptors
+                        processDisclosuresWithPresentationDefinition(
+                            credential,
+                            queryItem ,
+                            format
+                        )
+                    }
+                    is CredentialList -> {
+                        // Handle as CredentialList
+                        processDisclosuresWithDCQL(
+                            credential,
+                            queryItem ,
+                            format
+                        )
+                    }
+                    else -> {
+                        Log.d("SDJWTService", "Unknown type for inputDescriptors")
+                        null
+                    }
+                }
             return processedCredentialWithRequiredDisclosures
         } catch (e: Exception) {
             throw IllegalArgumentException("Error creating SD-JWT-R", e)
         }
     }
-
     /**
      * Processes disclosures based on the provided credential and presentation definition.
      *
@@ -331,12 +302,12 @@ class SDJWTService : SDJWTServiceInterface {
                                 CborUtils.processMdocCredentialToJsonString(credentialList)
                                     ?: emptyList()
                         } else {
-                            credentialList = VerificationService().splitCredentialsBySdJWT(
+                            credentialList = splitCredentialsBySdJWT(
                                 listOf(credential),
                                 inputDescriptors.constraints?.limitDisclosure != null
                             )
                             processedCredentials =
-                                VerificationService().processCredentialsToJsonString(
+                                processCredentialsToJsonString(
                                     credentialList
                                 )
                         }
@@ -403,6 +374,134 @@ class SDJWTService : SDJWTServiceInterface {
                         }
                     }
 
+                    // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
+                    for (disclosureValue in disclosureList.toSet()) {
+                        issuedJwt = "$issuedJwt~$disclosureValue"
+                    }
+
+                    return@withContext issuedJwt ?: ""
+                }
+
+
+            } catch (e: Exception) {
+                throw IllegalArgumentException(
+                    "Error processing disclosures with presentation definition",
+                    e
+                )
+            }
+        }
+    }
+
+    override suspend fun processDisclosuresWithDCQL(
+        credential: String?,
+        credentialList: CredentialList?,
+        format: String
+    ): String? {
+        if (credential == null || credentialList == null) return ""
+        return withContext(Dispatchers.Default) {
+
+            try {
+                val disclosureList: MutableList<String> = mutableListOf()
+                val disclosures = getDisclosuresFromSDJWT(credential)
+                var issuedJwt = getIssuerJwtFromSDJWT(credential)
+
+                if (credentialList.claims.isEmpty()) {
+                    return@withContext credential
+                } else {
+
+                    // Extract requested parameters
+                    val requestedParams: MutableList<String> = mutableListOf()
+
+                    credentialList.claims.forEach { claim ->
+                        claim.path?.forEach { pathElement ->
+                            requestedParams.add(pathElement)
+                        }
+                    }
+
+                    val sdList = mutableListOf<String>()
+
+                    var processedCredentials: List<String> = emptyList()
+                    var credentialArrayList: ArrayList<String?> = arrayListOf()
+
+                    if (format != null) {
+                        if (format == "mso_mdoc") {
+                            credentialArrayList = arrayListOf(credential)
+                            processedCredentials =
+                                CborUtils.processMdocCredentialToJsonString(credentialArrayList)
+                                    ?: emptyList()
+                        } else {
+                            credentialArrayList = splitCredentialsBySdJWT(
+                                listOf(credential)
+                            )
+                            processedCredentials =
+                              processCredentialsToJsonString(
+                                    credentialArrayList
+                                )
+                        }
+                    }
+
+                    val matches: List<MatchedCredential> =
+                        DCQLFiltering.filterCredentialUsingSingleDCQLCredentialFilter(
+                            credentialList,
+                            processedCredentials
+                        )
+
+                    for (match in matches) {
+                        for (field in match.fields) {
+                            val value = field.path.value
+                            if (value is JSONObject) {
+                                if (value.has("_sd")) {
+                                    val sdArray = value.getJSONArray("_sd")
+                                    for (i in 0 until sdArray.length()) {
+                                        val sdItem = sdArray.get(i)
+                                        if (sdItem is String) {
+                                            sdList.add(sdItem)
+                                        }
+                                    }
+                                }
+                            } else if (value is Map<*, *>) {
+                                val map = value as Map<String, Any>
+                                val sdArray = map["_sd"]
+                                if (sdArray is List<*>) {
+                                    for (sdItem in sdArray) {
+                                        if (sdItem is String) {
+                                            sdList.add(sdItem)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    disclosures?.map { disclosure ->
+                        try {
+                            val list = JSONArray(
+                                Base64.decode(disclosure, Base64.URL_SAFE)
+                                    .toString(charset("UTF-8"))
+                            )
+
+                            if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
+                                disclosureList.add(disclosure)
+                            }
+                            val thirdElement = list.opt(2)
+                            if (thirdElement is JSONObject) {
+                                val keys = thirdElement.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    if (requestedParams.contains(key)) {
+                                        disclosureList.add(disclosure)
+                                    }
+                                }
+                            }
+
+                            val response = calculateSHA256Hash(disclosure)
+                            if (sdList.contains(response)) {
+                                disclosureList.add(disclosure)
+                            }
+                        } catch (e: Exception) {
+                            println(e.message.toString())
+                        }
+                    }
                     // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
                     for (disclosureValue in disclosureList.toSet()) {
                         issuedJwt = "$issuedJwt~$disclosureValue"

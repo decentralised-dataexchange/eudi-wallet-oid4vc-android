@@ -1,5 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.sdjwt
 
+import com.ewc.eudi_wallet_oidc_android.models.CredentialList
+import com.ewc.eudi_wallet_oidc_android.models.DCQL
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
@@ -13,13 +15,7 @@ interface SDJWTServiceInterface {
 
     suspend  fun createSDJWTR(
         credential: String?,
-        presentationRequest: PresentationRequest,
-        subJwk: ECKey
-    ): String?
-
-    suspend  fun createSDJWTR(
-        credential: String?,
-        inputDescriptors: InputDescriptors,
+        queryItem: Any,
         format: String,
         subJwk: JWK
     ): String?
@@ -27,6 +23,11 @@ interface SDJWTServiceInterface {
     suspend  fun processDisclosuresWithPresentationDefinition(
         credential: String?,
         inputDescriptors: InputDescriptors,
+        format:String
+    ): String?
+    suspend  fun processDisclosuresWithDCQL(
+        credential: String?,
+        credentialList: CredentialList?,
         format:String
     ): String?
 
