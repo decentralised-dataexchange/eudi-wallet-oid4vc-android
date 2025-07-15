@@ -10,9 +10,10 @@ class NonceService : NonceServiceInterface {
         if (nonceEndPoint.isNullOrBlank()) return null
 
         return try {
+            val authorizationHeader = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
             val response = ApiManager.api.getService()?.fetchNonce(
                 nonceEndPoint,
-                "Bearer ${accessToken ?: ""}"
+                authorizationHeader
             )
 
             if (response?.isSuccessful == true) {
