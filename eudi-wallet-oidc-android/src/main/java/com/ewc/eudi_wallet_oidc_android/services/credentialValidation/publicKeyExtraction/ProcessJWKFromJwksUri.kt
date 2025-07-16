@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.util.Base64URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,7 +34,7 @@ class ProcessJWKFromJwksUri {
      * @param kid
      * @return
      */
-    suspend fun fetchJwks(jwksUri: String, kid: String?): JwkKey? {
+    suspend fun fetchJwks(jwksUri: String, kid: String?,keyUse: String?="sig"): JwkKey? {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL(jwksUri)
@@ -42,12 +43,17 @@ class ProcessJWKFromJwksUri {
                 val jwksResponse =  Gson().fromJson(json, JwksResponse::class.java)
 
                 // Find the JWK with "use" = "sig"
-                var jwkKey = jwksResponse.keys.firstOrNull { it.use == "sig" }
+                var jwkKey = jwksResponse.keys.firstOrNull { it.use == keyUse }
 
                 // If no "sig" key is found, find by kid
-                if (jwkKey == null && kid != null) {
-                    jwkKey = jwksResponse.keys.firstOrNull { it.kid == kid }
+                if (jwkKey == null) {
+                    jwkKey = if (kid != null) {
+                        jwksResponse.keys.firstOrNull { it.kid == kid }
+                    } else {
+                        jwksResponse.keys.firstOrNull()
+                    }
                 }
+
                 return@withContext jwkKey
             } catch (e: Exception) {
                 println(e.toString())
@@ -61,19 +67,50 @@ class ProcessJWKFromJwksUri {
      * @param jwkKey The JwkKey object.
      * @return The JWK object or null if jwkKey is null.
      */
-    fun convertToJWK(jwkKey: JwkKey?): JWK? {
+//    fun convertToJWK(jwkKey: JwkKey?): JWK? {
+//        return jwkKey?.let {
+//            val curve = when (it.crv) {
+//                "P-256" -> Curve.P_256
+//                "P-384" -> Curve.P_384
+//                "P-521" -> Curve.P_521
+//                else -> throw IllegalArgumentException("Unsupported curve: ${it.crv}")
+//            }
+//
+//            ECKey.Builder(curve, Base64URL.from(it.x), Base64URL.from(it.y))
+//                .keyID(it.kid)
+//                .build()
+//        }
+//    }
+    private fun convertToJWK(jwkKey: JwkKey?): JWK? {
         return jwkKey?.let {
-            val curve = when (it.crv) {
-                "P-256" -> Curve.P_256
-                "P-384" -> Curve.P_384
-                "P-521" -> Curve.P_521
-                else -> throw IllegalArgumentException("Unsupported curve: ${it.crv}")
-            }
+            when (it.kty) {
+                "EC" -> {
+                    // Handle Elliptic Curve keys
+                    val curve = when (it.crv) {
+                        "P-256" -> Curve.P_256
+                        "P-384" -> Curve.P_384
+                        "P-521" -> Curve.P_521
+                        else -> throw IllegalArgumentException("Unsupported curve: ${it.crv}")
+                    }
 
-            ECKey.Builder(curve, Base64URL.from(it.x), Base64URL.from(it.y))
-                .keyID(it.kid)
-                .build()
+                    ECKey.Builder(curve, Base64URL.from(it.x), Base64URL.from(it.y))
+                        .keyID(it.kid)
+                        .build()
+                }
+                "RSA" -> {
+                    // Handle RSA keys
+                    if (it.n == null || it.e == null) {
+                        throw IllegalArgumentException("RSA keys must have 'n' (modulus) and 'e' (exponent) parameters.")
+                    }
+
+                    RSAKey.Builder(Base64URL.from(it.n), Base64URL.from(it.e))
+                        .keyID(it.kid)
+                        .build()
+                }
+                else -> throw IllegalArgumentException("Unsupported key type: ${it.kty}")
+            }
         }
     }
+
 
 }

@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.models
 
+import android.telecom.CallEndpoint
 import com.ewc.eudi_wallet_oidc_android.models.v1.IssuerWellKnownConfigurationV1
 import com.ewc.eudi_wallet_oidc_android.models.v2.IssuerWellKnownConfigurationV2
 import com.google.gson.annotations.SerializedName
@@ -12,7 +13,9 @@ data class IssuerWellKnownConfiguration(
     @SerializedName("credential_endpoint") var credentialEndpoint: String? = null,
     @SerializedName("deferred_credential_endpoint") var deferredCredentialEndpoint: String? = null,
     @SerializedName("display") var display: Any? = null,
-    @SerializedName("credentials_supported") var credentialsSupported: Any? = null
+    @SerializedName("credentials_supported") var credentialsSupported: Any? = null,
+    @SerializedName("notification_endpoint") var notificationEndpoint: String? = null,
+    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null
 ){
     constructor(issuerWellKnownConfigurationV1: IssuerWellKnownConfigurationV1) : this(
         issuer = issuerWellKnownConfigurationV1.issuer,
@@ -22,7 +25,9 @@ data class IssuerWellKnownConfiguration(
         credentialEndpoint = issuerWellKnownConfigurationV1.credentialEndpoint,
         deferredCredentialEndpoint = issuerWellKnownConfigurationV1.deferredCredentialEndpoint,
         display = issuerWellKnownConfigurationV1.display,
-        credentialsSupported = issuerWellKnownConfigurationV1.credentialsSupported
+        credentialsSupported = issuerWellKnownConfigurationV1.credentialsSupported,
+        notificationEndpoint = issuerWellKnownConfigurationV1.notificationEndpoint,
+        nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint
     )
     constructor(issuerWellKnownConfigurationV2:IssuerWellKnownConfigurationV2):this(
         issuer = issuerWellKnownConfigurationV2.issuer,
@@ -32,7 +37,9 @@ data class IssuerWellKnownConfiguration(
         credentialEndpoint = issuerWellKnownConfigurationV2.credentialEndpoint,
         deferredCredentialEndpoint = issuerWellKnownConfigurationV2.deferredCredentialEndpoint,
         display = issuerWellKnownConfigurationV2.display,
-        credentialsSupported = issuerWellKnownConfigurationV2.credentialConfigurationsSupported
+        credentialsSupported = issuerWellKnownConfigurationV2.credentialConfigurationsSupported,
+        notificationEndpoint = issuerWellKnownConfigurationV2.notificationEndpoint,
+        nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint
 
     )
 }

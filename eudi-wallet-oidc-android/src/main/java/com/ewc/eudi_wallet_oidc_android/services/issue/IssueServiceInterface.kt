@@ -1,8 +1,12 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
+import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.JWK
@@ -16,7 +20,7 @@ interface IssueServiceInterface {
      *                  The data can contain credential offer or credential offer uri
      * @return Credential Offer
      */
-    suspend fun resolveCredentialOffer(data: String?): CredentialOffer?
+    suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer?
 
     /**
      * To process the authorisation request
@@ -37,7 +41,8 @@ interface IssueServiceInterface {
         authConfig: AuthorisationServerWellKnownConfiguration?,
         format: String? = "jwt_vc_json",
         docType: String? =null,
-        issuerConfig: IssuerWellKnownConfiguration?
+        issuerConfig: IssuerWellKnownConfiguration?,
+        redirectUri: String? = null
     ): String?
 
     /**
@@ -62,7 +67,11 @@ interface IssueServiceInterface {
         codeVerifier: String?,
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
-        version: Int?
+        version: Int?,
+        clientAssertion: String?,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
+        redirectUri: String? = null
     ): WrappedTokenResponse?
 
     /**
@@ -90,6 +99,17 @@ interface IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         accessToken: String?,
         format: String
+    ): WrappedCredentialResponse?
+
+    suspend fun processCredentialRequest(
+        did: String?,
+        subJwk: JWK?,
+        nonce: String?,
+        credentialOffer: CredentialOffer?,
+        issuerConfig: IssuerWellKnownConfiguration?,
+        accessToken: TokenResponse?,
+        authorizationDetail: AuthorizationDetail?,
+        index: Int
     ): WrappedCredentialResponse?
 
     /**
@@ -127,7 +147,8 @@ interface IssueServiceInterface {
      * @return
      */
     fun getTypesFromCredentialOffer(
-        credentialOffer: CredentialOffer?
+        credentialOffer: CredentialOffer?,
+        index: Int? = 0
     ): ArrayList<String>
 
     /**

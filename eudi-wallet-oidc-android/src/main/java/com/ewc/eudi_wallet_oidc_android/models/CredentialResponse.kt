@@ -10,15 +10,20 @@ data class ErrorResponse(
 data class CredentialResponse(
     @SerializedName("format") var format: String? = null,
     @SerializedName("credential") var credential: String? = null,
+    @SerializedName("credentials") var credentials: ArrayList<Credential>? = null,
     @SerializedName("acceptance_token") var acceptanceToken: String? = null,
     @SerializedName("transaction_id") var transactionId: String? = null,
     @SerializedName("isDeferred") var isDeferred: Boolean? = null,
     @SerializedName("isPinRequired") var isPinRequired: Boolean? = null,
     @SerializedName("issuerConfig") var issuerConfig: IssuerWellKnownConfiguration? = null,
     @SerializedName("authorizationConfig") var authorizationConfig: AuthorisationServerWellKnownConfiguration? = null,
-    @SerializedName("credentialOffer") var credentialOffer: CredentialOffer? = null
+    @SerializedName("credentialOffer") var credentialOffer: CredentialOffer? = null,
+    @SerializedName("notification_id") var notificationId: String? = null,
 )
 
+data class Credential(
+    @SerializedName("credential") var credential: String? = null
+)
 
 data class WrappedCredentialResponse(
     var credentialResponse: CredentialResponse? = null,

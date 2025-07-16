@@ -9,6 +9,7 @@ import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
+import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.jwk.gen.OctetKeyPairGenerator
 import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jose.util.JSONObjectUtils
@@ -178,6 +179,7 @@ class DIDService : DIDServiceInterface {
     }
 
 
+
     /**
      * Create ED25519 JWK
      *
@@ -255,7 +257,7 @@ class DIDService : DIDServiceInterface {
      *
      * @return ECPrivateKey
      */
-    private fun convertToECPrivateKey(privateKey: PrivateKey): ECPrivateKey? {
+     fun convertToECPrivateKey(privateKey: PrivateKey): ECPrivateKey? {
         return if (privateKey is ECPrivateKey) {
             // If the PrivateKey is already an ECPrivateKey, simply cast and return it
             privateKey
@@ -284,7 +286,7 @@ class DIDService : DIDServiceInterface {
      *
      * @return ECPublicKey
      */
-    private fun convertToECPublicKey(publicKey: PublicKey): ECPublicKey? {
+     fun convertToECPublicKey(publicKey: PublicKey): ECPublicKey? {
         return if (publicKey is ECPublicKey) {
             // If the PublicKey is already an ECPublicKey, simply cast and return it
             publicKey

@@ -8,6 +8,6 @@ data class PresentationDefinition(
     @SerializedName("name") var name: String? = null,
     @SerializedName("purpose") var purpose: String? = null,
     @SerializedName("format") var format: Map<String, Jwt>? = mapOf(),
-    @SerializedName("input_descriptors") var inputDescriptors: ArrayList<InputDescriptors>? = arrayListOf()
-
+    @SerializedName("input_descriptors") var inputDescriptors: ArrayList<InputDescriptors>? = arrayListOf(),
+    @SerializedName("doc_type") var docType: String? = null
 )

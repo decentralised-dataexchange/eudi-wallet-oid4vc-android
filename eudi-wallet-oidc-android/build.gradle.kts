@@ -6,10 +6,10 @@ plugins {
 
 android {
     namespace = "com.ewc.eudi_wallet_oidc_android"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
-        minSdk = 26
+        minSdk = 28
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -56,7 +56,7 @@ dependencies {
 // Coroutine adapter for Retrofit
     implementation("com.jakewharton.retrofit:retrofit2-kotlin-coroutines-adapter:0.9.2")
 
-    implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.3.1")
+    implementation("com.github.decentralised-dataexchange:presentation-exchange-sdk-android:2024.11.1")
     implementation("org.slf4j:slf4j-api") {
         version {
             strictly("2.0.9")
@@ -65,6 +65,13 @@ dependencies {
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
     implementation("co.nstant.in:cbor:0.9")
+    implementation ("com.google.android.play:integrity:1.4.0")
+    implementation ("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.15.+")
+    implementation ("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.+")
+    implementation("com.fasterxml.woodstox:woodstox-core:7.1.0")
+    implementation ("javax.xml.stream:stax-api:1.0-2")
+    implementation("com.jayway.jsonpath:json-path:2.9.0")
+
 }
 
 
@@ -73,7 +80,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.github.decentraliseddataexchange"
             artifactId = "eudi-wallet-oidc-android"
-            version = "2024.7.1"
+            version = "2025.7.2"
 
             afterEvaluate {
                 from(components["release"])

@@ -15,7 +15,7 @@ data class DescriptorMap(
     @SerializedName("id") var id: String? = null,
     @SerializedName("path") var path: String? = null,
     @SerializedName("format") var format: String? = null,
-    @SerializedName("path_nested") var pathNested: PathNested? = PathNested()
+    @SerializedName("path_nested") var pathNested: PathNested? = null
 
 )
 

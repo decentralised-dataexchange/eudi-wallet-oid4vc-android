@@ -17,9 +17,12 @@ import co.nstant.`in`.cbor.model.UnicodeString as CborUnicodeString
 import co.nstant.`in`.cbor.model.UnsignedInteger
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
+import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import org.json.JSONArray
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.security.cert.CertificateFactory
 import co.nstant.`in`.cbor.model.UnsignedInteger as CBORInteger
 
 class CborUtils {
@@ -29,13 +32,26 @@ class CborUtils {
             if (cbor.isNullOrBlank()) {
                 return null
             }
-            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(cbor ?: "")
+
+            val paddedCbor = padBase64Url(cbor ?: "")
+
+            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor ?: "")
             return extractCborDataElements(cborInBytes)
         }
-
+        private fun padBase64Url(input: String): String {
+            val mod = input.length % 4
+            return if (mod == 0) input else input + "=".repeat(4 - mod)
+        }
         private fun extractCborDataElements(cborBytes: ByteArray): JSONObject {
             val cbors = CborDecoder(ByteArrayInputStream(cborBytes)).decode()
-            val nameSpaces = cbors[0]["nameSpaces"]
+            var nameSpaces = cbors[0]["nameSpaces"]
+            if (nameSpaces==null){
+                val documents = cbors[0]["documents"]
+                val firstDocument = documents?.get(0)
+                val issuerSigned = firstDocument?.get("issuerSigned")
+                 nameSpaces = issuerSigned?.get("nameSpaces")
+            }
+
             val jsonObject = JSONObject()
             if (nameSpaces is CborMap) {
                 Log.d("TAG", "extractIssuerNamespacedElements: Map")
@@ -52,7 +68,7 @@ class CborUtils {
                                 CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
                             val identifier = decoded[0]["elementIdentifier"].toString()
                             val value = decoded[0]["elementValue"]
-                            if (value.majorType == MajorType.BYTE_STRING) {
+                            if (value?.majorType == MajorType.BYTE_STRING) {
                                 // Convert the ByteString into a readable format, e.g., hex string or Base64
                                 val byteValue = value as CborByteString
                                 val base64String =
@@ -62,7 +78,9 @@ class CborUtils {
                                 if (identifier == "driving_privileges") {
                                     Log.d("TAG", "extractIssuerNamespacedElements: ")
                                 }
-                                newJson.put(identifier, value.toString())
+                               // newJson.put(identifier, value.toString())
+                                newJson.put(identifier, value?.let { convertCborToJson(it) })
+
                             }
                         }
                         jsonObject.put(key, newJson)
@@ -73,6 +91,30 @@ class CborUtils {
             }
             return jsonObject
         }
+        private fun convertCborToJson(value: DataItem): Any {
+            return when (value) {
+                is CborMap -> {
+                    val jsonObject = JSONObject()
+                    value.keys.forEach { key ->
+                        val keyStr = (key as? CborUnicodeString)?.string ?: key.toString()
+                        jsonObject.put(keyStr, convertCborToJson(value[key]!!))
+                    }
+                    jsonObject
+                }
+                is CborArray -> {
+                    val jsonArray = JSONArray()
+                    value.dataItems.forEach { item ->
+                        jsonArray.put(convertCborToJson(item))
+                    }
+                    jsonArray
+                }
+                is CborUnicodeString -> value.string
+                is CBORInteger -> value.value
+                is CborByteString -> Base64.encodeToString(value.bytes, Base64.NO_WRAP)
+                else -> value.toString()
+            }
+        }
+
 
         @OptIn(ExperimentalEncodingApi::class)
         fun processMdocCredentialToJsonString(allCredentialList: List<String?>?): List<String>? {
@@ -89,8 +131,9 @@ class CborUtils {
                 }
 
                 try {
+                    val paddedCbor = padBase64Url(credential ?: "")
                     // Decode each CBOR credential from Base64 URL Safe encoding
-                    val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                    val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
 
                     // Extract the CBOR data elements and convert them into a JSONObject
                     val jsonObject = parseCborNamespaces(cborInBytes)
@@ -126,7 +169,7 @@ class CborUtils {
                             val identifier = decoded[0]["elementIdentifier"].toString()
                             val value = decoded[0]["elementValue"]
 
-                            if (value.majorType == MajorType.BYTE_STRING) {
+                            if (value?.majorType == MajorType.BYTE_STRING) {
                                 // Convert the ByteString into a readable format (Base64 here)
                                 val byteValue = value as CborByteString
                                 val base64String =
@@ -159,8 +202,9 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         // Extract the CBOR data elements and convert them into a JSONObject
                         issuerAuthObject = extractIssuerAuth(cborInBytes)
                     } catch (e: Exception) {
@@ -183,12 +227,13 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
-                        docType = getDocType(issuerAuth)
+                        docType = issuerAuth?.let { getDocType(it) }
 
 
                     } catch (e: Exception) {
@@ -198,6 +243,46 @@ class CborUtils {
             }
 
             return docType
+        }
+        fun getStatusList(cborData: DataItem): Map<String, Any>? {
+            var statusList: Map<String, Any>? = null
+            if (cborData is CborArray) {
+                // Iterate over elements in the array
+                for (element in cborData.dataItems) { // Using getDataItems() to access the elements
+                    // Check if the element is a ByteString
+                    if (element is CborByteString) {
+                        try {
+                            // Decode the ByteString as CBOR
+                            val nestedCBORStream = ByteArrayInputStream(element.bytes)
+                            // Decode next CBOR data item
+                            val nestedCBOR = CborDecoder(nestedCBORStream).decodeNext()
+                            if (nestedCBOR.tag.value == 24L) {
+                                // Check if the item under the tag is a ByteString
+                                if (nestedCBOR is CborByteString) {
+                                    try {
+                                        // Decode the inner ByteString
+                                        val decodedInnerCBORStream =
+                                            ByteArrayInputStream(nestedCBOR.bytes)
+                                        val decodedInnerCBOR = CborDecoder(decodedInnerCBORStream).decodeNext()
+
+                                        // Extract the status list
+                                        statusList = extractStatusList(decodedInnerCBOR ?: continue)
+                                        if (statusList != null) break
+                                    } catch (e: Exception) {
+                                        println("Failed to decode inner ByteString under Tag 24.")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("Could not decode ByteString as CBOR, inspecting data directly.")
+                            println("ByteString data: ${element.bytes.joinToString(", ") { it.toString() }}")
+                        }
+                    } else {
+                        println("Element is not a ByteString: $element")
+                    }
+                }
+            }
+            return statusList
         }
 
         private fun getDocType(cborData: DataItem): String? {
@@ -211,7 +296,8 @@ class CborUtils {
                         try {
                             // Decode the ByteString as CBOR
                             val nestedCBORStream = ByteArrayInputStream(element.bytes)
-                            val nestedCBOR = CborDecoder(nestedCBORStream).decode()[0]
+                            // val nestedCBOR = CborDecoder(nestedCBORStream).decode()[0]
+                            val nestedCBOR = CborDecoder(nestedCBORStream).decodeNext()
                             if (nestedCBOR.tag.value == 24L) {
                                 // Check if the item under the tag is a ByteString
                                 if (nestedCBOR is CborByteString) {
@@ -219,12 +305,13 @@ class CborUtils {
                                         // Decode the inner ByteString
                                         val decodedInnerCBORStream =
                                             ByteArrayInputStream(nestedCBOR.bytes)
-                                        val decodedInnerCBOR =
-                                            CborDecoder(decodedInnerCBORStream).decode()[0]
+//                                        val decodedInnerCBOR =
+//                                            CborDecoder(decodedInnerCBORStream).decode()[0]
+                                        val decodedInnerCBOR = CborDecoder(decodedInnerCBORStream).decodeNext()
 
                                         // Extract the document type
-                                        docType = extractDocType(decodedInnerCBOR)
-
+                                        docType = extractDocType(decodedInnerCBOR ?: continue)
+                                        if (docType != null) break
                                     } catch (e: Exception) {
                                         println("Failed to decode inner ByteString under Tag 24.")
                                     }
@@ -242,7 +329,7 @@ class CborUtils {
                 }
             }
 
-            return docType ?: ""
+            return docType
         }
 
         private fun extractDocType(cborData: DataItem): String? {
@@ -270,6 +357,56 @@ class CborUtils {
             }
             return null
         }
+        private fun extractStatusList(cborData: DataItem): Map<String, Any>? {
+            // Check if the input is a CborMap (Map class from the CBOR library)
+            if (cborData is CborMap) {
+                // Iterate over the keys in the map
+                for (key in cborData.getKeys()) {
+                    // Check if the key is "status"
+                    if (key is CborUnicodeString && key.string == "status") {
+                        // Get the value associated with "status"
+                        val statusValue = cborData.get(key)
+
+                        // Check if the value is a CborMap
+                        if (statusValue is CborMap) {
+                            // Now, look for the "status_list" inside the "status" map
+                            for (nestedKey in statusValue.getKeys()) {
+                                if (nestedKey is CborUnicodeString && nestedKey.string == "status_list") {
+                                    // Found "status_list", return it as a map
+                                    val statusListValue = statusValue.get(nestedKey)
+                                    if (statusListValue is CborMap) {
+                                        return cborMapToJsonMap(statusListValue)
+                                    } else {
+                                        println("The value associated with 'status_list' is not a map.")
+                                        return null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            println("'status_list' not found in the CBOR data.")
+            return null
+        }
+
+        //convert CborMap to a Kotlin Map
+        private fun cborMapToJsonMap(cborMap: CborMap): Map<String, Any> {
+            val resultMap = mutableMapOf<String, Any>()
+            for (key in cborMap.getKeys()) {
+                if (key is CborUnicodeString) {
+                    resultMap[key.string] = when (val value = cborMap.get(key)) {
+                        is CborUnicodeString -> value.string
+                        is CBORInteger -> value.value
+                        is CborMap -> cborMapToJsonMap(value)
+                        is CborByteString -> value.bytes
+                        else -> value.toString()
+                    }
+                }
+            }
+            return resultMap
+        }
+
 
         @OptIn(ExperimentalEncodingApi::class)
         fun extractCredentialExpiryFromIssuerAuth(allCredentialList: List<String?>?): String? {
@@ -281,12 +418,13 @@ class CborUtils {
                     }
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
                         val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
                         val issuerAuth = cbors[0]["issuerAuth"]
                         println(issuerAuth)
-                        expiryUntil = getCredentialExpiry(issuerAuth)
+                        expiryUntil = issuerAuth?.let { getCredentialExpiry(it) }
 
 
                     } catch (e: Exception) {
@@ -407,6 +545,131 @@ class CborUtils {
 
 
         @OptIn(ExperimentalEncodingApi::class)
+        fun extractCredentialIssuedAtFromIssuerAuth(credential: String?): String? {
+            if (credential.isNullOrBlank()) return null
+
+            return try {
+                val paddedCbor = padBase64Url(credential ?: "")
+                // Decode the CBOR credential from Base64 URL Safe encoding
+                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
+                val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
+                val issuerAuth = cbors[0]["issuerAuth"]
+                issuerAuth?.let {  getCredentialIssuedAt(it)}
+            } catch (e: Exception) {
+                Log.e("TAG", "Error processing credential: ${e.message}")
+                null
+            }
+        }
+        private fun getCredentialIssuedAt(cborData: DataItem): String? {
+
+            var issuedAt: String? = null
+            if (cborData is CborArray) {
+                // Iterate over elements in the array
+                for (element in cborData.dataItems) {
+                    // Check if the element is a ByteString
+                    if (element is CborByteString) {
+                        try {
+                            // Decode the ByteString as CBOR
+                            val nestedCBORStream = ByteArrayInputStream(element.bytes)
+                            val nestedCBORDecoder = CborDecoder(nestedCBORStream)
+
+                            // Try decoding until an exception occurs
+                            while (true) {
+                                try {
+                                    val nestedCBOR = nestedCBORDecoder.decodeNext()
+
+                                    if (nestedCBOR.tag.value == 24L) {
+                                        // Check if the item under the tag is a ByteString
+                                        if (nestedCBOR is CborByteString) {
+                                            try {
+                                                // Decode the inner ByteString
+                                                val decodedInnerCBORStream =
+                                                    ByteArrayInputStream(nestedCBOR.bytes)
+                                                val decodedInnerCBORDecoder = CborDecoder(decodedInnerCBORStream)
+
+                                                // Decode until an exception occurs
+                                                while (true) {
+                                                    try {
+                                                        val decodedInnerCBOR = decodedInnerCBORDecoder.decodeNext()
+                                                        // Extract the document type
+                                                        issuedAt = extractIssuedAt(decodedInnerCBOR)
+                                                    } catch (innerE: Exception) {
+                                                        // Break if decoding inner fails
+                                                        break
+                                                    }
+                                                }
+
+                                            } catch (e: Exception) {
+                                                println("Failed to decode inner ByteString under Tag 24.")
+                                            }
+                                        }
+
+                                    }
+
+                                } catch (e: Exception) {
+                                    // Break if decoding the nested CBOR fails
+                                    break
+                                }
+                            }
+
+                        } catch (e: Exception) {
+                            println("Could not decode ByteString as CBOR, inspecting data directly.")
+                            println("ByteString data: ${element.bytes.joinToString(", ") { it.toString() }}")
+                        }
+                    } else {
+                        println("Element is not a ByteString: $element")
+                    }
+                }
+            }
+
+            return issuedAt ?: ""
+        }
+
+        private fun extractIssuedAt(cborData: DataItem): String? {
+            // Check if the input is a CborMap
+            if (cborData is CborMap) {
+                // Get the keys and values from the map
+                val keys = cborData.keys
+                val values = cborData.values
+
+                // Iterate over the keys and values
+                for ((index, key) in keys.withIndex()) {
+                    // Check if the key is a CborTextString (UTF-8 string)
+                    if (key is CborUnicodeString && key.string == "validityInfo") {
+                        // Get the validityInfo value
+                        val validityInfo = values.elementAt(index)
+
+                        // Check if validityInfo is a CborMap
+                        if (validityInfo is CborMap) {
+                            // Access the validUntil key
+                            val validUntilKey = CborUnicodeString("validFrom")
+                            if (validityInfo.keys.contains(validUntilKey)) {
+                                val validUntilValue = validityInfo[validUntilKey]
+
+                                // Check if validUntilValue is a CborTextString and return its string representation
+                                if (validUntilValue is CborUnicodeString) {
+                                    return validUntilValue.string
+                                } else {
+                                    println("The value associated with 'validFrom' is not a string.")
+                                    return null
+                                }
+                            } else {
+                                println("validFrom not found in the validityInfo CBOR map.")
+                                return null
+                            }
+                        } else {
+                            println("The value associated with 'validityInfo' is not a CBOR map.")
+                            return null
+                        }
+                    }
+                }
+                println("validityInfo not found in the CBOR map.")
+            }
+            return null
+        }
+
+
+        @OptIn(ExperimentalEncodingApi::class)
         fun processExtractNameSpaces(
             allCredentialList: List<String?>?,
             presentationRequest: PresentationRequest
@@ -417,12 +680,12 @@ class CborUtils {
                 for (credential in allCredentialList) {
                     if (credential.isNullOrBlank()) continue
                     // Process the presentation definition
-                    val presentationDefinition =
-                        VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
+                    val presentationDefinition = processPresentationDefinition(presentationRequest.presentationDefinition)
 
                     try {
+                        val paddedCbor = padBase64Url(credential ?: "")
                         // Decode each CBOR credential from Base64 URL Safe encoding
-                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(credential)
+                        val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
 
                         // Extract the full CBOR data elements
                         var nameSpaces = extractNameSpaces(cborInBytes)
@@ -595,18 +858,41 @@ class CborUtils {
 
             return outputStream.toByteArray()
         }
+        @OptIn(ExperimentalEncodingApi::class)
+        fun extractX5CFromCoseBase64(coseBase64: String): List<String> {
+            val paddedCbor = padBase64Url(coseBase64 ?: "")
+            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor ?: "")
+            val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
+            val issuerAuth = cbors[0]["issuerAuth"]
+            val coseArray = issuerAuth as? CborArray ?: throw IllegalArgumentException("Expected COSE_Sign1 array")
+            if (coseArray.dataItems.size < 4) throw IllegalArgumentException("Invalid COSE_Sign1 structure")
+            val unprotectedMap = coseArray.dataItems[1] as? CborMap ?: throw IllegalArgumentException("Unprotected header not a map")
+            val x5chainKey = UnsignedInteger(33)
+            val x5chainValue = unprotectedMap[x5chainKey]
+            Log.d("CBOR", "x5chain (33) value type: ${x5chainValue?.javaClass}, value: $x5chainValue")
+            val certList = when (x5chainValue) {
+                is CborArray -> x5chainValue
+                is CborByteString -> CborArray().apply { add(x5chainValue) }
+                else -> throw IllegalArgumentException("x5chain (33) not found or not a CborArray/ByteString")
+            }
+            val certFactory = CertificateFactory.getInstance("X.509")
+            return certList.dataItems.map {
+                val certBytes = (it as CborByteString).bytes
+                val cert = certFactory.generateCertificate(certBytes.inputStream()) as java.security.cert.X509Certificate
+                java.util.Base64.getEncoder().encodeToString(cert.encoded)
+            }
+        }
 
     }
 }
-
-operator fun DataItem.get(name: String): DataItem {
-    check(this.majorType == MajorType.MAP)
+operator fun DataItem.get(name: String): DataItem? {
+    if (this.majorType != MajorType.MAP) return null
     this as CborMap
     return this.get(CborUnicodeString(name))
 }
 
-operator fun DataItem.get(index: Int): DataItem {
-    check(this.majorType == MajorType.ARRAY)
+operator fun DataItem.get(index: Int): DataItem? {
+    if (this.majorType != MajorType.ARRAY) return null
     this as CborArray
-    return this.dataItems[index]
+    return this.dataItems.getOrNull(index)
 }

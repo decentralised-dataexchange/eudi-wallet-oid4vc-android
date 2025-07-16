@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -25,37 +26,13 @@ interface VerificationServiceInterface {
      */
     suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest?
 
-    /**
-     * Authorisation response is sent by constructing the vp_token and presentation_submission values.
-     * @param did
-     * @param subJwk
-     * @param presentationRequest
-     * @param credentialList - filtered credential list by presentationRequest
-     *
-     * @return String - url
-     */
-    suspend fun sendVPToken(
-        did: String?,
-        subJwk: ECKey?,
-        presentationRequest: PresentationRequest,
-        credentialList: List<String>
-    ): String?
-
-
-    /**
-     * Send VP token
-     *
-     * @param did
-     * @param subJwk
-     * @param presentationRequest
-     * @param credentialList
-     * @return
-     */
-    suspend fun sendVPToken(
+    suspend fun processAndSendAuthorisationResponse(
         did: String?,
         subJwk: JWK?,
         presentationRequest: PresentationRequest,
-        credentialList: List<String>
+        credentialList: List<String>? = null,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse?
 
     /**
@@ -67,8 +44,6 @@ interface VerificationServiceInterface {
      */
     suspend fun filterCredentials(
         credentialList: List<String?>,
-        presentationDefinition: PresentationDefinition
+        queryItem: Any?
     ): List<List<String>>
-
-    fun processPresentationDefinition(presentationDefinition: Any?): PresentationDefinition?
 }
