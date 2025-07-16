@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.JWTVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.MDocVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.SDJWTVpTokenBuilder
 import com.nimbusds.jose.jwk.JWK
@@ -31,16 +32,18 @@ class DCQLAuthorisationResponseBuilder {
 
         val credentialMap = mutableMapOf<String, String>()
         for ((index, credential) in dcqlCredentials.withIndex()) {
-            val hasDoctype = when {
-                credential.meta?.doctypeValue !=null -> true
-                else -> false
+            val credentialType = when {
+                credential.meta?.doctypeValue !=null -> "mso_mdoc"
+                credential.meta?.vctValues?.isNotEmpty() == true -> "sdjwt"
+                credential.meta?.typeValues?.isNotEmpty()== true -> "jwt"
+                else -> ""
             }
 
             val vpToken = generateVpTokensBasedOnCredentialFormat(
                 credential = credentialsList[index],
                 presentationRequest = presentationRequest,
                 did = did,
-                isMdoc = hasDoctype,
+                type = credentialType,
                 jwk = jwk,
                 inputDescriptors = presentationDefinition.inputDescriptors?.getOrNull(index)
             )
@@ -67,18 +70,18 @@ class DCQLAuthorisationResponseBuilder {
         credential: String,
         presentationRequest: PresentationRequest,
         did: String?,
-        isMdoc: Boolean,
+        type: String?,
         jwk: JWK?,
         inputDescriptors: InputDescriptors?
     ): String? {
-        return if (isMdoc) {
+        return if (type == "mso_mdoc") {
             MDocVpTokenBuilder().build(
                 credentialList = listOf(credential),
                 presentationRequest = presentationRequest,
                 did = did,
                 jwk = jwk ,
             )
-        } else {
+        } else if (type == "sdjwt") {
             SDJWTVpTokenBuilder().build(
                 credentialList = listOf(credential),
                 presentationRequest = presentationRequest,
@@ -86,6 +89,16 @@ class DCQLAuthorisationResponseBuilder {
                 jwk = jwk ,
                 inputDescriptors = inputDescriptors
             )
+        }else if(type == "jwt"){
+            JWTVpTokenBuilder().build(
+                credentialList = listOf(credential),
+                presentationRequest = presentationRequest,
+                did = did,
+                jwk = jwk
+            )
+        }
+        else{
+            null
         }
     }
 }

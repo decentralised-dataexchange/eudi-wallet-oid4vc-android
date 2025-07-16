@@ -4,6 +4,7 @@ import android.util.Base64
 import com.ewc.eudi_wallet_oidc_android.models.Document
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
+import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
@@ -19,14 +20,17 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: InputDescriptors?
     ): String? {
+        var processPresentationDefinition: PresentationDefinition?=null
         if (presentationRequest == null) return null
-        val processPresentationDefinition = processPresentationDefinition(
-            presentationRequest.presentationDefinition
-        )
+        if (presentationRequest?.dcqlQuery==null) {
+             processPresentationDefinition = processPresentationDefinition(
+                presentationRequest.presentationDefinition
+            )
+       }
 
         val documentList = mutableListOf<Document>()
         val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition.docType
+        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition?.docType
         val nameSpaces = CborUtils.processExtractNameSpaces(
             credentialList, presentationRequest
         )
@@ -34,7 +38,11 @@ class MDocVpTokenBuilder : VpTokenBuilder {
             nameSpaces = nameSpaces, issuerAuth = issuerAuth
         )
 
-        val inputDescriptorSize = processPresentationDefinition.inputDescriptors?.size ?: 0
+        val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
+            presentationRequest?.dcqlQuery?.credentials?.size
+        } else {
+            processPresentationDefinition?.inputDescriptors?.size
+        } ?: 0
         repeat(inputDescriptorSize) {
             documentList.add(
                 Document(

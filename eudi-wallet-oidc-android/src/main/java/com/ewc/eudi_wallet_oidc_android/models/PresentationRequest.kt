@@ -45,6 +45,7 @@ data class CredentialList(
 data class Meta(
     @SerializedName("vct_values") var vctValues: ArrayList<String>? = null,
     @SerializedName("doctype_value") var doctypeValue: String? = null,
+    @SerializedName("type_values") var typeValues: List<List<String>>? = null
 )
 
 data class DcqlClaim(
