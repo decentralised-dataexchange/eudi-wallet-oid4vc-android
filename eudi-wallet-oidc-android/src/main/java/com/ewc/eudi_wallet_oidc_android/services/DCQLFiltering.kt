@@ -113,6 +113,80 @@ object DCQLFiltering {
                     fields = matchedFields
                 ))
             }
+        } else if (credentialFilter.format == "jwt_vc_json") {
+            credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) {
+                val matchedFields = mutableListOf<MatchedField>()
+
+                // Read type_values as List<List<String>> from meta
+                val typeValues: List<List<String>>? = credentialFilter.meta?.typeValues
+
+                try {
+                    val credentialTypes: List<String> = try {
+                        JsonPath.read(credential, "$.vc.type")
+                    } catch (e: Exception) {
+                        try {
+                            JsonPath.read(credential, "$.type")
+                        } catch (e2: Exception) {
+                            emptyList()
+                        }
+                    }
+
+                    // Match DCQL type_values (array of arrays)
+                    if (typeValues?.isNotEmpty() == true) {
+                        val matched = typeValues.any { requiredTypes ->
+                            requiredTypes.all { it in credentialTypes }
+                        }
+                        if (!matched) {
+                            continue@credentialLoop
+                        }
+                    }
+                } catch (e: Exception) {
+                    println("Failed to read type from credential: ${e.message}")
+                    continue@credentialLoop
+                }
+
+                // Determine if "vc" key exists at root in this credential JSON
+                val hasVc: Boolean = try {
+                    JsonPath.read<Any>(credential, "$.vc")
+                    true
+                } catch (e: PathNotFoundException) {
+                    false
+                }
+
+                // Base prefix for claim paths: "vc." if present else ""
+                val basePrefix = if (hasVc) "vc." else ""
+
+                // Claim filtering: each claim path under basePrefix
+                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
+                    val joinedPath = claim.path?.joinToString(".") ?: ""
+                    val fullPath = ensureJsonPathPrefix(basePrefix + joinedPath)
+
+                    try {
+                        val matchedPathValue = JsonPath.read<Any>(credential, fullPath)
+                        matchedFields.add(
+                            MatchedField(
+                                index = credentialIndex,
+                                path = MatchedPath(
+                                    index = pathIndex,
+                                    path = joinedPath,
+                                    value = matchedPathValue
+                                )
+                            )
+                        )
+                    } catch (e: PathNotFoundException) {
+                        println("Claim path not found in jwt_vc_json: $fullPath")
+                        continue@credentialLoop
+                    }
+                }
+
+                // All claims matched, add to results
+                filteredList.add(
+                    MatchedCredential(
+                        index = credentialIndex,
+                        fields = matchedFields
+                    )
+                )
+            }
         }
 
         return filteredList
