@@ -113,7 +113,8 @@ object DCQLFiltering {
                     fields = matchedFields
                 ))
             }
-        } else if (credentialFilter.format == "jwt_vc_json") {
+        }
+        else if (credentialFilter.format == "jwt_vc_json") {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) {
                 val matchedFields = mutableListOf<MatchedField>()
 
@@ -156,28 +157,46 @@ object DCQLFiltering {
                 // Base prefix for claim paths: "vc." if present else ""
                 val basePrefix = if (hasVc) "vc." else ""
 
-                // Claim filtering: each claim path under basePrefix
                 for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
                     val joinedPath = claim.path?.joinToString(".") ?: ""
-                    val fullPath = ensureJsonPathPrefix(basePrefix + joinedPath)
+                    val directPath = ensureJsonPathPrefix(basePrefix + joinedPath)
+                    val nestedSubjectPath = ensureJsonPathPrefix(basePrefix + "credentialSubject." + joinedPath)
 
+                    var matched: Boolean = false
+                    var matchedPath: String? = null
+                    var matchedValue: Any? = null
+
+                    // Try direct path first
                     try {
-                        val matchedPathValue = JsonPath.read<Any>(credential, fullPath)
+                        matchedValue = JsonPath.read<Any>(credential, directPath)
+                        matched = true
+                        matchedPath = joinedPath
+                    } catch (e1: PathNotFoundException) {
+                        // Try nested under credentialSubject
+                        try {
+                            matchedValue = JsonPath.read<Any>(credential, nestedSubjectPath)
+                            matched = true
+                            matchedPath = "credentialSubject.$joinedPath"
+                        } catch (e2: PathNotFoundException) {
+                            println("Claim path not found in jwt_vc_json: $directPath or $nestedSubjectPath")
+                            continue@credentialLoop
+                        }
+                    }
+
+                    if (matched && matchedPath != null && matchedValue != null) {
                         matchedFields.add(
                             MatchedField(
                                 index = credentialIndex,
                                 path = MatchedPath(
                                     index = pathIndex,
-                                    path = joinedPath,
-                                    value = matchedPathValue
+                                    path = matchedPath,
+                                    value = matchedValue
                                 )
                             )
                         )
-                    } catch (e: PathNotFoundException) {
-                        println("Claim path not found in jwt_vc_json: $fullPath")
-                        continue@credentialLoop
                     }
                 }
+
 
                 // All claims matched, add to results
                 filteredList.add(
