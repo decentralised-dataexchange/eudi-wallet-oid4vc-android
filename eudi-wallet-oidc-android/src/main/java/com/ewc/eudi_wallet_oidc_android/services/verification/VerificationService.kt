@@ -74,7 +74,7 @@ class VerificationService : VerificationServiceInterface {
         walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse {
         val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
-        if (responseUri.isNullOrEmpty() || !UrlUtils.isHostReachable(responseUri)) {
+        if (responseUri.isNullOrEmpty()) {
             return WrappedVpTokenResponse(
                 errorResponse = ErrorResponse(
                     error = null,
