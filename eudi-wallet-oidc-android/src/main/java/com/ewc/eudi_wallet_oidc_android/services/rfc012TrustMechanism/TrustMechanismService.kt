@@ -19,7 +19,6 @@ class TrustMechanismService : TrustMechanismInterface {
         url: String?,
         x5c: String?
     ): Boolean {
-
         return try {
             val service = ApiManager.api.getService()
             if (service == null) {
@@ -28,7 +27,7 @@ class TrustMechanismService : TrustMechanismInterface {
             }
 
             val response =
-                service.getTrustServiceProviders("https://ewc-consortium.github.io/ewc-trust-list/EWC-TL")
+                service.getTrustServiceProviders(url?:"https://ewc-consortium.github.io/ewc-trust-list/EWC-TL")
 
             if (response.isSuccessful) {
                 val responseBody = response.body()
@@ -162,7 +161,17 @@ class TrustMechanismService : TrustMechanismInterface {
     ): TrustServiceProvider? {
         if (x5c.isNullOrBlank()) return null
 
-        var fallbackMatch: TrustServiceProvider? = null
+        //var fallbackMatch: TrustServiceProvider? = null
+        val separator = "##SEP##"
+        var kid: String? = null
+        var jwksUri: String? = null
+
+        if (x5c.contains(separator)) {
+            val parts = x5c.split(separator, limit = 2)
+            kid = parts.getOrNull(0)
+            jwksUri = parts.getOrNull(1)
+        }
+
 
         try {
             for (tsp in tspList) {
@@ -198,16 +207,30 @@ class TrustMechanismService : TrustMechanismInterface {
                         }
 
                         for (digitalIdElement in digitalIdElements) {
+
                             val digitalId = gson.fromJson(digitalIdElement, DigitalId::class.java)
+                            Log.d("TrustMechanismService", "Checking DigitalId: x509Cert=${digitalId.x509Certificate}, x509SKI=${digitalId.x509SKI}, DID=${digitalId.did}, KID=${digitalId.kid}, JwksURI=${digitalId.jwksURI}")
+
 
                             // First priority: match x509Certificate
                             if (digitalId.x509Certificate?.equals(x5c, ignoreCase = true) == true) {
                                 return tsp
                             }
 
-                            // Fallback: match x509SKI
+                            // match x509SKI
                             if (digitalId.x509SKI?.equals(x5c, ignoreCase = true) == true) {
-                                fallbackMatch = tsp
+                                return tsp
+                            }
+                            // match DID
+                            if (digitalId.did?.equals(x5c, ignoreCase = true) == true) {
+                                return tsp
+                            }
+                            // Match kid and jwksUri only if both present
+                            if (kid != null && jwksUri != null) {
+                                if (digitalId.kid?.equals(kid, ignoreCase = true) == true &&
+                                    digitalId.jwksURI?.equals(jwksUri, ignoreCase = true) == true) {
+                                    return tsp
+                                }
                             }
                         }
                     }
@@ -219,6 +242,6 @@ class TrustMechanismService : TrustMechanismInterface {
         }
 
         // Return fallback match if found, else null
-        return fallbackMatch
+        return null
     }
 }
