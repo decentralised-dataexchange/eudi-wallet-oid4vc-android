@@ -190,6 +190,15 @@ data class DigitalId(
     var x509Certificate: String? = null,
 
     @SerializedName("X509SKI")
-    var x509SKI: String? = null
+    var x509SKI: String? = null,
+
+    @SerializedName("DID")
+    var did: String? = null,
+
+    @SerializedName("KID")
+    var kid: String? = null,
+
+    @SerializedName("JwksURI")
+    var jwksURI: String? = null
 )
 
