@@ -963,7 +963,7 @@ class IssueService : IssueServiceInterface {
         )
 
         return if (response?.isSuccessful == true
-            && response.body()?.credential != null
+            && (response.body()?.credential != null || !response.body()?.credentials.isNullOrEmpty())
         ) {
             WrappedCredentialResponse(credentialResponse = response.body())
         } else {
@@ -983,7 +983,7 @@ class IssueService : IssueServiceInterface {
         )
 
         return if (response?.isSuccessful == true
-            && response.body()?.credential != null
+            && (response.body()?.credential != null || !response.body()?.credentials.isNullOrEmpty())
         ) {
             WrappedCredentialResponse(credentialResponse = response.body())
         } else {
