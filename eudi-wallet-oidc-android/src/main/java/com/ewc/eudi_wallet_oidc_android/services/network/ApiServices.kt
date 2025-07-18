@@ -118,6 +118,9 @@ interface ApiService {
         @Body body: ClientAssertion
     ): Response<CredentialOfferResponse>
 
+    @GET
+    suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
+
     @FormUrlEncoded
     @POST("")
     suspend fun getRefreshTokenFromCode(
