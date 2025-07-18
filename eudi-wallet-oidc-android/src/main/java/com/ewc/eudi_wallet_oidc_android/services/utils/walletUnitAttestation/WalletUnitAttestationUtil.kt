@@ -269,8 +269,24 @@ object WalletAttestationUtil {
     private suspend fun fetchNonceForDeviceIntegrityToken(url: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                val nonceResponse = NonceService().fetchNonce(nonceEndPoint = url)
-                return@withContext nonceResponse
+//                val nonceResponse = NonceService().fetchNonce(nonceEndPoint = url)
+//                return@withContext nonceResponse
+                // Make the API call to fetch the nonce
+                val response = ApiManager.api.getService()?.fetchNonce(url = url)
+
+                if (response?.isSuccessful == true) {
+                    // Parse the response body into the NonceResponse model
+                    val responseBody = response.body()?.string()
+                    responseBody?.let {
+                        val nonceResponse = Gson().fromJson(it, NonceResponse::class.java)
+                        Log.d(TAG, "Nonce fetched successfully: ${nonceResponse.nonce}")
+                        return@withContext nonceResponse.nonce
+                    }
+                } else {
+                    // Log the error if the response is unsuccessful
+                    Log.e(TAG, "Failed to fetch nonce: ${response?.errorBody()?.string()}")
+                    return@withContext null
+                }
 
             } catch (e: Exception) {
                 // Handle any exceptions that occur during the API call
