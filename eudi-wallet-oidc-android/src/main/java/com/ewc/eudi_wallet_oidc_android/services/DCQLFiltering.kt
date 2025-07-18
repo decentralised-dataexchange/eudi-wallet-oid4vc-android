@@ -123,10 +123,20 @@ object DCQLFiltering {
 
                 try {
                     val credentialTypes: List<String> = try {
-                        JsonPath.read(credential, "$.vc.type")
+                        val vcType = JsonPath.read<Any>(credential, "$.vc.type")
+                        when (vcType) {
+                            is List<*> -> vcType.filterIsInstance<String>()
+                            is String -> listOf(vcType)
+                            else -> emptyList()
+                        }
                     } catch (e: Exception) {
                         try {
-                            JsonPath.read(credential, "$.type")
+                            val type = JsonPath.read<Any>(credential, "$.type")
+                            when (type) {
+                                is List<*> -> type.filterIsInstance<String>()
+                                is String -> listOf(type)
+                                else -> emptyList()
+                            }
                         } catch (e2: Exception) {
                             emptyList()
                         }
