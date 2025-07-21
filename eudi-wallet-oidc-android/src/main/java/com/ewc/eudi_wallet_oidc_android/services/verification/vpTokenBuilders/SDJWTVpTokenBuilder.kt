@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders
 
 import android.util.Base64
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
@@ -17,7 +18,7 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: InputDescriptors?
+        inputDescriptors: Any?
     ): String? {
                 val claims = mutableMapOf<String, Any>()
                 Log.d(
@@ -65,7 +66,7 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
 
     }
     private fun checkTransactionDataWithInputDescriptor(
-        inputDescriptors: InputDescriptors?,
+        inputDescriptors: Any?,
         transactionDataItem: String?
     ): Boolean {
         return try {
@@ -74,8 +75,15 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
             val credentialIds = jsonObject.optJSONArray("credential_ids")?.let { array ->
                 List(array.length()) { array.getString(it) }
             } ?: emptyList()
-
-            inputDescriptors?.id in credentialIds
+            when (inputDescriptors) {
+                is InputDescriptors -> {
+                   inputDescriptors?.id in credentialIds
+                }
+                is CredentialList ->{
+                  inputDescriptors?.id in credentialIds
+                }
+                else -> false
+            }
         } catch (e: Exception) {
             Log.e("VerificationService", "Error processing transaction data: ${e.message}")
             false

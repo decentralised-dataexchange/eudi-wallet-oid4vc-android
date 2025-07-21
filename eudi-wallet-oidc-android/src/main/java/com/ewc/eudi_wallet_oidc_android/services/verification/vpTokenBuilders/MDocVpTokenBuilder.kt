@@ -18,7 +18,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: InputDescriptors?
+        inputDescriptors: Any?
     ): String? {
         var processPresentationDefinition: PresentationDefinition?=null
         if (presentationRequest == null) return null
