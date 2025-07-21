@@ -680,7 +680,9 @@ class CborUtils {
                 for (credential in allCredentialList) {
                     if (credential.isNullOrBlank()) continue
                     // Process the presentation definition
-                    val presentationDefinition = processPresentationDefinition(presentationRequest.presentationDefinition)
+                    val presentationDefinition = if (presentationRequest.dcqlQuery == null) {
+                        processPresentationDefinition(presentationRequest.presentationDefinition)
+                    } else null
 
                     try {
                         val paddedCbor = padBase64Url(credential ?: "")
@@ -691,65 +693,86 @@ class CborUtils {
                         var nameSpaces = extractNameSpaces(cborInBytes)
                         filteredNameSpaces = nameSpaces
                         println("Extracted nameSpaces: $nameSpaces")
-
+                        // Initialize a list to hold the requested keys
+                        val keyList = mutableListOf<String>()
                         // If limitDisclosure is required, filter the nameSpaces
-                        presentationDefinition.inputDescriptors?.forEach { inputDescriptor ->
-                            if (inputDescriptor.constraints?.limitDisclosure == "required") {
-                                // Initialize a list to hold the requested keys
-                                val keyList = mutableListOf<String>()
+                        if (presentationDefinition !=null){
+                            presentationDefinition.inputDescriptors?.forEach { inputDescriptor ->
+                                if (inputDescriptor.constraints?.limitDisclosure == "required") {
 
-                                // Populate the keyList based on the input descriptors
-                                inputDescriptor.constraints?.fields?.forEach { field ->
-                                    field.path?.forEach { path ->
-                                        val key =
-                                            extractKey(path).trim() // Extract the key and trim whitespace
+                                    // Populate the keyList based on the input descriptors
+                                    inputDescriptor.constraints?.fields?.forEach { field ->
+                                        field.path?.forEach { path ->
+                                            val key =
+                                                extractKey(path).trim() // Extract the key and trim whitespace
 
-                                        // Check if the key contains a single quote
-                                        if (key.contains("'")) {
-                                            // Remove the single quote and add to keyList
-                                            keyList.add(key.replace("'", ""))
-                                        } else {
-                                            // Add the key as it is
-                                            keyList.add(key)
+                                            // Check if the key contains a single quote
+                                            if (key.contains("'")) {
+                                                // Remove the single quote and add to keyList
+                                                keyList.add(key.replace("'", ""))
+                                            } else {
+                                                // Add the key as it is
+                                                keyList.add(key)
+                                            }
                                         }
                                     }
                                 }
+                            }
+                        }
+                        else{
+                            presentationRequest.dcqlQuery?.let { dcqlQuery ->
 
-                                if (nameSpaces is CborMap) {
-                                    Log.d("TAG", "Extracting issuer namespaced elements from Map")
+                                dcqlQuery.credentials?.forEach { credential ->
+                                    credential.claims?.forEach { claim ->
+                                        val path = "$['${claim.namespace}']['${claim.claimName}']"
+                                        val key = extractKey(path)
+                                        keyList.add(key.replace("'", ""))
+                                    }
+                                }
 
-                                    // Iterate over the namespaces map
-                                    nameSpaces.keys.mapNotNull { (it as? CborUnicodeString)?.string }
-                                        .forEach { key ->
-                                            val elements = nameSpaces[key] as CborArray
-                                            val matchedByteStrings = CborArray()
+                            }
 
-                                            // Iterate over each ByteString in the namespace
-                                            elements.dataItems.forEach { item ->
+                        }
+                        if (nameSpaces is CborMap && keyList.isNotEmpty()) {
+                            try {
+                                Log.d("TAG", "Filtering with DCQL keys: $keyList")
+
+                                nameSpaces.keys.mapNotNull { (it as? CborUnicodeString)?.string }
+                                    .forEach { key ->
+                                        val elements =
+                                            nameSpaces[key] as? CborArray ?: return@forEach
+                                        val matchedByteStrings = CborArray()
+
+                                        elements.dataItems.forEach { item ->
+                                            try {
                                                 val decoded =
                                                     CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
                                                 val identifier =
                                                     decoded[0]["elementIdentifier"].toString()
-                                                        .trim() // Trim to remove any extra spaces
+                                                        .trim()
 
-                                                // If identifier is in the keyList, add the ByteString to matchedByteStrings
                                                 if (keyList.contains(identifier)) {
                                                     matchedByteStrings.add(item)
                                                 }
-                                            }
-
-                                            // If there are any matches, add them to the filteredNameSpaces
-                                            if (matchedByteStrings.dataItems.isNotEmpty()) {
-                                                filteredNameSpaces.put(
-                                                    CborUnicodeString(key),
-                                                    matchedByteStrings
+                                            } catch (e: Exception) {
+                                                Log.e(
+                                                    "TAG",
+                                                    "Error decoding CBOR item: ${e.message}"
                                                 )
                                             }
                                         }
-                                }
+
+                                        if (matchedByteStrings.dataItems.isNotEmpty()) {
+                                            filteredNameSpaces.put(
+                                                CborUnicodeString(key),
+                                                matchedByteStrings
+                                            )
+                                        }
+                                    }
+                            } catch (e: Exception) {
+                                Log.e("TAG", "Error filtering nameSpaces: ${e.message}")
                             }
                         }
-
                     } catch (e: Exception) {
                         Log.e("TAG", "Error processing credential: ${e.message}")
                     }
