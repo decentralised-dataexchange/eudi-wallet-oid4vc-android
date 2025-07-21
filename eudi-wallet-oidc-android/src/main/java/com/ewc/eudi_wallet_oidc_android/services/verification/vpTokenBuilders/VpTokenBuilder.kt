@@ -10,6 +10,6 @@ interface VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: InputDescriptors? = null
+        inputDescriptors: Any? = null
     ): String?
 }

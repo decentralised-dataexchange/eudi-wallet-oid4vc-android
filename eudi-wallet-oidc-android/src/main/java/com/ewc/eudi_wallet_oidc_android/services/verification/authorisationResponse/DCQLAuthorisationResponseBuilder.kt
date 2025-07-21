@@ -45,7 +45,10 @@ class DCQLAuthorisationResponseBuilder {
                 did = did,
                 type = credentialType,
                 jwk = jwk,
-                inputDescriptors = presentationDefinition.inputDescriptors?.getOrNull(index)
+                inputDescriptors = if (presentationRequest.dcqlQuery != null)
+                    presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
+                else
+                    presentationDefinition.inputDescriptors?.getOrNull(index)
             )
 
             credentialMap[credential.id ?: ""] = vpToken ?: ""
@@ -72,7 +75,7 @@ class DCQLAuthorisationResponseBuilder {
         did: String?,
         type: String?,
         jwk: JWK?,
-        inputDescriptors: InputDescriptors?
+        inputDescriptors: Any?
     ): String? {
         return if (type == "mso_mdoc") {
             MDocVpTokenBuilder().build(

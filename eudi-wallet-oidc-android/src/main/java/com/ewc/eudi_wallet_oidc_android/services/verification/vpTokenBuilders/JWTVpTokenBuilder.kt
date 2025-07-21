@@ -21,7 +21,7 @@ class JWTVpTokenBuilder: VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: InputDescriptors?
+        inputDescriptors: Any?
     ): String? {
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"
