@@ -896,12 +896,19 @@ class CborUtils {
             val certList = when (x5chainValue) {
                 is CborArray -> x5chainValue
                 is CborByteString -> CborArray().apply { add(x5chainValue) }
+                is CborUnicodeString -> CborArray().apply { add(x5chainValue) }
                 else -> throw IllegalArgumentException("x5chain (33) not found or not a CborArray/ByteString")
             }
             val certFactory = CertificateFactory.getInstance("X.509")
-            return certList.dataItems.map {
-                val certBytes = (it as CborByteString).bytes
-                val cert = certFactory.generateCertificate(certBytes.inputStream()) as java.security.cert.X509Certificate
+            return certList.dataItems.mapNotNull { item ->
+                val certBytes = when (item) {
+                    is CborByteString -> item.bytes
+                    is CborUnicodeString -> java.util.Base64.getDecoder().decode(item.string)
+
+                    else -> throw IllegalArgumentException("Unsupported certificate format in x5chain: ${item.javaClass}")
+                }
+                val cert =
+                    certFactory.generateCertificate(certBytes.inputStream()) as java.security.cert.X509Certificate
                 java.util.Base64.getEncoder().encodeToString(cert.encoded)
             }
         }
