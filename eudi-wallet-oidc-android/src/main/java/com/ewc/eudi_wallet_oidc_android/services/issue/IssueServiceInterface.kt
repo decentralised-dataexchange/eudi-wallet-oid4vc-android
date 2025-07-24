@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfi
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
+import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
@@ -109,7 +110,8 @@ interface IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         accessToken: TokenResponse?,
         authorizationDetail: AuthorizationDetail?,
-        index: Int
+        index: Int,
+        ecKeyWithAlgEnc:ECKeyWithAlgEnc? =null
     ): WrappedCredentialResponse?
 
     /**
@@ -121,12 +123,14 @@ interface IssueServiceInterface {
      */
     suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
-        deferredCredentialEndPoint: String?
+        deferredCredentialEndPoint: String?,
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null
     ): WrappedCredentialResponse?
     suspend fun processDeferredCredentialRequestV2(
         transactionId: String?,
         accessToken: String?,
-        deferredCredentialEndPoint: String?
+        deferredCredentialEndPoint: String?,
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null
     ): WrappedCredentialResponse?
 
     /**

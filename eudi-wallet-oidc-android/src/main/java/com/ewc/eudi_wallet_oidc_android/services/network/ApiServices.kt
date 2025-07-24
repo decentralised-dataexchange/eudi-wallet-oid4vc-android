@@ -72,20 +72,20 @@ interface ApiService {
         @Header("content-type") contentType: String,
         @Header("Authorization") authorization: String,
         @Body body: CredentialRequest
-    ): Response<CredentialResponse>
+    ): Response<ResponseBody>
 
     @POST("")
     suspend fun getDifferedCredential(
         @Url url: String,
         @Header("Authorization") authorization: String,
         @Body body: CredentialRequest
-    ): Response<CredentialResponse>
+    ): Response<ResponseBody>
     @POST("")
     suspend fun getDifferedCredentialV2(
         @Url url: String,
         @Header("Authorization") authorization: String,
         @Body body: DeferredCredentialRequestV2
-    ): Response<CredentialResponse>
+    ): Response<ResponseBody>
 
     @GET
     suspend fun getPresentationDefinitionFromRequestUri(@Url url: String): Response<ResponseBody>

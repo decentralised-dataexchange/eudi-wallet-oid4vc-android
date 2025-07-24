@@ -10,8 +10,10 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialDefinition
 import com.ewc.eudi_wallet_oidc_android.models.CredentialDetails
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
+import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
+import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
@@ -28,6 +30,7 @@ import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
+import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.google.gson.Gson
@@ -49,6 +52,7 @@ import java.util.Date
 import java.util.UUID
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonSyntaxException
 import okhttp3.ResponseBody
 
 class IssueService : IssueServiceInterface {
@@ -641,9 +645,9 @@ class IssueService : IssueServiceInterface {
             }
 
             response?.isSuccessful == true -> {
-                WrappedCredentialResponse(
-                    credentialResponse = response.body()
-                )
+                val raw = response.body()?.string()
+                val parsed = Gson().fromJson(raw, CredentialResponse::class.java)
+                WrappedCredentialResponse(credentialResponse = parsed)
             }
 
             else -> {
@@ -679,9 +683,10 @@ class IssueService : IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         accessToken: TokenResponse?,
         authorizationDetail: AuthorizationDetail?,
-        index: Int
+        index: Int,
+        ecKeyWithAlgEnc:ECKeyWithAlgEnc?
     ): WrappedCredentialResponse? {
-
+        val credentialEncryptionBuilder = CredentialEncryptionBuilder()
         val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
@@ -723,6 +728,7 @@ class IssueService : IssueServiceInterface {
                     jwt = jwt, index = index
                 )
             }
+            request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
 
             val response = ApiManager.api.getService()?.getCredential(
                 issuerConfig?.credentialEndpoint ?: "",
@@ -742,9 +748,7 @@ class IssueService : IssueServiceInterface {
                 }
 
                 response?.isSuccessful == true -> {
-                    WrappedCredentialResponse(
-                        credentialResponse = response.body()
-                    )
+                    parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
                 }
 
                 else -> {
@@ -752,6 +756,65 @@ class IssueService : IssueServiceInterface {
                 }
             }
             return credentialResponse
+    }
+
+    private fun parseCredentialResponse(
+        response: Response<ResponseBody>,
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
+        credentialEncryptionBuilder: CredentialEncryptionBuilder
+    ): WrappedCredentialResponse? {
+        val raw = response.body()?.string()
+        val contentType = response.headers()["Content-Type"] ?: ""
+        return if (contentType.contains("application/jwt", ignoreCase = true)) {
+
+            if (ecKeyWithAlgEnc != null) {
+                val privateKey = ecKeyWithAlgEnc.ecKey
+                // Try decrypting the JWE
+                val decryptedJson: String? = try {
+                    credentialEncryptionBuilder.decryptJWE(raw ?: "", privateKey)
+                } catch (ex: Exception) {
+                    Log.e("CredentialRequest", "Decryption failed: ${ex.message}")
+                    null
+                }
+                if (!decryptedJson.isNullOrEmpty()) {
+                    try {
+                        val parsedDecrypted = Gson().fromJson(
+                            decryptedJson,
+                            CredentialResponse::class.java
+                        )
+                        WrappedCredentialResponse(credentialResponse = parsedDecrypted)
+                    } catch (ex: JsonSyntaxException) {
+                        WrappedCredentialResponse(
+                            errorResponse = ErrorHandler.processError(
+                                ex.message ?: "Decrypted payload is not valid JSON"
+                            )
+                        )
+                    }
+                } else {
+                    WrappedCredentialResponse(
+                        errorResponse = ErrorHandler.processError(
+                            "JWE Decryption failed or empty response"
+                        )
+                    )
+                }
+            } else {
+                WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError(
+                        "ecKey is null, cannot decrypt JWE"
+                    )
+                )
+            }
+
+        } else {
+            try {
+                val parsed = Gson().fromJson(raw, CredentialResponse::class.java)
+                WrappedCredentialResponse(credentialResponse = parsed)
+            } catch (ex: JsonSyntaxException) {
+                WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError("Invalid JSON in response: ${ex.message}")
+                )
+            }
+        }
     }
 
     private fun fetchDoctype(
@@ -954,18 +1017,26 @@ class IssueService : IssueServiceInterface {
      */
     override suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
-        deferredCredentialEndPoint: String?
+        deferredCredentialEndPoint: String?,
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc?
     ): WrappedCredentialResponse? {
+        val credentialEncryptionBuilder = CredentialEncryptionBuilder()
         val response = ApiManager.api.getService()?.getDifferedCredential(
             deferredCredentialEndPoint ?: "",
             "Bearer $acceptanceToken",
             CredentialRequest() // empty object
         )
 
-        return if (response?.isSuccessful == true
-            && (response.body()?.credential != null || !response.body()?.credentials.isNullOrEmpty())
-        ) {
-            WrappedCredentialResponse(credentialResponse = response.body())
+//        return if (response?.isSuccessful == true
+//            && (response.body()?.credential != null || !response.body()?.credentials.isNullOrEmpty())
+//        ) {
+//            WrappedCredentialResponse(credentialResponse = response.body())
+//        } else {
+//            null
+//        }
+        return if (response?.isSuccessful == true)
+         {
+             parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
         } else {
             null
         }
@@ -974,18 +1045,19 @@ class IssueService : IssueServiceInterface {
     override suspend fun processDeferredCredentialRequestV2(
         transactionId: String?,
         accessToken: String?,
-        deferredCredentialEndPoint: String?
+        deferredCredentialEndPoint: String?,
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc?
     ): WrappedCredentialResponse? {
+        val credentialEncryptionBuilder = CredentialEncryptionBuilder()
         val response = ApiManager.api.getService()?.getDifferedCredentialV2(
             deferredCredentialEndPoint ?: "",
             "Bearer $accessToken",
             DeferredCredentialRequestV2(transactionId)
         )
 
-        return if (response?.isSuccessful == true
-            && (response.body()?.credential != null || !response.body()?.credentials.isNullOrEmpty())
-        ) {
-            WrappedCredentialResponse(credentialResponse = response.body())
+        return if (response?.isSuccessful == true)
+        {
+            parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
         } else {
             null
         }
