@@ -61,29 +61,96 @@ class CborUtils {
                         (it as? CborUnicodeString)?.string
                     }
                     for (key in allKeys) {
-                        val elements = nameSpaces[key] as CborArray
-                        val newJson = JSONObject()
-                        for (item in elements.dataItems) {
-                            val decoded =
-                                CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
-                            val identifier = decoded[0]["elementIdentifier"].toString()
-                            val value = decoded[0]["elementValue"]
-                            if (value?.majorType == MajorType.BYTE_STRING) {
-                                // Convert the ByteString into a readable format, e.g., hex string or Base64
-                                val byteValue = value as CborByteString
-                                val base64String =
-                                    Base64.encodeToString(byteValue.bytes, Base64.NO_WRAP)
-                                newJson.put(identifier, base64String)
-                            } else {
-                                if (identifier == "driving_privileges") {
-                                    Log.d("TAG", "extractIssuerNamespacedElements: ")
+                        // val elements = nameSpaces[key] as CborArray
+                        val itemValue = nameSpaces[key]
+                        try {
+                            when (itemValue) {
+                                is CborArray -> {
+                                    try {
+                                        val newJson = JSONObject()
+                                        for (item in itemValue.dataItems) {
+                                            val decoded =
+                                                CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
+                                            val identifier =
+                                                decoded[0]["elementIdentifier"].toString()
+                                            val value = decoded[0]["elementValue"]
+                                            if (value?.majorType == MajorType.BYTE_STRING) {
+                                                // Convert the ByteString into a readable format, e.g., hex string or Base64
+                                                val byteValue = value as CborByteString
+                                                val base64String =
+                                                    Base64.encodeToString(
+                                                        byteValue.bytes,
+                                                        Base64.NO_WRAP
+                                                    )
+                                                newJson.put(identifier, base64String)
+                                            } else {
+                                                if (identifier == "driving_privileges") {
+                                                    Log.d(
+                                                        "TAG",
+                                                        "extractIssuerNamespacedElements: "
+                                                    )
+                                                }
+                                                // newJson.put(identifier, value.toString())
+                                                newJson.put(
+                                                    identifier,
+                                                    value?.let { convertCborToJson(it) })
+                                            }
+                                        }
+                                        jsonObject.put(key, newJson)
+                                    } catch (e: Exception) {
+                                        Log.e(
+                                            "TAG",
+                                            "Error processing CborArray for key '$key': ${e.message}"
+                                        )
+                                    }
                                 }
-                               // newJson.put(identifier, value.toString())
-                                newJson.put(identifier, value?.let { convertCborToJson(it) })
 
+                                is CborByteString -> {
+                                    try {
+                                        // Decode the ByteString as CBOR
+                                        val decoded =
+                                            CborDecoder(ByteArrayInputStream(itemValue.bytes)).decode()
+                                        val identifier = decoded[0]["elementIdentifier"].toString()
+                                        val value = decoded[0]["elementValue"]
+                                        if (value?.majorType == MajorType.BYTE_STRING) {
+                                            // Convert the ByteString into a readable format, e.g., hex string or Base64
+                                            val byteValue = value as CborByteString
+                                            val base64String =
+                                                Base64.encodeToString(
+                                                    byteValue.bytes,
+                                                    Base64.NO_WRAP
+                                                )
+                                            jsonObject.put(identifier, base64String)
+                                        } else {
+                                            if (identifier == "driving_privileges") {
+                                                Log.d(
+                                                    "TAG",
+                                                    "extractIssuerNamespacedElements: "
+                                                )
+                                            }
+                                            jsonObject.put(
+                                                identifier,
+                                                value?.let { convertCborToJson(it) })
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(
+                                            "TAG",
+                                            "Error processing ByteString for key '$key': ${e.message}"
+                                        )
+                                    }
+                                }
+
+                                else -> {
+                                    Log.d(
+                                        "TAG",
+                                        "extractIssuerNamespacedElements: Unsupported type"
+                                    )
+                                }
                             }
+                        } catch (e: Exception) {
+                            Log.e("TAG", "Error processing key '$key': ${e.message}")
+                            // Handle the error, e.g., log it or skip this key
                         }
-                        jsonObject.put(key, newJson)
                     }
                 }
             } else if (nameSpaces is CborArray) {
