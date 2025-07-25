@@ -15,7 +15,8 @@ data class IssuerWellKnownConfiguration(
     @SerializedName("display") var display: Any? = null,
     @SerializedName("credentials_supported") var credentialsSupported: Any? = null,
     @SerializedName("notification_endpoint") var notificationEndpoint: String? = null,
-    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null
+    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null,
+    @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponseEncryption? = null,
 ){
     constructor(issuerWellKnownConfigurationV1: IssuerWellKnownConfigurationV1) : this(
         issuer = issuerWellKnownConfigurationV1.issuer,
@@ -27,7 +28,8 @@ data class IssuerWellKnownConfiguration(
         display = issuerWellKnownConfigurationV1.display,
         credentialsSupported = issuerWellKnownConfigurationV1.credentialsSupported,
         notificationEndpoint = issuerWellKnownConfigurationV1.notificationEndpoint,
-        nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint
+        nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint,
+        credentialResponseEncryption = issuerWellKnownConfigurationV1.credentialResponseEncryption
     )
     constructor(issuerWellKnownConfigurationV2:IssuerWellKnownConfigurationV2):this(
         issuer = issuerWellKnownConfigurationV2.issuer,
@@ -39,7 +41,8 @@ data class IssuerWellKnownConfiguration(
         display = issuerWellKnownConfigurationV2.display,
         credentialsSupported = issuerWellKnownConfigurationV2.credentialConfigurationsSupported,
         notificationEndpoint = issuerWellKnownConfigurationV2.notificationEndpoint,
-        nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint
+        nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint,
+        credentialResponseEncryption = issuerWellKnownConfigurationV2.credentialResponseEncryption
 
     )
 }
@@ -85,6 +88,12 @@ data class Image(
     @SerializedName("url") var url: String? = null,
     @SerializedName("alt_text") var altText: String? = null
 )
+
+data class CredentialResponseEncryption(
+    @SerializedName("alg_values_supported") var algValuesSupported: List<String>? = null,
+    @SerializedName("enc_values_supported") var encValuesSupported: List<String>? = null
+)
+
 data class WrappedIssuerConfigResponse(
     var issuerConfig: IssuerWellKnownConfiguration? = null,
     var errorResponse: ErrorResponse? = null

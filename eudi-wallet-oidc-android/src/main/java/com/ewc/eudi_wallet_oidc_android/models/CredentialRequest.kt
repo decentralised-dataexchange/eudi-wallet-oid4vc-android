@@ -13,6 +13,7 @@ data class CredentialRequest(
     @SerializedName("proof") var proof: ProofV3? = null,
     @SerializedName("credential_identifier") var credentialIdentifier: String? = null,
     @SerializedName("credential_configuration_id") var credentialConfigurationId: String? = null,
+    @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponsEncryption? = null,
 )
 
 data class CredentialDefinition(
@@ -24,4 +25,9 @@ data class ProofV3(
     @SerializedName("proof_type") var proofType: String? = null,
     @SerializedName("jwt") var jwt: String? = null
 
+)
+data class CredentialResponsEncryption(
+    @SerializedName("jwk") val jwk: Any? =null,
+    @SerializedName("alg") val alg: String? =null,
+    @SerializedName("enc") val enc: String?=null
 )

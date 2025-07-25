@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.models.v1
 
 
+import com.ewc.eudi_wallet_oidc_android.models.CredentialResponseEncryption
 import com.ewc.eudi_wallet_oidc_android.models.TrustFramework
 import com.google.gson.annotations.SerializedName
 
@@ -14,7 +15,8 @@ data class IssuerWellKnownConfigurationV1(
     @SerializedName("display") var display: Any? = null,
     @SerializedName("credentials_supported") var credentialsSupported: Any? = null,
     @SerializedName("notification_endpoint") var notificationEndpoint: String? = null,
-    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null
+    @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null,
+    @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponseEncryption? = null,
 )
 
 data class CredentialsSupportedV1(
