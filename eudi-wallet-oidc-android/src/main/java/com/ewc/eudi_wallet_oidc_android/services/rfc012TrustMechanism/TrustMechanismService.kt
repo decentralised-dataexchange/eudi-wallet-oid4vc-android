@@ -213,22 +213,22 @@ class TrustMechanismService : TrustMechanismInterface {
 
 
                             // First priority: match x509Certificate
-                            if (digitalId.x509Certificate?.equals(x5c, ignoreCase = true) == true) {
+                            if (digitalId.x509Certificate?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
                                 return tsp
                             }
 
                             // match x509SKI
-                            if (digitalId.x509SKI?.equals(x5c, ignoreCase = true) == true) {
+                            if (digitalId.x509SKI?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
                                 return tsp
                             }
                             // match DID
-                            if (digitalId.did?.equals(x5c, ignoreCase = true) == true) {
+                            if (digitalId.did?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
                                 return tsp
                             }
                             // Match kid and jwksUri only if both present
                             if (kid != null && jwksUri != null) {
-                                if (digitalId.kid?.equals(kid, ignoreCase = true) == true &&
-                                    digitalId.jwksURI?.equals(jwksUri, ignoreCase = true) == true) {
+                                if (digitalId.kid?.trim()?.equals(kid.trim(), ignoreCase = true) == true &&
+                                    digitalId.jwksURI?.trim()?.equals(jwksUri.trim(), ignoreCase = true) == true) {
                                     return tsp
                                 }
                             }
