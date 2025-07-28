@@ -43,7 +43,8 @@ interface IssueServiceInterface {
         format: String? = "jwt_vc_json",
         docType: String? =null,
         issuerConfig: IssuerWellKnownConfiguration?,
-        redirectUri: String? = null
+        redirectUri: String? = null,
+        isWalletUnitAttestation: Boolean = false
     ): String?
 
     /**
