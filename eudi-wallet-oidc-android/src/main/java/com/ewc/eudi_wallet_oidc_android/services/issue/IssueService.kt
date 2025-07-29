@@ -22,11 +22,13 @@ import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEbsiV1
+import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEwcV1
+import com.ewc.eudi_wallet_oidc_android.models.v2.CredentialOfferEwcV2
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
+import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
-import com.ewc.eudi_wallet_oidc_android.services.issue.credentialOffer.CredentialOfferByReference
-import com.ewc.eudi_wallet_oidc_android.services.issue.credentialOffer.CredentialOfferByValue
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
@@ -67,11 +69,25 @@ class IssueService : IssueServiceInterface {
         try {
             val uri = Uri.parse(data)
             val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
-            val credentialOffer = uri.getQueryParameter("credential_offer")
             if (!credentialOfferUri.isNullOrBlank()) {
-                return CredentialOfferByReference().processCredentialOffer(data)
-            } else if (!credentialOffer.isNullOrBlank()){
-                return CredentialOfferByValue().processCredentialOffer(data)
+                UrlUtils.validateUri(credentialOfferUri)
+                val response =
+                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
+                return if (response?.isSuccessful == true) {
+                    WrappedCredentialOffer(
+                        credentialOffer =  parseCredentialOffer(credentialOfferJson = response.body()?.string())
+                    )
+
+                } else {
+                    WrappedCredentialOffer(
+                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
+                    )
+                }
+            }
+
+            val credentialOfferString = uri.getQueryParameter("credential_offer")
+            if (!credentialOfferString.isNullOrBlank()) {
+                return WrappedCredentialOffer(credentialOffer =  parseCredentialOffer(credentialOfferJson = credentialOfferString))
             }
             return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
         } catch (exc: UriValidationFailed) {
@@ -82,6 +98,37 @@ class IssueService : IssueServiceInterface {
         }
     }
 
+    private fun parseCredentialOffer(credentialOfferJson: String?): CredentialOffer? {
+        val gson = Gson()
+        val credentialOfferV2Response = try {
+            gson.fromJson(credentialOfferJson, CredentialOfferEwcV2::class.java)
+        } catch (e: Exception) {
+            null
+        }
+        if (credentialOfferV2Response?.credentialConfigurationIds == null) {
+            val credentialOfferEbsiV1Response = try {
+                gson.fromJson(credentialOfferJson, CredentialOfferEbsiV1::class.java)
+            } catch (e: Exception) {
+                null
+            }
+            return if (credentialOfferEbsiV1Response?.credentials == null) {
+                val credentialOfferEwcV1Response = try {
+                    gson.fromJson(credentialOfferJson, CredentialOfferEwcV1::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+                if (credentialOfferEwcV1Response == null) {
+                    null
+                } else {
+                    CredentialOffer(ewcV1 = credentialOfferEwcV1Response)
+                }
+            } else {
+                credentialOfferEbsiV1Response?.let { CredentialOffer(ebsiV1 = it) }
+            }
+        } else {
+            return CredentialOffer(ewcV2 = credentialOfferV2Response)
+        }
+    }
     /**
      * To process the authorisation request The authorisation request is to
      * grant access to the credential endpoint
