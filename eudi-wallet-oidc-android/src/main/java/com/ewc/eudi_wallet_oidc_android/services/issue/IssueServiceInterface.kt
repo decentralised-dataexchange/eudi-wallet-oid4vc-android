@@ -2,7 +2,6 @@ package com.ewc.eudi_wallet_oidc_android.services.issue
 
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
-import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
@@ -43,7 +42,8 @@ interface IssueServiceInterface {
         format: String? = "jwt_vc_json",
         docType: String? =null,
         issuerConfig: IssuerWellKnownConfiguration?,
-        redirectUri: String? = null
+        redirectUri: String? = null,
+        isApiCallRequired: Boolean = false
     ): String?
 
     /**
