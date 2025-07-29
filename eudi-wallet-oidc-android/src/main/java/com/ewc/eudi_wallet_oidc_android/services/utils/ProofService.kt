@@ -52,11 +52,17 @@ class ProofService {
             .claim("nonce", nonce).build()
 
         // Add header
-        val jwsHeader = JWSHeader
-            .Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
+        val jwsHeaderBuilder = JWSHeader.Builder(
+            if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256
+        )
             .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .keyID(generateKeyId(bindingMethod,subJwk,did))
-            .build()
+            .keyID(generateKeyId(bindingMethod, subJwk, did))
+
+        if (bindingMethod == "jwk") {
+            jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
+        }
+
+        val jwsHeader = jwsHeaderBuilder.build()
 
 
         // Sign with private EC key
@@ -78,9 +84,12 @@ class ProofService {
     }
     private fun generateKeyId(bindingMethod: String?, subJwk: JWK?, did: String?): String {
         return when (bindingMethod) {
-            "did:jwk", "jwk" -> {
+            "did:jwk" -> {
                 val processedDidJwk = subJwk?.let { createDidJwk(it.toJSONString()) }
                 processedDidJwk ?: ""
+            }
+            "jwk" ->{
+                subJwk?.keyID ?: ""
             }
 
             else -> {
