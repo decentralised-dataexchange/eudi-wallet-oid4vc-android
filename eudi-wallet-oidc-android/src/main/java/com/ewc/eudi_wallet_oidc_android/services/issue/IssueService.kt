@@ -14,7 +14,6 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
-import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
@@ -23,13 +22,11 @@ import com.ewc.eudi_wallet_oidc_android.models.VpFormatsSupported
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
-import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEbsiV1
-import com.ewc.eudi_wallet_oidc_android.models.v1.CredentialOfferEwcV1
-import com.ewc.eudi_wallet_oidc_android.models.v2.CredentialOfferEwcV2
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
-import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
+import com.ewc.eudi_wallet_oidc_android.services.issue.credentialOffer.CredentialOfferByReference
+import com.ewc.eudi_wallet_oidc_android.services.issue.credentialOffer.CredentialOfferByValue
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
@@ -70,25 +67,11 @@ class IssueService : IssueServiceInterface {
         try {
             val uri = Uri.parse(data)
             val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
+            val credentialOffer = uri.getQueryParameter("credential_offer")
             if (!credentialOfferUri.isNullOrBlank()) {
-                UrlUtils.validateUri(credentialOfferUri)
-                val response =
-                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
-                return if (response?.isSuccessful == true) {
-                    WrappedCredentialOffer(
-                        credentialOffer =  parseCredentialOffer(credentialOfferJson = response.body()?.string())
-                    )
-
-                } else {
-                    WrappedCredentialOffer(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
-                    )
-                }
-            }
-
-            val credentialOfferString = uri.getQueryParameter("credential_offer")
-            if (!credentialOfferString.isNullOrBlank()) {
-                return WrappedCredentialOffer(credentialOffer =  parseCredentialOffer(credentialOfferJson = credentialOfferString))
+                return CredentialOfferByReference().processCredentialOffer(data)
+            } else if (!credentialOffer.isNullOrBlank()){
+                return CredentialOfferByValue().processCredentialOffer(data)
             }
             return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
         } catch (exc: UriValidationFailed) {
@@ -96,38 +79,6 @@ class IssueService : IssueServiceInterface {
         }catch (e:Exception){
             Log.d("Exception", e.message.toString())
             return  null
-        }
-    }
-
-    private fun parseCredentialOffer(credentialOfferJson: String?): CredentialOffer? {
-        val gson = Gson()
-        val credentialOfferV2Response = try {
-            gson.fromJson(credentialOfferJson, CredentialOfferEwcV2::class.java)
-        } catch (e: Exception) {
-            null
-        }
-        if (credentialOfferV2Response?.credentialConfigurationIds == null) {
-            val credentialOfferEbsiV1Response = try {
-                gson.fromJson(credentialOfferJson, CredentialOfferEbsiV1::class.java)
-            } catch (e: Exception) {
-                null
-            }
-            return if (credentialOfferEbsiV1Response?.credentials == null) {
-                val credentialOfferEwcV1Response = try {
-                    gson.fromJson(credentialOfferJson, CredentialOfferEwcV1::class.java)
-                } catch (e: Exception) {
-                    null
-                }
-                if (credentialOfferEwcV1Response == null) {
-                    null
-                } else {
-                    CredentialOffer(ewcV1 = credentialOfferEwcV1Response)
-                }
-            } else {
-                credentialOfferEbsiV1Response?.let { CredentialOffer(ebsiV1 = it) }
-            }
-        } else {
-            return CredentialOffer(ewcV2 = credentialOfferV2Response)
         }
     }
 
@@ -152,7 +103,7 @@ class IssueService : IssueServiceInterface {
         docType: String?,
         issuerConfig: IssuerWellKnownConfiguration?,
         redirectUri: String?,
-        isWalletUnitAttestation: Boolean
+        isApiCallRequired: Boolean
     ): String? {
         val authorisationEndPoint =authConfig?.authorizationEndpoint
         val responseType = "code"
@@ -213,7 +164,7 @@ class IssueService : IssueServiceInterface {
                 // Extract requestUri from the PAR response
                 val requestUri = parResponse.body()?.requestUri ?: ""
 
-                if (isWalletUnitAttestation) {
+                if (isApiCallRequired) {
                     // API call for wallet unit attestation
                     val response = ApiManager.api.getService()?.processAuthorisationRequest(
                         authorisationEndPoint ?: "",
@@ -256,24 +207,95 @@ class IssueService : IssueServiceInterface {
             }
 
         } else {
-            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-            urlBuilder.appendQueryParameter("response_type", responseType)
-            urlBuilder.appendQueryParameter("scope", scope.trim())
-            urlBuilder.appendQueryParameter("state", state)
-            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-            urlBuilder.appendQueryParameter("authorization_details", authorisationDetails)
-            urlBuilder.appendQueryParameter("redirect_uri", redirectURI ?: "")
-            urlBuilder.appendQueryParameter("nonce", nonce)
-            urlBuilder.appendQueryParameter("code_challenge", codeChallenge ?: "")
-            urlBuilder.appendQueryParameter("code_challenge_method", codeChallengeMethod)
-            urlBuilder.appendQueryParameter("client_metadata", clientMetadata)
-            urlBuilder.appendQueryParameter(
-                "issuer_state",
-                credentialOffer?.grants?.authorizationCode?.issuerState ?: ""
-            )
-            val urlWithParams = urlBuilder.build().toString()
 
-            return urlWithParams
+            if (isApiCallRequired) {
+                val response = ApiManager.api.getService()?.processAuthorisationRequest(
+                    authorisationEndPoint ?: "",
+                    mapOf(
+                        "response_type" to responseType,
+                        "scope" to scope.trim(),
+                        "state" to state,
+                        "client_id" to (clientId ?: ""),
+                        "authorization_details" to authorisationDetails,
+                        "redirect_uri" to (redirectURI ?: ""),
+                        "nonce" to nonce,
+                        "code_challenge" to (codeChallenge ?: ""),
+                        "code_challenge_method" to codeChallengeMethod,
+                        "client_metadata" to clientMetadata,
+                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState
+                            ?: "")
+                    ),
+                )
+
+                if (response?.code() == 502) {
+                    throw Exception("Unexpected error. Please try again.")
+                }
+                val location: String? = if (response?.code() == 302) {
+                    if (response.headers()["Location"]?.contains("error") == true || response.headers()["Location"]?.contains(
+                            "error_description"
+                        ) == true
+                    ) {
+                        response.headers()["Location"]
+                    } else {
+                        response.headers()["Location"]
+                    }
+                } else {
+                    null
+                }
+
+                return if (location == null) {
+                    null
+                } else if (Uri.parse(location).getQueryParameter("error") != null) {
+                    location
+                } else if (Uri.parse(location).getQueryParameter("code") != null
+                    || Uri.parse(location).getQueryParameter("presentation_definition") != null
+                    || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
+                    || (Uri.parse(location).getQueryParameter("request_uri") != null &&
+                            Uri.parse(location).getQueryParameter("response_type") == null &&
+                            Uri.parse(location).getQueryParameter("state") == null)
+                ) {
+                    location
+                } else if (
+                    Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
+                    Uri.parse(location).getQueryParameter("redirect_uri") != null
+                ) {
+                    processAuthorisationRequestUsingIdToken(
+                        did = did,
+                        authorisationEndPoint = authorisationEndPoint,
+                        location = location,
+                        subJwk = subJwk
+                    )
+                } else if (!location.startsWith(redirectURI)) {
+                    location
+                } else {
+                    processAuthorisationRequestUsingIdToken(
+                        did = did,
+                        authorisationEndPoint = authorisationEndPoint,
+                        location = location,
+                        subJwk = subJwk
+                    )
+                }
+            }else{
+
+                val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+                urlBuilder.appendQueryParameter("response_type", responseType)
+                urlBuilder.appendQueryParameter("scope", scope.trim())
+                urlBuilder.appendQueryParameter("state", state)
+                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                urlBuilder.appendQueryParameter("authorization_details", authorisationDetails)
+                urlBuilder.appendQueryParameter("redirect_uri", redirectURI ?: "")
+                urlBuilder.appendQueryParameter("nonce", nonce)
+                urlBuilder.appendQueryParameter("code_challenge", codeChallenge ?: "")
+                urlBuilder.appendQueryParameter("code_challenge_method", codeChallengeMethod)
+                urlBuilder.appendQueryParameter("client_metadata", clientMetadata)
+                urlBuilder.appendQueryParameter(
+                    "issuer_state",
+                    credentialOffer?.grants?.authorizationCode?.issuerState ?: ""
+                )
+                val urlWithParams = urlBuilder.build().toString()
+
+                return urlWithParams
+            }
         }
         return null
     }
