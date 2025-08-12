@@ -27,6 +27,7 @@ data class AuthorisationServerWellKnownConfiguration(
     @SerializedName("require_pushed_authorization_requests") var requirePushedAuthorizationRequests: Boolean = false,
     @SerializedName("pushed_authorization_request_endpoint") var pushedAuthorizationRequestEndpoint: String? = null,
     @SerializedName("id_token_signing_alg_values_supported") var idTokenSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
+    @SerializedName("interactive_authorization_endpoint") var interactiveAuthorizationEndpoint: String? = null,
 )
 
 data class RequestAuthenticationMethodsSupported(

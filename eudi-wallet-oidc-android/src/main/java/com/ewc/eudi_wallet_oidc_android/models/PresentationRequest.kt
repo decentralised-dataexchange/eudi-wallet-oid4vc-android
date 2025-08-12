@@ -1,4 +1,5 @@
 package com.ewc.eudi_wallet_oidc_android.models
+import android.security.identity.PresentationSession
 import com.google.gson.annotations.SerializedName
 data class ClientMetaDetails(
     @SerializedName("client_name") var clientName: String? = null,
@@ -27,6 +28,9 @@ data class PresentationRequest(
     @SerializedName("transaction_data") var transactionDdata: ArrayList<String>? = null,
     @SerializedName("request") var request: String? = null,
     @SerializedName("dcql_query") var dcqlQuery: DCQL? = null,
+    @SerializedName("auth_session") var authSession: String? =null,
+    @SerializedName("status") var status: String? =null,
+    @SerializedName("type") var type: String? =null
 
     )
 data class DCQL(

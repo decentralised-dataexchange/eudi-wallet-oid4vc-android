@@ -17,6 +17,7 @@ data class IssuerWellKnownConfiguration(
     @SerializedName("notification_endpoint") var notificationEndpoint: String? = null,
     @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null,
     @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponseEncryption? = null,
+    @SerializedName("credential_request_encryption") var credentialRequestEncryption: Any? = null,
 ){
     constructor(issuerWellKnownConfigurationV1: IssuerWellKnownConfigurationV1) : this(
         issuer = issuerWellKnownConfigurationV1.issuer,
@@ -29,7 +30,8 @@ data class IssuerWellKnownConfiguration(
         credentialsSupported = issuerWellKnownConfigurationV1.credentialsSupported,
         notificationEndpoint = issuerWellKnownConfigurationV1.notificationEndpoint,
         nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint,
-        credentialResponseEncryption = issuerWellKnownConfigurationV1.credentialResponseEncryption
+        credentialResponseEncryption = issuerWellKnownConfigurationV1.credentialResponseEncryption,
+        credentialRequestEncryption = issuerWellKnownConfigurationV1.credentialRequestEncryption
     )
     constructor(issuerWellKnownConfigurationV2:IssuerWellKnownConfigurationV2):this(
         issuer = issuerWellKnownConfigurationV2.issuer,
@@ -42,7 +44,8 @@ data class IssuerWellKnownConfiguration(
         credentialsSupported = issuerWellKnownConfigurationV2.credentialConfigurationsSupported,
         notificationEndpoint = issuerWellKnownConfigurationV2.notificationEndpoint,
         nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint,
-        credentialResponseEncryption = issuerWellKnownConfigurationV2.credentialResponseEncryption
+        credentialResponseEncryption = issuerWellKnownConfigurationV2.credentialResponseEncryption,
+        credentialRequestEncryption = issuerWellKnownConfigurationV2.credentialRequestEncryption
 
     )
 }
@@ -63,6 +66,7 @@ data class CredentialDetails(
     @SerializedName("doctype") val doctype: String? = null,
     @SerializedName("credential_definition") val  credentialDefinition: Any? = null,
     @SerializedName("vct") var vct: String? = null,
+    @SerializedName("credential_metadata") val credentialMetadata: CredentialMetadata? = null,
 )
 data class CredentialDisplay(
     @SerializedName("name") var name: String? = null,
@@ -72,6 +76,9 @@ data class CredentialDisplay(
     @SerializedName("background_color") var backgroundColor: String? = null,
     @SerializedName("background_image") var backgroundImage: Image? = null,
     @SerializedName("text_color") var textColor: String? = null
+)
+data class CredentialMetadata(
+    @SerializedName("display") val display: List<CredentialDisplay>? = null,
 )
 
 data class Display(
@@ -92,6 +99,11 @@ data class Image(
 data class CredentialResponseEncryption(
     @SerializedName("alg_values_supported") var algValuesSupported: List<String>? = null,
     @SerializedName("enc_values_supported") var encValuesSupported: List<String>? = null
+)
+data class CredentialRequestEncryption(
+    @SerializedName("jwks") var jwks: Any? = null,
+    @SerializedName("enc_values_supported") var encValuesSupported: List<String>? = null,
+    @SerializedName("encryption_required") var encryptionRequired: Boolean? = null
 )
 
 data class WrappedIssuerConfigResponse(

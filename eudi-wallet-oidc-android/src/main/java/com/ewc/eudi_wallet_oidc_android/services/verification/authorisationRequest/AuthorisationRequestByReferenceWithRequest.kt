@@ -22,6 +22,7 @@ class AuthorisationRequestByReferenceWithRequest : AuthorisationRequestHandler {
         val uri = Uri.parse(authorisationRequestData)
         val gson = Gson()
         val request = uri.getQueryParameter("request")
+
         if (isValidJWT(request)) {
             try {
                 val json = gson.fromJson(

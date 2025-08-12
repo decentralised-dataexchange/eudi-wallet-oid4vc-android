@@ -4,6 +4,7 @@ import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromJwksUri
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEHeader
@@ -88,6 +89,39 @@ class JWEEncrypter {
             .keyID(p256Key?.get("kid")?.asString)
             .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
             .agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
+            .build()
+
+        Log.d(TAG, "JWEHeader created: $header")
+
+        val encryptedJWT = JWEObject(header, Payload(payload))
+        val encryptor = ECDHEncrypter(publicECJWK)
+
+        Log.d(TAG, "Encrypting JWEObject...")
+        encryptedJWT.encrypt(encryptor)
+
+        val serialized = encryptedJWT.serialize()
+        Log.d(TAG, "Encryption complete. Serialized JWE: $serialized")
+
+        return serialized
+    }
+    suspend fun encrypt(
+        payload: Map<String, Any?>,
+        jwk: JsonObject?
+    ): String {
+
+        val publicECJWK = ECKey.Builder(
+            Curve.P_256,
+            Base64URL.from(jwk?.get("x")?.asString),
+            Base64URL.from(jwk?.get("y")?.asString)
+        )
+            .keyID(jwk?.get("kid")?.asString)
+            .algorithm(JWEAlgorithm.ECDH_ES)
+            .build()
+
+        Log.d(TAG, "ECKey created: $publicECJWK")
+
+        val header = JWEHeader.Builder(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128CBC_HS256)
+            .keyID(jwk?.get("kid")?.asString)
             .build()
 
         Log.d(TAG, "JWEHeader created: $header")

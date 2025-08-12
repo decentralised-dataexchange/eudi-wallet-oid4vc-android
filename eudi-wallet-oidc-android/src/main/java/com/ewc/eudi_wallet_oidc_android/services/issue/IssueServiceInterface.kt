@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
+import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
@@ -10,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.nimbusds.jose.jwk.JWK
+import org.json.JSONObject
 
 interface IssueServiceInterface {
 
@@ -43,7 +45,9 @@ interface IssueServiceInterface {
         docType: String? =null,
         issuerConfig: IssuerWellKnownConfiguration?,
         redirectUri: String? = null,
-        isApiCallRequired: Boolean = false
+        isApiCallRequired: Boolean = false,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
     ): String?
 
     /**
@@ -111,7 +115,9 @@ interface IssueServiceInterface {
         accessToken: TokenResponse?,
         authorizationDetail: AuthorizationDetail?,
         index: Int,
-        ecKeyWithAlgEnc:ECKeyWithAlgEnc? =null
+        ecKeyWithAlgEnc:ECKeyWithAlgEnc? =null,
+        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
+        authConfig: AuthorisationServerWellKnownConfiguration?
     ): WrappedCredentialResponse?
 
     /**
@@ -124,13 +130,15 @@ interface IssueServiceInterface {
     suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?,
-        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null,
+        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse?
     suspend fun processDeferredCredentialRequestV2(
         transactionId: String?,
         accessToken: String?,
         deferredCredentialEndPoint: String?,
-        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null
+        ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null,
+        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse?
 
     /**

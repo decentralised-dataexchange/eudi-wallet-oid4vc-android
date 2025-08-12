@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.network
 
 import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
+import com.ewc.eudi_wallet_oidc_android.InteractiveAuthResponse
 import com.ewc.eudi_wallet_oidc_android.models.RefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
@@ -11,6 +12,7 @@ import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
 import com.ewc.eudi_wallet_oidc_android.models.ParResponse
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Response
@@ -46,8 +48,17 @@ interface ApiService {
     @POST
     suspend fun processParAuthorisationRequest(
         @Url url: String,
-        @FieldMap map: Map<String, String>
+        @FieldMap map: Map<String, String>,
+        @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<ParResponse>
+
+    @FormUrlEncoded
+    @POST
+    suspend fun interactiveAuthorizationRequest(
+        @Url url: String,
+        @FieldMap map: Map<String, String>,
+        @HeaderMap headers: Map<String, String> = emptyMap()
+    ): Response<InteractiveAuthResponse>
 
     @FormUrlEncoded
     @POST("")
@@ -74,17 +85,42 @@ interface ApiService {
         @Body body: CredentialRequest
     ): Response<ResponseBody>
 
+    @POST
+    suspend fun getCredentialEncrypted(
+        @Url url: String,
+        @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
     @POST("")
     suspend fun getDifferedCredential(
         @Url url: String,
         @Header("Authorization") authorization: String,
         @Body body: CredentialRequest
     ): Response<ResponseBody>
+
+    @POST("")
+    suspend fun getDifferedCredentialEncrypted(
+        @Url url: String,
+        @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
     @POST("")
     suspend fun getDifferedCredentialV2(
         @Url url: String,
         @Header("Authorization") authorization: String,
         @Body body: DeferredCredentialRequestV2
+    ): Response<ResponseBody>
+
+    @POST("")
+    suspend fun getDifferedCredentialV2Encrypted(
+        @Url url: String,
+        @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Body body: RequestBody
     ): Response<ResponseBody>
 
     @GET

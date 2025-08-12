@@ -16,11 +16,14 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationReque
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequestUri
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByValue
+import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestForIAR
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.nimbusds.jose.jwk.JWK
+import org.json.JSONObject
 
 class VerificationService : VerificationServiceInterface {
 
@@ -42,9 +45,10 @@ class VerificationService : VerificationServiceInterface {
         val uri = Uri.parse(data)
         val presentationDefinition = uri.getQueryParameter("presentation_definition")
         val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
+        val iarOpenid4VPRequest = uri.getQueryParameter("openid4vp_request")
 
         val requestUri = uri.getQueryParameter("request_uri")
-        val request = uri.getQueryParameter("request")
+        val request: String? = uri.getQueryParameter("request")
 
         if (presentationDefinition != null || presentationDefinitionUri != null) {
             return AuthorisationRequestByValue().processAuthorisationRequest(data)
@@ -54,6 +58,8 @@ class VerificationService : VerificationServiceInterface {
             return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
         } else if (isValidJWT(data)) {
             return AuthorisationRequestByJWT().processAuthorisationRequest(data)
+        } else if (iarOpenid4VPRequest != null){
+            return AuthorisationRequestForIAR().processAuthorisationRequest(data)
         } else {
             return WrappedPresentationRequest(
                 presentationRequest = null,
@@ -114,8 +120,11 @@ class VerificationService : VerificationServiceInterface {
                             gson.fromJson(redirectUri, VPTokenResponse::class.java)
                         return WrappedVpTokenResponse(
                             vpTokenResponse = VPTokenResponse(
-                                location = vpTokenResponse.redirectUri
-                                    ?: "https://www.example.com?code=1"
+                                location = vpTokenResponse.redirectUri ?: run {
+                                    val jsonObject = gson.fromJson(redirectUri, JsonObject::class.java)
+                                    jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
+                                        ?: "https://www.example.com?code=1"
+                                }
                             )
                         )
                     } catch (e: Exception) {
