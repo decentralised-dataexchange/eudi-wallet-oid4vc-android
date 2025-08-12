@@ -206,10 +206,10 @@ class IssueService : IssueServiceInterface {
             )
         )
         if (!authConfig?.interactiveAuthorizationEndpoint.isNullOrEmpty()) {
-            Log.d(TAG,"${authConfig.interactiveAuthorizationEndpoint}")
+            Log.d(TAG,"${authConfig?.interactiveAuthorizationEndpoint}")
             val iarResponse = try {
                 ApiManager.api.getService()?.interactiveAuthorizationRequest(
-                    authConfig.interactiveAuthorizationEndpoint ?: "",
+                    authConfig?.interactiveAuthorizationEndpoint ?: "",
                     mapOf(
                         "response_type" to responseType,
                         "scope" to scope.trim(),
@@ -238,12 +238,12 @@ class IssueService : IssueServiceInterface {
                 when (body?.type) {
                     "openid4vp_presentation" -> {
                         // while creating vp token pass auth-session then
-                        val urlBuilder = Uri.parse(authConfig.interactiveAuthorizationEndpoint ?: "").buildUpon()
+                        val urlBuilder = Uri.parse(authConfig?.authorizationEndpoint ?: "").buildUpon()
                         urlBuilder.appendQueryParameter("client_id", clientId ?: "")
                         urlBuilder.appendQueryParameter("status",body.status ?: "")
                         urlBuilder.appendQueryParameter("type",body.type ?:"")
                         urlBuilder.appendQueryParameter("auth_session", body.authSession ?: "")
-                        body.openid4vpRequest?.clientId = "iar:${authConfig.interactiveAuthorizationEndpoint}"
+                        body.openid4vpRequest?.clientId = "iar:${authConfig?.interactiveAuthorizationEndpoint}"
                         body.openid4vpRequest?.let {
                             urlBuilder.appendQueryParameter("openid4vp_request", Gson().toJson(it))
                         }
@@ -287,14 +287,14 @@ class IssueService : IssueServiceInterface {
                                 return urlWithParams
                             }
                         }else{
-                        // TODO: Use requestUri to build an authorization request URL,
-                        val urlBuilder = Uri.parse(authConfig.interactiveAuthorizationEndpoint ?: "").buildUpon()
-                        urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                        urlBuilder.appendQueryParameter("request_uri", body.requestUri)
-                        val urlWithParams = urlBuilder.build().toString()
+                            // TODO: Use requestUri to build an authorization request URL,
+                            val urlBuilder = Uri.parse(authConfig?.authorizationEndpoint ?: "").buildUpon()
+                            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                            urlBuilder.appendQueryParameter("request_uri", body.requestUri)
+                            val urlWithParams = urlBuilder.build().toString()
 
-                        return urlWithParams
-                            }
+                            return urlWithParams
+                        }
 
                     }
 
@@ -890,75 +890,75 @@ class IssueService : IssueServiceInterface {
         }
 
         val request: CredentialRequest = if (authorizationDetail != null && authorizationDetail.type == "openid_credential" && !authorizationDetail.credentialIdentifiers.isNullOrEmpty()) {
-                    Log.d(TAG,"entered first condition")
-                    CredentialRequest(
-                        credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
-                        proof = ProofV3(jwt =  jwt, proofType = "jwt"),
-                    )
-                }  else if (authorizationDetail !=null && authorizationDetail.type == "openid_credential" && issuerConfig?.nonceEndpoint!=null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()) {
-                    Log.d(TAG,"entered second condition")
-                    CredentialRequest(
-                        credentialConfigurationId = authorizationDetail.credentialConfigurationId,
-                        proof = ProofV3(jwt =  jwt, proofType = "jwt"),
-                    )
-                } else if (accessToken?.cNonce==null && issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
-                    Log.d(TAG,"entered third condition")
-                    CredentialRequest(
-                        credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
-                        proof = ProofV3(jwt = jwt,proofType = "jwt"),
-                    )
-                } else {
-                    Log.d(TAG,"entered else condition")
-                    val doctype = fetchDoctype(index,credentialOffer,issuerConfig)
-                    var types: ArrayList<String> = ArrayList()
-                    var format: String? = null
-                    try {
-                        types = credentialOffer?.credentials?.get(index)?.types
-                            ?: credentialOffer?.credentials?.get(index)?.doctype?.let { arrayListOf(it) }
-                                    ?: ArrayList()
-                        format = IssueService().getFormatFromIssuerConfig(
-                            issuerConfig,
-                            types.lastOrNull() ?: ""
-                        )
-                    } catch (e: Exception) {
-                    }
-                    buildCredentialRequest(
-                        credentialOffer = credentialOffer,
-                        issuerConfig = issuerConfig,
-                        format = format,
-                        doctype = doctype,
-                        jwt = jwt, index = index
-                    )
-                }
+            Log.d(TAG,"entered first condition")
+            CredentialRequest(
+                credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
+                proof = ProofV3(jwt =  jwt, proofType = "jwt"),
+            )
+        }  else if (authorizationDetail !=null && authorizationDetail.type == "openid_credential" && issuerConfig?.nonceEndpoint!=null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()) {
+            Log.d(TAG,"entered second condition")
+            CredentialRequest(
+                credentialConfigurationId = authorizationDetail.credentialConfigurationId,
+                proof = ProofV3(jwt =  jwt, proofType = "jwt"),
+            )
+        } else if (accessToken?.cNonce==null && issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
+            Log.d(TAG,"entered third condition")
+            CredentialRequest(
+                credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
+                proof = ProofV3(jwt = jwt,proofType = "jwt"),
+            )
+        } else {
+            Log.d(TAG,"entered else condition")
+            val doctype = fetchDoctype(index,credentialOffer,issuerConfig)
+            var types: ArrayList<String> = ArrayList()
+            var format: String? = null
+            try {
+                types = credentialOffer?.credentials?.get(index)?.types
+                    ?: credentialOffer?.credentials?.get(index)?.doctype?.let { arrayListOf(it) }
+                            ?: ArrayList()
+                format = IssueService().getFormatFromIssuerConfig(
+                    issuerConfig,
+                    types.lastOrNull() ?: ""
+                )
+            } catch (e: Exception) {
+            }
+            buildCredentialRequest(
+                credentialOffer = credentialOffer,
+                issuerConfig = issuerConfig,
+                format = format,
+                doctype = doctype,
+                jwt = jwt, index = index
+            )
+        }
         if (credentialRequestEncryptionInfo?.encryptionRequired != null || authConfig?.interactiveAuthorizationEndpoint !=null ){
             request.proofs = ProofsV3(jwt = arrayListOf(jwt))
             request.proof = null
         }
 
-            request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
+        request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
 
 
         val response = if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
-                if (credentialRequestEncryptionInfo.jwk != null) {
-                    val type = object : TypeToken<Map<String, Any?>>() {}.type
-                    val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
+            if (credentialRequestEncryptionInfo.jwk != null) {
+                val type = object : TypeToken<Map<String, Any?>>() {}.type
+                val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
 
-                    val encryptedJwe = JWEEncrypter().encrypt(
-                        payload = payload,
-                        jwk = credentialRequestEncryptionInfo.jwk
-                    )
-                    val requestBody = encryptedJwe
-                        .toRequestBody("application/jwt".toMediaType())
-                    // Send encrypted request
-                    ApiManager.api.getService()?.getCredentialEncrypted(
-                        issuerConfig?.credentialEndpoint ?: "",
-                        "application/jwt",
-                        "Bearer ${accessToken?.accessToken}",
-                        requestBody
-                    )
-                } else {
-                    null
-                }
+                val encryptedJwe = JWEEncrypter().encrypt(
+                    payload = payload,
+                    jwk = credentialRequestEncryptionInfo.jwk
+                )
+                val requestBody = encryptedJwe
+                    .toRequestBody("application/jwt".toMediaType())
+                // Send encrypted request
+                ApiManager.api.getService()?.getCredentialEncrypted(
+                    issuerConfig?.credentialEndpoint ?: "",
+                    "application/jwt",
+                    "Bearer ${accessToken?.accessToken}",
+                    requestBody
+                )
+            } else {
+                null
+            }
         } else {
             ApiManager.api.getService()?.getCredential(
                 issuerConfig?.credentialEndpoint ?: "",
@@ -967,26 +967,26 @@ class IssueService : IssueServiceInterface {
                 request
             )
         }
-            val credentialResponse = when {
-                (response?.code() ?: 0) >= 400 -> {
-                    try {
-                        WrappedCredentialResponse(
-                            errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-
-                response?.isSuccessful == true -> {
-                    parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
-                }
-
-                else -> {
+        val credentialResponse = when {
+            (response?.code() ?: 0) >= 400 -> {
+                try {
+                    WrappedCredentialResponse(
+                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
+                    )
+                } catch (e: Exception) {
                     null
                 }
             }
-            return credentialResponse
+
+            response?.isSuccessful == true -> {
+                parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
+            }
+
+            else -> {
+                null
+            }
+        }
+        return credentialResponse
     }
 
     private fun parseCredentialResponse(
@@ -1259,8 +1259,8 @@ class IssueService : IssueServiceInterface {
             CredentialRequest() // empty object
         )
         return if (response?.isSuccessful == true)
-         {
-             parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
+        {
+            parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
         } else {
             null
         }
@@ -1552,14 +1552,14 @@ class IssueService : IssueServiceInterface {
             try {
                 val credentialOffer =
                     Gson().fromJson(credentialOfferJsonString, CredentialOffer::class.java)
-               if( credentialOffer.credentials?.get(index?:0)?.format == "mso_mdoc")
-               {
-                   credentialOffer.credentials?.get(index?:0)?.doctype?.let {
-                       types.add(it)
-                   }
-               }else{
-                   types = credentialOffer.credentials?.get(index?:0)?.types ?: ArrayList()
-               }
+                if( credentialOffer.credentials?.get(index?:0)?.format == "mso_mdoc")
+                {
+                    credentialOffer.credentials?.get(index?:0)?.doctype?.let {
+                        types.add(it)
+                    }
+                }else{
+                    types = credentialOffer.credentials?.get(index?:0)?.types ?: ArrayList()
+                }
             } catch (e: Exception) {
             }
         } catch (e: Exception) {

@@ -8,7 +8,6 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.ProcessPresentationRequestWithUris.processPresentationRequest
 import com.google.gson.Gson
-import org.json.JSONObject
 
 /**
  * Handles the processing of authorization requests by reference using the `request` parameter,
@@ -22,26 +21,7 @@ class AuthorisationRequestByReferenceWithRequest : AuthorisationRequestHandler {
     override suspend fun processAuthorisationRequest(authorisationRequestData: String): WrappedPresentationRequest {
         val uri = Uri.parse(authorisationRequestData)
         val gson = Gson()
-      //  val request = uri.getQueryParameter("request")
-        val authSession = uri.getQueryParameter("auth_session")
-        val status = uri.getQueryParameter("status")
-        val type =  uri.getQueryParameter("type")
-        val request: String? = if (type == "openid4vp_presentation") {
-            val openid4vpRequestString = uri.getQueryParameter("openid4vp_request")
-            if (openid4vpRequestString != null) {
-                try {
-                    val jsonObj = JSONObject(openid4vpRequestString)
-                    // Extract the "request" field inside the JSON object
-                    jsonObj.optString("request", null)
-                } catch (e: Exception) {
-                    null
-                }
-            } else {
-                null
-            }
-        } else {
-            uri.getQueryParameter("request")
-        }
+        val request = uri.getQueryParameter("request")
 
         if (isValidJWT(request)) {
             try {
@@ -50,9 +30,6 @@ class AuthorisationRequestByReferenceWithRequest : AuthorisationRequestHandler {
                     PresentationRequest::class.java
                 )
                 json.request = json.request ?: request
-                json.authSession = authSession
-                json.status = status
-                json.type = type
                 return processPresentationRequest(json)
             } catch (e: Exception) {
                 return WrappedPresentationRequest(

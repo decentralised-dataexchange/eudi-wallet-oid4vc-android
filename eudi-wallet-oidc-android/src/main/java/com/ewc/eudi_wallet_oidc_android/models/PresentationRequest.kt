@@ -30,8 +30,7 @@ data class PresentationRequest(
     @SerializedName("dcql_query") var dcqlQuery: DCQL? = null,
     @SerializedName("auth_session") var authSession: String? =null,
     @SerializedName("status") var status: String? =null,
-    @SerializedName("type") var type: String? =null,
-    @SerializedName("iar_client_id") var iarClientId: String? = null
+    @SerializedName("type") var type: String? =null
 
     )
 data class DCQL(

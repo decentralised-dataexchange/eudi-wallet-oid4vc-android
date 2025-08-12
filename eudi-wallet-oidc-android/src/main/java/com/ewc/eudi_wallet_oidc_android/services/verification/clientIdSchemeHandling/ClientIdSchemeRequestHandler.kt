@@ -55,6 +55,7 @@ class ClientIdSchemeRequestHandler {
             ClientIdScheme.X509_SAN_URI -> X509SanUriSchemeHandler().validate(presentationRequest)
             ClientIdScheme.WEB_ORIGIN -> WebOriginSchemeHandler().validate(presentationRequest)
             ClientIdScheme.HTTPS -> presentationRequest
+            ClientIdScheme.IAR -> presentationRequest
             else -> presentationRequest
         }
     }

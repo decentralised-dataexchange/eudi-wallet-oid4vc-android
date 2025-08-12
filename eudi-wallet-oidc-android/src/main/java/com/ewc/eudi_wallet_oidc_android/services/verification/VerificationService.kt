@@ -16,6 +16,7 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationReque
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequestUri
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByValue
+import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestForIAR
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
@@ -44,26 +45,10 @@ class VerificationService : VerificationServiceInterface {
         val uri = Uri.parse(data)
         val presentationDefinition = uri.getQueryParameter("presentation_definition")
         val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
-        val type = uri.getQueryParameter("type")
+        val iarOpenid4VPRequest = uri.getQueryParameter("openid4vp_request")
 
         val requestUri = uri.getQueryParameter("request_uri")
-        val request: String? = if (type == "openid4vp_presentation") {
-            val openid4vpRequestString = uri.getQueryParameter("openid4vp_request")
-            if (openid4vpRequestString != null) {
-                try {
-                    val jsonObj = JSONObject(openid4vpRequestString)
-                    // Extract the "request" field inside the JSON object
-                    jsonObj.optString("request", null)
-                } catch (e: Exception) {
-                    null
-                }
-            } else {
-                null
-            }
-        } else {
-            uri.getQueryParameter("request")
-        }
-        Log.d("processAuthorisationRequest request =" , request.toString())
+        val request: String? = uri.getQueryParameter("request")
 
         if (presentationDefinition != null || presentationDefinitionUri != null) {
             return AuthorisationRequestByValue().processAuthorisationRequest(data)
@@ -73,6 +58,8 @@ class VerificationService : VerificationServiceInterface {
             return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
         } else if (isValidJWT(data)) {
             return AuthorisationRequestByJWT().processAuthorisationRequest(data)
+        } else if (iarOpenid4VPRequest != null){
+            return AuthorisationRequestForIAR().processAuthorisationRequest(data)
         } else {
             return WrappedPresentationRequest(
                 presentationRequest = null,
