@@ -53,6 +53,7 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonSyntaxException
 import okhttp3.ResponseBody
+import kotlin.collections.get
 
 class IssueService : IssueServiceInterface {
 
@@ -758,7 +759,9 @@ class IssueService : IssueServiceInterface {
                 var types: ArrayList<String> = ArrayList()
                 var format: String? = null
                 try {
-                    types = credentialOffer?.credentials?.get(index)?.types ?: ArrayList()
+                    types = credentialOffer?.credentials?.get(index)?.types
+                        ?: credentialOffer?.credentials?.get(index)?.doctype?.let { arrayListOf(it) }
+                        ?: ArrayList()
                     format = IssueService().getFormatFromIssuerConfig(
                         issuerConfig,
                         types.lastOrNull() ?: ""
