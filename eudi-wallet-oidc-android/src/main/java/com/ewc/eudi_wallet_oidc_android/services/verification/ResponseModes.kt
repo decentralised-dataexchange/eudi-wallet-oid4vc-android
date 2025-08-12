@@ -8,7 +8,11 @@ enum class ResponseModes(val value: String) {
 
     DC_API("dc_api"),
 
-    DC_API_JWT("dc_api.jwt");
+    DC_API_JWT("dc_api.jwt"),
+
+    IAR_POST("iar-post"),
+
+    IAR_POST_JWT("iar-post.jwt");
 
     companion object {
         /**

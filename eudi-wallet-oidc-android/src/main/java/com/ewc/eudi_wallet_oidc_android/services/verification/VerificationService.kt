@@ -20,7 +20,9 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRespo
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.nimbusds.jose.jwk.JWK
+import org.json.JSONObject
 
 class VerificationService : VerificationServiceInterface {
 
@@ -42,9 +44,26 @@ class VerificationService : VerificationServiceInterface {
         val uri = Uri.parse(data)
         val presentationDefinition = uri.getQueryParameter("presentation_definition")
         val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
+        val type = uri.getQueryParameter("type")
 
         val requestUri = uri.getQueryParameter("request_uri")
-        val request = uri.getQueryParameter("request")
+        val request: String? = if (type == "openid4vp_presentation") {
+            val openid4vpRequestString = uri.getQueryParameter("openid4vp_request")
+            if (openid4vpRequestString != null) {
+                try {
+                    val jsonObj = JSONObject(openid4vpRequestString)
+                    // Extract the "request" field inside the JSON object
+                    jsonObj.optString("request", null)
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        } else {
+            uri.getQueryParameter("request")
+        }
+        Log.d("processAuthorisationRequest request =" , request.toString())
 
         if (presentationDefinition != null || presentationDefinitionUri != null) {
             return AuthorisationRequestByValue().processAuthorisationRequest(data)
@@ -114,8 +133,11 @@ class VerificationService : VerificationServiceInterface {
                             gson.fromJson(redirectUri, VPTokenResponse::class.java)
                         return WrappedVpTokenResponse(
                             vpTokenResponse = VPTokenResponse(
-                                location = vpTokenResponse.redirectUri
-                                    ?: "https://www.example.com?code=1"
+                                location = vpTokenResponse.redirectUri ?: run {
+                                    val jsonObject = gson.fromJson(redirectUri, JsonObject::class.java)
+                                    jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
+                                        ?: "https://www.example.com?code=1"
+                                }
                             )
                         )
                     } catch (e: Exception) {

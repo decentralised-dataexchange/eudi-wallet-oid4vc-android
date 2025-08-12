@@ -11,6 +11,7 @@ data class CredentialRequest(
     @SerializedName("format") var format: String? = null,
     @SerializedName("doctype") var doctype: String? = null,
     @SerializedName("proof") var proof: ProofV3? = null,
+    @SerializedName("proofs") var proofs: ProofsV3? = null,
     @SerializedName("credential_identifier") var credentialIdentifier: String? = null,
     @SerializedName("credential_configuration_id") var credentialConfigurationId: String? = null,
     @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponsEncryption? = null,
@@ -24,6 +25,11 @@ data class ProofV3(
 
     @SerializedName("proof_type") var proofType: String? = null,
     @SerializedName("jwt") var jwt: String? = null
+
+)
+data class ProofsV3(
+    @SerializedName("proof_type") var proofType: String? = null,
+    @SerializedName("jwt") var jwt: List<String>? = null
 
 )
 data class CredentialResponsEncryption(
