@@ -253,48 +253,48 @@ class IssueService : IssueServiceInterface {
                     }
 
                     "redirect_to_web" -> {
-                        val requestUri = iarResponse.body()?.requestUri ?: ""
-                        if (isApiCallRequired){
-                            // API call for wallet unit attestation
-                            val response = ApiManager.api.getService()?.processAuthorisationRequest(
-                                authorisationEndPoint ?: "",
-                                mapOf(
-                                    "client_id" to (clientId ?: ""),
-                                    "request_uri" to requestUri
-                                )
-                            )
-                            if (response?.isSuccessful == true) {
-                                val contentType = response.headers()["Content-Type"]
+                       // val requestUri = iarResponse.body()?.requestUri ?: ""
+//                        if (isApiCallRequired){
+//                            // API call for wallet unit attestation
+//                            val response = ApiManager.api.getService()?.processAuthorisationRequest(
+//                                authorisationEndPoint ?: "",
+//                                mapOf(
+//                                    "client_id" to (clientId ?: ""),
+//                                    "request_uri" to requestUri
+//                                )
+//                            )
+//                            if (response?.isSuccessful == true) {
+//                                val contentType = response.headers()["Content-Type"]
+//
+//                                if (contentType?.contains("text/html") == true) {
+//                                    return response.raw().request.url.toString()
+//                                }
+//                            }
+//                            if (response?.code() == 302) {
+//                                val location = response.headers()["Location"]
+//                                if (!location.isNullOrEmpty()) {
+//                                    // Always return Location, client-side will handle error parsing
+//                                    return location
+//                                }
+//                            }
+//                            if ((response?.code() ?: 0) >= 400) {
+//                                val errorMessage =
+//                                    response?.errorBody()?.string() ?: "Unexpected error. Please try again."
+//                                val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+//                                urlBuilder.appendQueryParameter("error", errorMessage)
+//                                val urlWithParams = urlBuilder.build().toString()
+//
+//                                return urlWithParams
+//                            }
+//                        }else{
 
-                                if (contentType?.contains("text/html") == true) {
-                                    return response.raw().request.url.toString()
-                                }
-                            }
-                            if (response?.code() == 302) {
-                                val location = response.headers()["Location"]
-                                if (!location.isNullOrEmpty()) {
-                                    // Always return Location, client-side will handle error parsing
-                                    return location
-                                }
-                            }
-                            if ((response?.code() ?: 0) >= 400) {
-                                val errorMessage =
-                                    response?.errorBody()?.string() ?: "Unexpected error. Please try again."
-                                val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                                urlBuilder.appendQueryParameter("error", errorMessage)
-                                val urlWithParams = urlBuilder.build().toString()
-
-                                return urlWithParams
-                            }
-                        }else{
-                            // TODO: Use requestUri to build an authorization request URL,
                             val urlBuilder = Uri.parse(authConfig?.authorizationEndpoint ?: "").buildUpon()
                             urlBuilder.appendQueryParameter("client_id", clientId ?: "")
                             urlBuilder.appendQueryParameter("request_uri", body.requestUri)
                             val urlWithParams = urlBuilder.build().toString()
 
                             return urlWithParams
-                        }
+                       // }
 
                     }
 
