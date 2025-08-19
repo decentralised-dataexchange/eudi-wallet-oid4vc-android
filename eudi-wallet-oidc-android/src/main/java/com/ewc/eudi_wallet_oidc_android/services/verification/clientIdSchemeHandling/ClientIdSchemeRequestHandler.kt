@@ -46,7 +46,7 @@ class ClientIdSchemeRequestHandler {
 
         return when (clientIdScheme) {
             ClientIdScheme.REDIRECT_URI -> RedirectURISchemeHandler().update(presentationRequest)
-            ClientIdScheme.DID -> DIDSchemeHandler().validate(presentationRequest)
+            ClientIdScheme.DID, ClientIdScheme.DECENTRALIZED_IDENTIFIER -> DIDSchemeHandler().validate(presentationRequest)
             ClientIdScheme.VERIFIER_ATTESTATION -> VerifierAttestationSchemeHandler().validate(
                 presentationRequest
             )

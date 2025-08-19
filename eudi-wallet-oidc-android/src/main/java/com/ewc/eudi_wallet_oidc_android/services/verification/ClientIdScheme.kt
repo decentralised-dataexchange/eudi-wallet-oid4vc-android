@@ -8,7 +8,8 @@ enum class ClientIdScheme(val scheme: String) {
     X509_SAN_DNS("x509_san_dns"),
     X509_SAN_URI("x509_san_uri"),
     WEB_ORIGIN("web-origin"),
-    IAR("iar");
+    IAR("iar"),
+    DECENTRALIZED_IDENTIFIER("decentralized_identifier");
 
     companion object {
         fun fromScheme(scheme: String): ClientIdScheme? {
