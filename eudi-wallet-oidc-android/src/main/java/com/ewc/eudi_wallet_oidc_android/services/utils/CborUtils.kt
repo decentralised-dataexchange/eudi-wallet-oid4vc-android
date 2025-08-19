@@ -216,39 +216,62 @@ class CborUtils {
         }
 
         private fun parseCborNamespaces(cborBytes: ByteArray): JSONObject {
+
+            // Recursive helper to convert CBOR DataItem to JSON
+            fun cborToJson(value: DataItem?): Any? {
+                return when (value) {
+                    is CborMap -> {
+                        val json = JSONObject()
+                        for (keyItem in value.keys) {
+                            val key = (keyItem as? CborUnicodeString)?.string ?: keyItem.toString()
+                            val v = value[keyItem]
+                            json.put(key, cborToJson(v))
+                        }
+                        json
+                    }
+                    is CborArray -> {
+                        Log.d("TAG", "Nested CBOR Array found, keeping as-is")
+                        val array = JSONArray()
+                        for (item in value.dataItems) {
+                            array.put(cborToJson(item))
+                        }
+                        array
+                    }
+                    is CborByteString -> Base64.encodeToString(value.bytes, Base64.NO_WRAP)
+                    is CborUnicodeString -> value.string
+                    else -> value?.toString()
+                }
+            }
+
             val cbors = CborDecoder(ByteArrayInputStream(cborBytes)).decode()
             val nameSpaces = cbors[0]["nameSpaces"]
             val jsonObject = JSONObject()
 
             if (nameSpaces is CborMap) {
                 Log.d("TAG", "extractIssuerNamespacedElements: Map")
-                nameSpaces.let { map ->
-                    // Get all keys from the nameSpaces map
-                    val allKeys = map.keys.mapNotNull { (it as? CborUnicodeString)?.string }
+                for (keyItem in nameSpaces.keys) {
+                    val key = (keyItem as? CborUnicodeString)?.string ?: keyItem.toString()
+                    val elements = nameSpaces[keyItem] as? CborArray ?: continue
+                    val newJson = JSONObject()
 
-                    for (key in allKeys) {
-                        val elements = nameSpaces[key] as CborArray
-                        val newJson = JSONObject()
+                    for (item in elements.dataItems) {
+                        val decoded = CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
+                        val identifier = decoded[0]["elementIdentifier"].toString()
+                        val value = decoded[0]["elementValue"]
 
-                        for (item in elements.dataItems) {
-                            val decoded =
-                                CborDecoder(ByteArrayInputStream((item as CborByteString).bytes)).decode()
-                            val identifier = decoded[0]["elementIdentifier"].toString()
-                            val value = decoded[0]["elementValue"]
-
-                            if (value?.majorType == MajorType.BYTE_STRING) {
-                                // Convert the ByteString into a readable format (Base64 here)
-                                val byteValue = value as CborByteString
-                                val base64String =
-                                    Base64.encodeToString(byteValue.bytes, Base64.NO_WRAP)
-                                newJson.put(identifier, base64String)
-                            } else {
-                                newJson.put(identifier, value.toString())
-                            }
+                        // Only apply recursion to CBOR maps; other types stay as before
+                        if (value is CborMap) {
+                            newJson.put(identifier, cborToJson(value))
+                        } else if (value?.majorType == MajorType.BYTE_STRING) {
+                            val byteValue = value as CborByteString
+                            val base64String = Base64.encodeToString(byteValue.bytes, Base64.NO_WRAP)
+                            newJson.put(identifier, base64String)
+                        } else {
+                            newJson.put(identifier, value.toString())
                         }
-
-                        jsonObject.put(key, newJson)
                     }
+
+                    jsonObject.put(key, newJson)
                 }
             } else if (nameSpaces is CborArray) {
                 Log.d("TAG", "extractIssuerNamespacedElements: Array")
@@ -256,6 +279,7 @@ class CborUtils {
 
             return jsonObject
         }
+
 
 
         @OptIn(ExperimentalEncodingApi::class)
