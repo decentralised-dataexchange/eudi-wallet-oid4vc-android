@@ -83,12 +83,23 @@ object DCQLFiltering {
                 for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
                     val namespace = claim.namespace
                     val claimName = claim.claimName
-
-                    if (namespace.isNullOrBlank() || claimName.isNullOrBlank()) {
-                        continue@credentialLoop
+                    val paths = claim.path
+                    val path = when {
+                        !namespace.isNullOrBlank() && !claimName.isNullOrBlank() -> {
+                            "$['$namespace']['$claimName']"
+                        }
+                        !paths.isNullOrEmpty() -> {
+                            var claimPath = "$"
+                            for (segment in paths) {
+                                claimPath += "['$segment']"
+                            }
+                            claimPath
+                        }
+                        else -> {
+                            // No valid selector, skip this claim
+                            continue@credentialLoop
+                        }
                     }
-
-                    val path = "$['$namespace']['$claimName']"
                     try {
                         val matchedPathValue = JsonPath.read<Any>(credential, path)
 
