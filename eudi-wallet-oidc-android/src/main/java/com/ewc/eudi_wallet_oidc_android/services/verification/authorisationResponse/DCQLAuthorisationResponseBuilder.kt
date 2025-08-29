@@ -39,19 +39,21 @@ class DCQLAuthorisationResponseBuilder {
                 else -> ""
             }
 
-            val vpToken = generateVpTokensBasedOnCredentialFormat(
-                credential = credentialsList[index],
-                presentationRequest = presentationRequest,
-                did = did,
-                type = credentialType,
-                jwk = jwk,
-                inputDescriptors = if (presentationRequest.dcqlQuery != null)
-                    presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
-                else
-                    presentationDefinition.inputDescriptors?.getOrNull(index)
-            )
+            if (credentialsList[index].isNotEmpty()) {
+                val vpToken = generateVpTokensBasedOnCredentialFormat(
+                    credential = credentialsList[index],
+                    presentationRequest = presentationRequest,
+                    did = did,
+                    type = credentialType,
+                    jwk = jwk,
+                    inputDescriptors = if (presentationRequest.dcqlQuery != null)
+                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
+                    else
+                        presentationDefinition.inputDescriptors?.getOrNull(index)
+                )
 
-            credentialMap[credential.id ?: ""] = vpToken ?: ""
+                credentialMap[credential.id ?: ""] = vpToken ?: ""
+            }
         }
 
         val mainVpToken = generateMainVPToken(credentialMap)
