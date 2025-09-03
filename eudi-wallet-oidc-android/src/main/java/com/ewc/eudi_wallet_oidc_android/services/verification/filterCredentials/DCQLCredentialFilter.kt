@@ -5,10 +5,11 @@ import com.ewc.eudi_wallet_oidc_android.services.DCQLFiltering
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.processCredentialsToJsonString
 import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.splitCredentialsBySdJWT
+import com.ewc.eudi_wallet_oidc_android.services.utils.filterByTrustedAuthorities
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 
 class DCQLCredentialFilter {
-    fun filterCredentialsUsingDCQL(
+  suspend fun filterCredentialsUsingDCQL(
         allCredentialList: List<String?>,
         dcqlQuery: DCQL?
     ): List<List<String>> {
@@ -48,8 +49,14 @@ class DCQLCredentialFilter {
             for (match in matches) {
                 filteredCredentialList.add(credentialList[match.index] ?: "")
             }
+            val trustedAuthorities  = dcqlCredential.trustedAuthorities
+            val finalFilteredList = if (!trustedAuthorities.isNullOrEmpty()) {
+                filterByTrustedAuthorities(filteredCredentialList, trustedAuthorities)
+            } else {
+                filteredCredentialList
+            }
 
-            response.add(filteredCredentialList)
+            response.add(finalFilteredList.toMutableList())
         }
 
         return response

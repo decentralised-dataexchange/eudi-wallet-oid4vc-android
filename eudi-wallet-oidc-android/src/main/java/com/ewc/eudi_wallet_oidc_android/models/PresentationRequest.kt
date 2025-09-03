@@ -43,7 +43,13 @@ data class CredentialList(
     @SerializedName("format") var format: String? = null,
     @SerializedName("meta") var meta: Meta? = null,
     val claims: List<DcqlClaim>,
-    val claim_sets: List<List<String>>? = null // Only present in dc+sd-jwt format
+    val claim_sets: List<List<String>>? = null , // Only present in dc+sd-jwt format
+    @SerializedName("trusted_authorities") var trustedAuthorities: List<TrustedAuthority>? = null
+)
+
+data class TrustedAuthority(
+    @SerializedName("type") var type: String? = null,
+    @SerializedName("values") var values: List<String>? = null
 )
 
 data class Meta(
