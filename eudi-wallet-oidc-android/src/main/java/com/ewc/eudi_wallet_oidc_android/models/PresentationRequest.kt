@@ -9,6 +9,7 @@ data class ClientMetaDetails(
     @SerializedName("logo_uri") var logoUri: String? = null,
     @SerializedName("legal_pid_attestation") var legalPidAttestation: String? = null,
     @SerializedName("legal_pid_attestation_pop") var legalPidAttestationPop: String? = null,
+    @SerializedName("version") var version: String? = null,
 )
 data class PresentationRequest(
     @SerializedName("state") var state: String? = null,

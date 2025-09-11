@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse
 
 import android.R
+import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDetails
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
@@ -8,6 +10,7 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationServic
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.JWTVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.MDocVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.SDJWTVpTokenBuilder
+import com.google.gson.Gson
 import com.nimbusds.jose.jwk.JWK
 
 
@@ -20,8 +23,8 @@ class DCQLAuthorisationResponseBuilder {
         presentationRequest: PresentationRequest,
         did: String?,
         jwk: JWK?
-    ): Map<String, String> {
-        val params = mutableMapOf<String, String>()
+    ): Map<String, Any?> {
+        val params = mutableMapOf<String, Any?>()
         val presentationDefinition =
             processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
@@ -30,7 +33,7 @@ class DCQLAuthorisationResponseBuilder {
             return params
         }
 
-        val credentialMap = mutableMapOf<String, String>()
+        val credentialMap = mutableMapOf<String, Any?>()
         for ((index, credential) in dcqlCredentials.withIndex()) {
             val credentialType = when {
                 credential.meta?.doctypeValue !=null -> "mso_mdoc"
@@ -51,8 +54,14 @@ class DCQLAuthorisationResponseBuilder {
                     else
                         presentationDefinition.inputDescriptors?.getOrNull(index)
                 )
-
-                credentialMap[credential.id ?: ""] = vpToken ?: ""
+                val gson = Gson()
+                val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
+                val version = clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                credentialMap[credential.id ?: ""] = if (version == "draft_23") {
+                    vpToken ?: ""
+                } else {
+                    listOf(vpToken)
+                }
             }
         }
 
@@ -63,7 +72,7 @@ class DCQLAuthorisationResponseBuilder {
         return params
     }
 
-    private fun generateMainVPToken(credentialMap: Map<String, String>): String {
+    private fun generateMainVPToken(credentialMap: Map<String, Any?>): String {
         return try {
             JSONObject(credentialMap).toString()
         } catch (e: Exception) {
