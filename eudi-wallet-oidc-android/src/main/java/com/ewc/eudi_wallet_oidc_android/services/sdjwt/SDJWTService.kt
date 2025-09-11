@@ -405,14 +405,14 @@ class SDJWTService : SDJWTServiceInterface {
                 val disclosures = getDisclosuresFromSDJWT(credential)
                 var issuedJwt = getIssuerJwtFromSDJWT(credential)
 
-                if (credentialList.claims.isEmpty()) {
+                if (credentialList.claims?.isEmpty() == true) {
                     return@withContext credential
                 } else {
 
                     // Extract requested parameters
                     val requestedParams: MutableList<String> = mutableListOf()
 
-                    credentialList.claims.forEach { claim ->
+                    credentialList.claims?.forEach { claim ->
                         claim.path?.forEach { pathElement ->
                             requestedParams.add(pathElement)
                         }
