@@ -19,15 +19,18 @@ object CredentialRequirementValidator {
         val credentialSets = presentationRequest?.dcqlQuery?.credential_sets ?: emptyList()
         val credentialsFromDcql = presentationRequest?.dcqlQuery?.credentials ?: emptyList()
 
+        var hasMandatorySet = false
+        var anyOptionalSatisfied = false
+
         for (set in credentialSets) {
             val isRequired = set.required != false // default = true
-            if (!isRequired) continue // skip optional sets
+            if (isRequired) hasMandatorySet = true
 
             val optionsList = set.options ?: emptyList()
 
             // A credential set is satisfied if any of its option groups is satisfied
             val setSatisfied = optionsList.any { optionGroup ->
-                optionGroup.any { optionId ->
+                optionGroup.all { optionId ->
                     val position = credentialsFromDcql.indexOfFirst { it.id == optionId }
                     if (position == -1) false
                     else {
@@ -37,10 +40,20 @@ object CredentialRequirementValidator {
                 }
             }
 
-            if (!setSatisfied) {
+            if (isRequired && !setSatisfied) {
                 return false // at least one mandatory set not satisfied
             }
+
+            if (!isRequired && setSatisfied) {
+                anyOptionalSatisfied = true
+            }
         }
+
+        // Extra rule: if all sets are optional, at least one must be satisfied
+        if (!hasMandatorySet && !anyOptionalSatisfied) {
+            return false
+        }
+
         return true
     }
 }
