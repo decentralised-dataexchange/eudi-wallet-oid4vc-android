@@ -10,11 +10,14 @@ import com.ewc.eudi_wallet_oidc_android.models.TrustServiceProvider
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.TAG
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonParser
 
 class TrustMechanismService : TrustMechanismInterface {
-    val gson = Gson()
+    val gson = GsonBuilder()
+        .registerTypeAdapter(TrustServiceProvider::class.java, TrustServiceProviderDeserializer())
+        .create()
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
         x5c: String?
@@ -112,46 +115,37 @@ class TrustMechanismService : TrustMechanismInterface {
         }
     }
 
-    private fun hasGrantedServiceStatus(tspServices: TSPServices?, gson: Gson): Boolean {
-        val rawTspService = tspServices?.tspService ?: return false
-        val jsonElement = gson.toJsonTree(rawTspService)
+    private fun hasGrantedServiceStatus(tspServicesList: List<TSPServices>?, gson: Gson): Boolean {
+        if (tspServicesList.isNullOrEmpty()) return false
 
-        fun extractServiceStatus(serviceInfoAny: Any?): String? {
-            if (serviceInfoAny == null) return null
-            val jsonString = gson.toJson(serviceInfoAny)
-            val element = JsonParser.parseString(jsonString)
+        return tspServicesList.any { tspServices ->
+            val rawTspService = tspServices.tspService ?: return@any false
+            val element = gson.toJsonTree(rawTspService)
 
-            // ServiceInformation itself can be object or array
-            return when {
-                element.isJsonObject -> element.asJsonObject.get("ServiceStatus")?.asString
-                element.isJsonArray -> {
-                    // If array, get the first ServiceStatus or any matching you want
-                    element.asJsonArray.firstOrNull()?.asJsonObject?.get("ServiceStatus")?.asString
+            when {
+                element.isJsonArray -> element.asJsonArray.any { item ->
+                    val service = gson.fromJson(item, TSPService::class.java)
+                    serviceHasGranted(service, gson)
                 }
-
-                else -> null
+                element.isJsonObject -> {
+                    val service = gson.fromJson(element, TSPService::class.java)
+                    serviceHasGranted(service, gson)
+                }
+                else -> false
             }
         }
+    }
+
+    private fun serviceHasGranted(service: TSPService, gson: Gson): Boolean {
+        val serviceInfo = service.serviceInformation ?: return false
+        val element = gson.toJsonTree(serviceInfo)
 
         return when {
-            jsonElement.isJsonArray -> {
-                jsonElement.asJsonArray.any { item ->
-                    val service = gson.fromJson(item, TSPService::class.java)
-                    extractServiceStatus(service.serviceInformation)?.contains(
-                        "granted",
-                        ignoreCase = true
-                    ) == true
-                }
+            element.isJsonObject -> element.asJsonObject.get("ServiceStatus")?.asString
+                ?.contains("granted", ignoreCase = true) == true
+            element.isJsonArray -> element.asJsonArray.any {
+                it.asJsonObject.get("ServiceStatus")?.asString?.contains("granted", ignoreCase = true) == true
             }
-
-            jsonElement.isJsonObject -> {
-                val service = gson.fromJson(jsonElement, TSPService::class.java)
-                extractServiceStatus(service.serviceInformation)?.contains(
-                    "granted",
-                    ignoreCase = true
-                ) == true
-            }
-
             else -> false
         }
     }
@@ -175,60 +169,57 @@ class TrustMechanismService : TrustMechanismInterface {
 
         try {
             for (tsp in tspList) {
-                val rawTspService = tsp.tspServices?.tspService ?: continue
-                val tspJson = gson.toJsonTree(rawTspService)
+                val tspServicesList = tsp.tspServices ?: continue
 
-                val tspServiceElements = when {
-                    tspJson.isJsonArray -> tspJson.asJsonArray
-                    tspJson.isJsonObject -> JsonArray().apply { add(tspJson.asJsonObject) }
-                    else -> continue
-                }
-
-                for (tspElement in tspServiceElements) {
-                    val tspService = gson.fromJson(tspElement, TSPService::class.java)
-                    val rawServiceInfo = tspService.serviceInformation ?: continue
-                    val serviceInfoJson = gson.toJsonTree(rawServiceInfo)
-
-                    val serviceInfoElements = when {
-                        serviceInfoJson.isJsonArray -> serviceInfoJson.asJsonArray
-                        serviceInfoJson.isJsonObject -> JsonArray().apply { add(serviceInfoJson.asJsonObject) }
+                for (tspServices in tspServicesList) {
+                    val rawTspService = tspServices.tspService ?: continue
+                    val tspServiceElements = when (val tree = gson.toJsonTree(rawTspService)) {
+                        is com.google.gson.JsonArray -> tree
+                        is com.google.gson.JsonObject -> JsonArray().apply { add(tree) }
                         else -> continue
                     }
 
-                    for (serviceInfoElement in serviceInfoElements) {
-                        val serviceInfo = gson.fromJson(serviceInfoElement, ServiceInformation::class.java)
-                        val digitalIdRaw = serviceInfo.serviceDigitalIdentity?.digitalId ?: continue
-                        val digitalIdJson = gson.toJsonTree(digitalIdRaw)
+                    for (tspServiceElem in tspServiceElements) {
+                        val tspService = gson.fromJson(tspServiceElem, TSPService::class.java)
 
-                        val digitalIdElements = when {
-                            digitalIdJson.isJsonArray -> digitalIdJson.asJsonArray
-                            digitalIdJson.isJsonObject -> JsonArray().apply { add(digitalIdJson.asJsonObject) }
-                            else -> continue
+                        val serviceInfoList = when (val si = tspService.serviceInformation) {
+                            is List<*> -> si
+                            else -> listOf(si)
                         }
 
-                        for (digitalIdElement in digitalIdElements) {
+                        for (serviceInfoAny in serviceInfoList) {
+                            val serviceInfo = gson.fromJson(
+                                gson.toJsonTree(serviceInfoAny),
+                                ServiceInformation::class.java
+                            )
 
-                            val digitalId = gson.fromJson(digitalIdElement, DigitalId::class.java)
-                            Log.d("TrustMechanismService", "Checking DigitalId: x509Cert=${digitalId.x509Certificate}, x509SKI=${digitalId.x509SKI}, DID=${digitalId.did}, KID=${digitalId.kid}, JwksURI=${digitalId.jwksURI}")
-
-
-                            // First priority: match x509Certificate
-                            if (digitalId.x509Certificate?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
-                                return tsp
+                            val digitalIdList = when (val di = serviceInfo.serviceDigitalIdentity?.digitalId) {
+                                is List<*> -> di
+                                else -> listOf(di)
                             }
 
-                            // match x509SKI
-                            if (digitalId.x509SKI?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
-                                return tsp
-                            }
-                            // match DID
-                            if (digitalId.did?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
-                                return tsp
-                            }
-                            // Match kid and jwksUri only if both present
-                            if (kid != null && jwksUri != null) {
-                                if (digitalId.kid?.trim()?.equals(kid.trim(), ignoreCase = true) == true &&
-                                    digitalId.jwksURI?.trim()?.equals(jwksUri.trim(), ignoreCase = true) == true) {
+                            for (digitalIdAny in digitalIdList) {
+                                val digitalId = digitalIdAny?.let { gson.fromJson(gson.toJsonTree(it), DigitalId::class.java) } ?: continue
+
+                                Log.d("TrustMechanismService", "Checking DigitalId: x509Cert=${digitalId.x509Certificate}, x509SKI=${digitalId.x509SKI}, DID=${digitalId.did}, KID=${digitalId.kid}, JwksURI=${digitalId.jwksURI}")
+
+                                // Match x509Certificate
+                                if (digitalId.x509Certificate?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
+                                    return tsp
+                                }
+                                // Match x509SKI
+                                if (digitalId.x509SKI?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
+                                    return tsp
+                                }
+                                // Match DID
+                                if (digitalId.did?.trim()?.equals(x5c.trim(), ignoreCase = true) == true) {
+                                    return tsp
+                                }
+                                // Match KID + JWKS URI
+                                if (kid != null && jwksUri != null &&
+                                    digitalId.kid?.trim()?.equals(kid.trim(), ignoreCase = true) == true &&
+                                    digitalId.jwksURI?.trim()?.equals(jwksUri.trim(), ignoreCase = true) == true
+                                ) {
                                     return tsp
                                 }
                             }
