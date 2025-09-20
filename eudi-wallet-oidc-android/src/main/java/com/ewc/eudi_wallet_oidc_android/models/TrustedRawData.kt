@@ -136,7 +136,7 @@ data class TrustServiceProvider(
     var tspInformation: TSPInformation? = null,
 
     @SerializedName("TSPServices")
-    var tspServices: TSPServices? = null
+    var tspServices: List<TSPServices>? = null
 )
 
 data class TSPInformation(
