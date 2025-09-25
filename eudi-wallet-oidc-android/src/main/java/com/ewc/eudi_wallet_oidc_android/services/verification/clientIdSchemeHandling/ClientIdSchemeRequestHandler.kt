@@ -35,7 +35,7 @@ class ClientIdSchemeRequestHandler {
         presentationRequest: WrappedPresentationRequest
     ): WrappedPresentationRequest {
         val clientId = presentationRequest.presentationRequest?.clientId ?: ""
-        val clientIdScheme = presentationRequest.presentationRequest?.clientIdScheme ?: ClientIdParser.getClientIdScheme(clientId)
+        val clientIdScheme = presentationRequest.presentationRequest?.clientIdScheme?.let { ClientIdScheme.fromScheme(it) } ?: ClientIdParser.getClientIdScheme(clientId)
             ?: return WrappedPresentationRequest(
                 presentationRequest = null,
                 errorResponse = ErrorResponse(

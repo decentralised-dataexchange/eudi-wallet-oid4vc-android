@@ -14,8 +14,10 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.JOSEException
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSVerifier
+import com.nimbusds.jose.crypto.Ed25519Verifier
 import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.RSAKey
 
 class SignatureValidator {
@@ -188,6 +190,15 @@ class SignatureValidator {
                         RSASSAVerifier(jwk)  // Use the RSAKey directly
                     } else {
                         throw JOSEException("JWK is not RSAKey for algorithm $algorithm")
+                    }
+                }
+
+                // For EdDSA (Edwards-curve Digital Signature Algorithm), create an Ed25519Verifier
+                JWSAlgorithm.EdDSA -> {
+                    if (jwk is OctetKeyPair) {
+                        Ed25519Verifier(jwk)
+                    } else {
+                        throw JOSEException("JWK is not OctetKeyPair for algorithm $algorithm")
                     }
                 }
 

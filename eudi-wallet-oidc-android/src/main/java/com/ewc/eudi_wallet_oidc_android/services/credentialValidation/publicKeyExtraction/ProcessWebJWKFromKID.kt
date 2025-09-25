@@ -1,9 +1,11 @@
 package com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction
 
 import com.google.gson.Gson
+import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.util.Base64URL
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +58,8 @@ data class JwkKey(
     val id: String,
     val type: String,
     val controller: String,
-    val publicKeyJwk: PublicKeyJwk
+    val publicKeyJwk: PublicKeyJwk?=null,
+    val publicKeyBase58: String? = null
 )
 
 data class PublicKeyJwk(
@@ -76,11 +79,15 @@ suspend fun fetchJwks(jwksUri: String, kid: String?): JwkKey? {
             val jwksResponse = Gson().fromJson(json, JwksResponse::class.java)
 
             // Find the JWK with "use" = "sig"
-            var jwkKey = jwksResponse.verificationMethod.firstOrNull { it.publicKeyJwk.use == "sig" }
+            var jwkKey = jwksResponse.verificationMethod.firstOrNull { it.publicKeyJwk?.use == "sig" }
 
             // If no "sig" key is found, find by kid
             if (jwkKey == null && kid != null) {
                 jwkKey = jwksResponse.verificationMethod.firstOrNull { it.id == kid }
+            }
+            // If still null, pick the first key with Base58
+            if (jwkKey == null && kid != null) {
+                jwkKey = jwksResponse.verificationMethod.firstOrNull { it.publicKeyBase58 != null }
             }
             return@withContext jwkKey
         } catch (e: Exception) {
@@ -93,15 +100,28 @@ fun convertToJWK(jwkKey: JwkKey?): JWK? {
     return jwkKey?.let {
         val publicKeyJwk = it.publicKeyJwk // Access the nested publicKeyJwk
 
-        val curve = when (publicKeyJwk.crv) {
-            "P-256" -> Curve.P_256
-            "P-384" -> Curve.P_384
-            "P-521" -> Curve.P_521
-            else -> throw IllegalArgumentException("Unsupported curve: ${publicKeyJwk.crv}")
+        // Case 1: EC keys
+        if (publicKeyJwk != null && publicKeyJwk.x != null && publicKeyJwk.y != null) {
+            val curve = when (publicKeyJwk.crv) {
+                "P-256" -> Curve.P_256
+                "P-384" -> Curve.P_384
+                "P-521" -> Curve.P_521
+                else -> throw IllegalArgumentException("Unsupported curve: ${publicKeyJwk.crv}")
+            }
+
+            return ECKey.Builder(curve, Base64URL.from(publicKeyJwk.x), Base64URL.from(publicKeyJwk.y))
+                .keyID(it.id)
+                .build()
         }
 
-        ECKey.Builder(curve, Base64URL.from(publicKeyJwk.x), Base64URL.from(publicKeyJwk.y))
-            .keyID(it.id)
-            .build()
+        // Case 2: Ed25519 from Base58
+        jwkKey.publicKeyBase58?.let { base58 ->
+            val pubBytes = Base58.decode(base58)
+            val x = Base64URL.encode(pubBytes)
+            return OctetKeyPair.Builder(Curve.Ed25519, x)
+                .keyID(it.id)
+                .build()
+        }
+        null
     }
 }

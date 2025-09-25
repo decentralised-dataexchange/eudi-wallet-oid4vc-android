@@ -3,9 +3,11 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKey
 import com.ewc.eudi_wallet_oidc_android.models.JwkKey
 import com.ewc.eudi_wallet_oidc_android.models.JwksResponse
 import com.google.gson.Gson
+import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.util.Base64URL
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +55,13 @@ class ProcessJWKFromJwksUri {
                         jwksResponse.keys.firstOrNull()
                     }
                 }
+                // After obtaining jwkKey
+                if (jwkKey != null && jwkKey.kty == "OKP" && jwkKey.x.isNullOrEmpty()) {
+                    // Suppose your API provides the Base58 public key in a field called publicKeyBase58
+                    // You would decode it and assign to x
+                    jwkKey.x = Base64URL.encode(Base58.decode(jwkKey.publicKeyBase58)).toString()
+                }
+
 
                 return@withContext jwkKey
             } catch (e: Exception) {
@@ -104,6 +113,13 @@ class ProcessJWKFromJwksUri {
                     }
 
                     RSAKey.Builder(Base64URL.from(it.n), Base64URL.from(it.e))
+                        .keyID(it.kid)
+                        .build()
+                }
+
+                "OKP" -> {
+                    // Ed25519 keys
+                    OctetKeyPair.Builder(Curve.Ed25519, Base64URL.from(it.x))
                         .keyID(it.kid)
                         .build()
                 }
