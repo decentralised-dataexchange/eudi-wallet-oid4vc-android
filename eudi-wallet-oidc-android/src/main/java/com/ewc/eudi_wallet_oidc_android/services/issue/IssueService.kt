@@ -989,7 +989,7 @@ class IssueService : IssueServiceInterface {
         return credentialResponse
     }
 
-    private fun parseCredentialResponse(
+     fun parseCredentialResponse(
         response: Response<ResponseBody>,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
         credentialEncryptionBuilder: CredentialEncryptionBuilder
@@ -1048,7 +1048,7 @@ class IssueService : IssueServiceInterface {
         }
     }
 
-    private fun fetchDoctype(
+     fun fetchDoctype(
         index: Int,
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?
@@ -1156,7 +1156,7 @@ class IssueService : IssueServiceInterface {
         }
     }
 
-    private fun buildCredentialRequest(
+     fun buildCredentialRequest(
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
         format: String?,
