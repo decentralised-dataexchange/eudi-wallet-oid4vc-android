@@ -87,7 +87,17 @@ class ProcessTDWFromKID {
                             )
                             println("Found matching publicKeyJwk: $jwkKey")
                             return@withContext jwkKey
-                        } else {
+                        } else if (matchingVerificationMethod.publicKeyBase58 != null) {
+                            val jwkKey = JwkKey(
+                                id = matchingVerificationMethod.id ?: "",
+                                type = matchingVerificationMethod.type ?: "",
+                                controller = matchingVerificationMethod.controller ?: "",
+                                publicKeyBase58 = matchingVerificationMethod.publicKeyBase58
+                            )
+                            println("Found matching publicKeyBase58: $jwkKey")
+                            return@withContext jwkKey
+                        }
+                        else {
                             println("No publicKeyJwk found for the matching verification method.")
                         }
                     } else {

@@ -16,9 +16,10 @@ data class JwkKey(
     val kty: String,
     val kid: String,
     val crv: String? = null,
-    val x: String? = null,
+    var x: String? = null,
     val y: String? = null,
     val n: String? = null,
     val e: String? = null,
-    val use: String
+    val use: String,
+    val publicKeyBase58: String? = null
 )

@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKey
 
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import retrofit2.Response
@@ -9,7 +10,7 @@ import java.text.ParseException
 
 class ProcessEbsiJWKFromKID {
     // This function fetches and processes the DID Document, and extracts the P-256 JWK if present.
-    suspend fun processEbsiJWKFromKID(kid: String?): ECKey? {
+    suspend fun processEbsiJWKFromKID(kid: String?): JWK? {
         // Validate DID format
         if (kid == null || !kid.startsWith("did:ebsi:z")) {
             throw IllegalArgumentException("Invalid DID format")
@@ -51,7 +52,7 @@ class ProcessEbsiJWKFromKID {
         return null
     }
 
-    private fun extractJWK(didDocument: DIDDocument?, kid: String): ECKey? {
+    private fun extractJWK(didDocument: DIDDocument?, kid: String): JWK? {
         if (didDocument == null)
             return null
         return try {
@@ -61,7 +62,7 @@ class ProcessEbsiJWKFromKID {
                     val publicKeyJwk = method.publicKeyJwk
 
                     // Check if 'crv' is 'P-256'
-                    if (method.id == kid && publicKeyJwk.crv == "P-256") {
+                    if (method.id == kid && publicKeyJwk?.crv == "P-256") {
                         // Convert the JSON JWK to a Nimbus JWK
                         val jwk = JWK.parse(
                             """{
@@ -73,6 +74,15 @@ class ProcessEbsiJWKFromKID {
                         )
                         if (jwk is ECKey) {
                             return jwk
+                        }
+                    }
+                    method.publicKeyBase58?.let { base58 ->
+                        if (method.id == kid) {
+                            val pubBytes = Base58.decode(base58)
+                            val x = com.nimbusds.jose.util.Base64URL.encode(pubBytes)
+                            return com.nimbusds.jose.jwk.OctetKeyPair.Builder(
+                                com.nimbusds.jose.jwk.Curve.Ed25519, x
+                            ).keyID(method.id).build()
                         }
                     }
                 } catch (e: ParseException) {

@@ -234,21 +234,30 @@ class DIDService : DIDServiceInterface {
 
         // Parse JSON to retrieve x and y values
         val jsonObject = JSONObjectUtils.parse(compactJson)
-        val x = jsonObject.get("x") as String
-        val y = jsonObject.get("y") as String
 
-        // Create ECKey using Curve.P_256 (or appropriate curve)
-        val curve=  when (algorithm) {
-            JWSAlgorithm.ES256 -> Curve.P_256
-            JWSAlgorithm.ES384 -> Curve.P_384
-            JWSAlgorithm.ES512 -> Curve.P_521
+        return when (algorithm) {
+            JWSAlgorithm.EdDSA -> {
+                // Ed25519 key
+                val x = jsonObject.get("x") as? String
+                    ?: throw IllegalArgumentException("Missing 'x' for Ed25519 key")
+                OctetKeyPair.Builder(Curve.Ed25519, Base64URL.from(x))
+                    .build()
+            }
+            JWSAlgorithm.ES256, JWSAlgorithm.ES384, JWSAlgorithm.ES512 -> {
+                // EC keys
+                val x = jsonObject.get("x") as String
+                val y = jsonObject.get("y") as String
+                val curve = when (algorithm) {
+                    JWSAlgorithm.ES256 -> Curve.P_256
+                    JWSAlgorithm.ES384 -> Curve.P_384
+                    JWSAlgorithm.ES512 -> Curve.P_521
+                    else -> throw JOSEException("Unsupported EC algorithm $algorithm")
+                }
+                ECKey.Builder(curve, Base64URL.from(x), Base64URL.from(y))
+                    .build()
+            }
             else -> throw JOSEException("Unsupported JWS algorithm $algorithm")
         }
-        val ecKey = ECKey.Builder(curve, Base64URL.from(x), Base64URL.from(y))
-            .build()
-
-        // Return as JWK
-        return ecKey
     }
 
     /**

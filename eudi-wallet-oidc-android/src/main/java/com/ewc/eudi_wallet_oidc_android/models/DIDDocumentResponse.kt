@@ -26,6 +26,8 @@ data class VerificationMethods(
 
     @SerializedName("type") val type: String?=null,
 
-    @SerializedName("publicKeyJwk") val publicKeyJwk: PublicKeyJwk?=null
+    @SerializedName("publicKeyJwk") val publicKeyJwk: PublicKeyJwk?=null,
+
+    @SerializedName("publicKeyBase58") val publicKeyBase58: String? = null
 )
 

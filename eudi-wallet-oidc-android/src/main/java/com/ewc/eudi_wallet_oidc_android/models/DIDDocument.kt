@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.models
 
+import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.PublicKeyJwk
 import com.google.gson.annotations.SerializedName
 
 data class DIDDocument(
@@ -36,7 +37,10 @@ data class VerificationMethod(
     val controller: String,
 
     @SerializedName("publicKeyJwk")
-    val publicKeyJwk: PublicKeyJwk
+    val publicKeyJwk: PublicKeyJwk ?= null,
+
+    @SerializedName("publicKeyBase58")
+    val publicKeyBase58: String? = null
 )
 
 data class PublicKeyJwk(
