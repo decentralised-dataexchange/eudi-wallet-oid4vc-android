@@ -82,6 +82,12 @@ object ErrorHandler {
 //                    errorDescription = jsonObject.getString("detail")
 //                )
 //            }
+            jsonObject?.has("message") == true -> {
+                ErrorResponse(
+                    error = -1,
+                    errorDescription = jsonObject.getString("message")
+                )
+            }
 
             else -> {
                 ErrorResponse(
