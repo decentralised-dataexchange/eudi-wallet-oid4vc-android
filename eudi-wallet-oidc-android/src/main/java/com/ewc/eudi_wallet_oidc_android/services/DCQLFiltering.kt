@@ -34,7 +34,8 @@ object DCQLFiltering {
         credentialList: List<String>
     ): List<MatchedCredential> {
         val filteredList: MutableList<MatchedCredential> = mutableListOf()
-
+        val claims = credentialFilter.claims
+        if (claims.isNullOrEmpty()) return emptyList()
         //need to check if $ is needed at the beginning of the path
         if (credentialFilter.format == "dc+sd-jwt") {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) { // loop A
@@ -49,7 +50,7 @@ object DCQLFiltering {
                 } catch (e: PathNotFoundException) {
                     continue@credentialLoop
                 }
-                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) { // loop B
+                for ((pathIndex, claim) in claims.withIndex()) { // loop B
                     val paths = claim.path
                     val joinedPath = paths?.joinToString(separator = ".") ?: ""
                     try {
@@ -80,7 +81,7 @@ object DCQLFiltering {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) {
 
                 val matchedFields = mutableListOf<MatchedField>()
-                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
+                for ((pathIndex, claim) in claims.withIndex()) {
                     val namespace = claim.namespace
                     val claimName = claim.claimName
                     val paths = claim.path
@@ -178,7 +179,7 @@ object DCQLFiltering {
                 // Base prefix for claim paths: "vc." if present else ""
                 val basePrefix = if (hasVc) "vc." else ""
 
-                for ((pathIndex, claim) in credentialFilter.claims.withIndex()) {
+                for ((pathIndex, claim) in claims.withIndex()) {
                     val joinedPath = claim.path?.joinToString(".") ?: ""
                     val directPath = ensureJsonPathPrefix(basePrefix + joinedPath)
                     val nestedSubjectPath = ensureJsonPathPrefix(basePrefix + "credentialSubject." + joinedPath)
