@@ -110,6 +110,14 @@ class IssueService : IssueServiceInterface {
 
     private fun parseCredentialOffer(credentialOfferJson: String?): CredentialOffer? {
         val gson = Gson()
+        val credentialOffer = try {
+            gson.fromJson(credentialOfferJson, CredentialOffer::class.java)
+        } catch (e: Exception) {
+            null
+        }
+        if (credentialOffer?.version != null) {
+            return credentialOffer
+        }
         val credentialOfferV2Response = try {
             gson.fromJson(credentialOfferJson, CredentialOfferEwcV2::class.java)
         } catch (e: Exception) {
