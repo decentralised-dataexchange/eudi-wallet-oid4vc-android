@@ -9,6 +9,7 @@ enum class ClientIdScheme(val scheme: String) {
     X509_SAN_URI("x509_san_uri"),
     WEB_ORIGIN("web-origin"),
     IAR("iar"),
+    x509_hash("x509_hash"),
     DECENTRALIZED_IDENTIFIER("decentralized_identifier");
 
     companion object {
