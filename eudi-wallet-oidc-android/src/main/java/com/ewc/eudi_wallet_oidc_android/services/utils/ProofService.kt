@@ -103,7 +103,7 @@ class ProofService {
         return "did:jwk:$encodedJwk"
     }
 
-    private fun getCryptographicBindingMethodsSupported(
+     fun getCryptographicBindingMethodsSupported(
         credentialsSupported: Any?, // Can be either a Map or List of Maps
         credentials: ArrayList<Credentials>?
     ): String? {
