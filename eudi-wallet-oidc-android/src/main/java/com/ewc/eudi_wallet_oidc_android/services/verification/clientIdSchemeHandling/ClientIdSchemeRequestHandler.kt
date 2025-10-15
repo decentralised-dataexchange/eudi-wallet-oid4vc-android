@@ -56,6 +56,7 @@ class ClientIdSchemeRequestHandler {
             ClientIdScheme.WEB_ORIGIN -> WebOriginSchemeHandler().validate(presentationRequest)
             ClientIdScheme.HTTPS -> presentationRequest
             ClientIdScheme.IAR -> presentationRequest
+            ClientIdScheme.x509_hash ->X509HashSchemeHandler().validate(presentationRequest)
             else -> presentationRequest
         }
     }
