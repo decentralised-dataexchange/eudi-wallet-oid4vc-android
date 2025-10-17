@@ -649,60 +649,53 @@ class CborUtils {
             }
         }
         private fun getCredentialIssuedAt(cborData: DataItem): String? {
-
             var issuedAt: String? = null
+            val MAX_CHUNK_SIZE = 1_000_000 // 1 MB
+
             if (cborData is CborArray) {
-                // Iterate over elements in the array
                 for (element in cborData.dataItems) {
-                    // Check if the element is a ByteString
                     if (element is CborByteString) {
                         try {
-                            // Decode the ByteString as CBOR
-                            val nestedCBORStream = ByteArrayInputStream(element.bytes)
-                            val nestedCBORDecoder = CborDecoder(nestedCBORStream)
+                            val totalSize = element.bytes.size
+                            var offset = 0
 
-                            // Try decoding until an exception occurs
-                            while (true) {
-                                try {
-                                    val nestedCBOR = nestedCBORDecoder.decodeNext()
+                            while (offset < totalSize) {
+                                val end = (offset + MAX_CHUNK_SIZE).coerceAtMost(totalSize)
+                                val chunk = element.bytes.sliceArray(offset until end)
+                                offset = end
 
-                                    if (nestedCBOR.tag.value == 24L) {
-                                        // Check if the item under the tag is a ByteString
-                                        if (nestedCBOR is CborByteString) {
-                                            try {
-                                                // Decode the inner ByteString
-                                                val decodedInnerCBORStream =
-                                                    ByteArrayInputStream(nestedCBOR.bytes)
-                                                val decodedInnerCBORDecoder = CborDecoder(decodedInnerCBORStream)
-
-                                                // Decode until an exception occurs
-                                                while (true) {
-                                                    try {
-                                                        val decodedInnerCBOR = decodedInnerCBORDecoder.decodeNext()
-                                                        // Extract the document type
-                                                        issuedAt = extractIssuedAt(decodedInnerCBOR)
-                                                    } catch (innerE: Exception) {
-                                                        // Break if decoding inner fails
-                                                        break
-                                                    }
-                                                }
-
-                                            } catch (e: Exception) {
-                                                println("Failed to decode inner ByteString under Tag 24.")
-                                            }
-                                        }
-
+                                // Stream decode chunk
+                                val chunkStream = ByteArrayInputStream(chunk)
+                                val decoder = CborDecoder(chunkStream)
+                                while (true) {
+                                    val nestedCBOR = try {
+                                        decoder.decodeNext()
+                                    } catch (e: Exception) {
+                                        break
                                     }
 
-                                } catch (e: Exception) {
-                                    // Break if decoding the nested CBOR fails
-                                    break
+                                    if (nestedCBOR.tag.value == 24L && nestedCBOR is CborByteString) {
+                                        // Inner CBOR streaming
+                                        var innerOffset = 0
+                                        val innerTotal = nestedCBOR.bytes.size
+                                        while (innerOffset < innerTotal) {
+                                            val innerEnd = (innerOffset + MAX_CHUNK_SIZE).coerceAtMost(innerTotal)
+                                            val innerChunk = nestedCBOR.bytes.sliceArray(innerOffset until innerEnd)
+                                            innerOffset = innerEnd
+
+                                            val innerStream = ByteArrayInputStream(innerChunk)
+                                            val innerDecoder = CborDecoder(innerStream)
+                                            while (true) {
+                                                val innerData = try { innerDecoder.decodeNext() } catch (e: Exception) { break }
+                                                issuedAt = extractIssuedAt(innerData)
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
                         } catch (e: Exception) {
-                            println("Could not decode ByteString as CBOR, inspecting data directly.")
-                            println("ByteString data: ${element.bytes.joinToString(", ") { it.toString() }}")
+                            println("Failed to decode ByteString in streaming mode: ${e.message}")
                         }
                     } else {
                         println("Element is not a ByteString: $element")
