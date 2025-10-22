@@ -336,33 +336,55 @@ class CborUtils {
             return docType
         }
         fun getStatusList(cborData: DataItem): Map<String, Any>? {
+            val MAX_CHUNK_SIZE = 10_000_000 // 10 MB
             var statusList: Map<String, Any>? = null
+
             if (cborData is CborArray) {
-                // Iterate over elements in the array
-                for (element in cborData.dataItems) { // Using getDataItems() to access the elements
-                    // Check if the element is a ByteString
+                for (element in cborData.dataItems) {
                     if (element is CborByteString) {
                         try {
-                            // Decode the ByteString as CBOR
-                            val nestedCBORStream = ByteArrayInputStream(element.bytes)
-                            // Decode next CBOR data item
-                            val nestedCBOR = CborDecoder(nestedCBORStream).decodeNext()
-                            if (nestedCBOR.tag.value == 24L) {
-                                // Check if the item under the tag is a ByteString
-                                if (nestedCBOR is CborByteString) {
-                                    try {
-                                        // Decode the inner ByteString
-                                        val decodedInnerCBORStream =
-                                            ByteArrayInputStream(nestedCBOR.bytes)
-                                        val decodedInnerCBOR = CborDecoder(decodedInnerCBORStream).decodeNext()
+                            val totalSize = element.bytes.size
+                            var offset = 0
 
-                                        // Extract the status list
-                                        statusList = extractStatusList(decodedInnerCBOR ?: continue)
-                                        if (statusList != null) break
-                                    } catch (e: Exception) {
-                                        println("Failed to decode inner ByteString under Tag 24.")
+                            while (offset < totalSize) {
+                                val end = (offset + MAX_CHUNK_SIZE).coerceAtMost(totalSize)
+                                val chunk = element.bytes.sliceArray(offset until end)
+                                offset = end
+
+                                val nestedCBORStream = ByteArrayInputStream(chunk)
+                                val decoder = CborDecoder(nestedCBORStream)
+
+                                while (true) {
+                                    val nestedCBOR = try { decoder.decodeNext() } catch (e: Exception) { break }
+
+                                    if (nestedCBOR.tag.value == 24L && nestedCBOR is CborByteString) {
+                                        try {
+                                            val innerTotal = nestedCBOR.bytes.size
+                                            var innerOffset = 0
+
+                                            while (innerOffset < innerTotal) {
+                                                val innerEnd = (innerOffset + MAX_CHUNK_SIZE).coerceAtMost(innerTotal)
+                                                val innerChunk = nestedCBOR.bytes.sliceArray(innerOffset until innerEnd)
+                                                innerOffset = innerEnd
+
+                                                val decodedInnerCBORStream = ByteArrayInputStream(innerChunk)
+                                                val innerDecoder = CborDecoder(decodedInnerCBORStream)
+
+                                                while (true) {
+                                                    val decodedInnerCBOR = try { innerDecoder.decodeNext() } catch (e: Exception) { break }
+
+                                                    statusList = extractStatusList(decodedInnerCBOR ?: continue)
+                                                    if (statusList != null) break
+                                                }
+                                                if (statusList != null) break
+                                            }
+                                        } catch (e: Exception) {
+                                            println("Failed to decode inner ByteString under Tag 24.")
+                                        }
                                     }
+                                    if (statusList != null) break
                                 }
+                                if (statusList != null) break
                             }
                         } catch (e: Exception) {
                             println("Could not decode ByteString as CBOR, inspecting data directly.")
@@ -371,6 +393,7 @@ class CborUtils {
                     } else {
                         println("Element is not a ByteString: $element")
                     }
+                    if (statusList != null) break
                 }
             }
             return statusList
@@ -650,7 +673,7 @@ class CborUtils {
         }
         private fun getCredentialIssuedAt(cborData: DataItem): String? {
             var issuedAt: String? = null
-            val MAX_CHUNK_SIZE = 1_000_000 // 1 MB
+            val MAX_CHUNK_SIZE = 10_000_000 // 10 MB
 
             if (cborData is CborArray) {
                 for (element in cborData.dataItems) {
