@@ -115,7 +115,7 @@ class IssueService : IssueServiceInterface {
         } catch (e: Exception) {
             null
         }
-        if (credentialOffer?.version != null) {
+        if (credentialOffer?.version != null && credentialOffer.credentials?.isNotEmpty() == true)  {
             return credentialOffer
         }
         val credentialOfferV2Response = try {
