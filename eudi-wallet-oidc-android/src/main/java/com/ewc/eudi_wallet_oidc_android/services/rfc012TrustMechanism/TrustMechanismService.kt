@@ -157,7 +157,7 @@ class TrustMechanismService : TrustMechanismInterface {
 
         //var fallbackMatch: TrustServiceProvider? = null
         val separator = "##SEP##"
-        var kid: String? = null
+        var kid: String? = x5c
         var jwksUri: String? = null
 
         if (x5c.contains(separator)) {
@@ -221,6 +221,12 @@ class TrustMechanismService : TrustMechanismInterface {
                                     digitalId.jwksURI?.trim()?.equals(jwksUri.trim(), ignoreCase = true) == true
                                 ) {
                                     return tsp
+                                }
+                                // Match kid
+                                if (kid != null) {
+                                    if (digitalId.kid?.trim()?.equals(kid.trim(), ignoreCase = true) == true) {
+                                        return tsp
+                                    }
                                 }
                             }
                         }
