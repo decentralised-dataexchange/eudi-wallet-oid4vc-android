@@ -28,11 +28,12 @@ class AuthorisationRequestForIAR : AuthorisationRequestHandler {
         val uri = Uri.parse(authorisationRequestData)
         val gson = Gson()
         val openid4vpRequest = uri.getQueryParameter("openid4vp_request")
-
+        var request: String? = null
 
         var presentationRequest = gson.fromJson(openid4vpRequest, PresentationRequest::class.java)
         val iarClientId = presentationRequest.clientId
         if (presentationRequest.request != null) {
+            request = presentationRequest.request
             if (isValidJWT(presentationRequest.request)) {
                 try {
                     presentationRequest = gson.fromJson(
@@ -53,6 +54,7 @@ class AuthorisationRequestForIAR : AuthorisationRequestHandler {
         presentationRequest.status = status
         presentationRequest.type = type
         presentationRequest.clientId = iarClientId
+        presentationRequest.request = request ?: openid4vpRequest
         return processPresentationRequest(presentationRequest)
     }
 }
