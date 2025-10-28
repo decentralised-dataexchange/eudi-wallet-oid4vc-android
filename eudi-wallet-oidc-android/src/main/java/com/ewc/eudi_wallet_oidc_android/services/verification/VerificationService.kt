@@ -120,7 +120,7 @@ class VerificationService : VerificationServiceInterface {
                             gson.fromJson(redirectUri, VPTokenResponse::class.java)
                         return WrappedVpTokenResponse(
                             vpTokenResponse = VPTokenResponse(
-                                location = vpTokenResponse.redirectUri ?: run {
+                                redirectUri = vpTokenResponse.redirectUri ?: run {
                                     val jsonObject = gson.fromJson(redirectUri, JsonObject::class.java)
                                     jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
                                         ?: "https://www.example.com?code=1"
@@ -130,7 +130,7 @@ class VerificationService : VerificationServiceInterface {
                     } catch (e: Exception) {
                         return WrappedVpTokenResponse(
                             vpTokenResponse = VPTokenResponse(
-                                location = "https://www.example.com?code=1"
+                                redirectUri = "https://www.example.com?code=1"
                             )
                         )
                     }
