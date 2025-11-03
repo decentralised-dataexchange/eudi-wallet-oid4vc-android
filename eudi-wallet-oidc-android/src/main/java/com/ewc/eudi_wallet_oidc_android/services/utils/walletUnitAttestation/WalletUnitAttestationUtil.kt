@@ -11,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.WalletAttestationResult
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.nonceRequest.NonceService
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
 import com.google.android.play.core.integrity.IntegrityManagerFactory
@@ -167,37 +168,40 @@ object WalletAttestationUtil {
         token: String?,
         nonce: String?,
         clientAssertionValue: String?
-    ): CredentialOfferResponse? {
+    ): CredentialOfferResponse? = withContext(Dispatchers.IO) {
 
-        return withContext(Dispatchers.IO) {
-            try {
-                val clientAssertion = ClientAssertion(
-                    clientAssertion = clientAssertionValue,
-                    clientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-                )
+        val clientAssertion = ClientAssertion(
+            clientAssertion = clientAssertionValue,
+            clientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+        )
 
-                val response = ApiManager.api.getService()?.sendWUARequest(
-                    url = "$baseUrl/wallet-unit/request",
-                    deviceIntegrityToken = token ?: "",
-                    devicePlatform = "android",
-                    nonce = nonce ?: "",
-                    body = clientAssertion
-                )
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.sendWUARequest(
+                url = "$baseUrl/wallet-unit/request",
+                deviceIntegrityToken = token ?: "",
+                devicePlatform = "android",
+                nonce = nonce ?: "",
+                body = clientAssertion
+            )
+        }
 
-                if (response?.isSuccessful == true) {
-                    val credentialOfferResponse = response.body()
-                    Log.d(TAG, "Request successful: $credentialOfferResponse")
-                    return@withContext credentialOfferResponse // Return the response body directly
-                } else {
-                    Log.e(TAG, "Request failed: ${response?.errorBody()?.string()}")
-                    return@withContext null
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending request: ${e.message}")
+        result.onSuccess { response ->
+            if (response.isSuccessful) {
+                val credentialOfferResponse = response.body()
+                Log.d(TAG, "Request successful: $credentialOfferResponse")
+                return@withContext credentialOfferResponse
+            } else {
+                Log.e(TAG, "Request failed: ${response.errorBody()?.string()}")
                 return@withContext null
             }
+        }.onFailure { e ->
+            Log.e(TAG, "Error sending request: ${e.message}")
+            return@withContext null
         }
+
+        return@withContext null // fallback
     }
+
 
 
      fun generateClientAssertion(
@@ -266,35 +270,32 @@ object WalletAttestationUtil {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 
-    private suspend fun fetchNonceForDeviceIntegrityToken(url: String): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-//                val nonceResponse = NonceService().fetchNonce(nonceEndPoint = url)
-//                return@withContext nonceResponse
-                // Make the API call to fetch the nonce
-                val response = ApiManager.api.getService()?.fetchNonce(url = url)
+    private suspend fun fetchNonceForDeviceIntegrityToken(url: String): String? = withContext(Dispatchers.IO) {
 
-                if (response?.isSuccessful == true) {
-                    // Parse the response body into the NonceResponse model
-                    val responseBody = response.body()?.string()
-                    responseBody?.let {
-                        val nonceResponse = Gson().fromJson(it, NonceResponse::class.java)
-                        Log.d(TAG, "Nonce fetched successfully: ${nonceResponse.nonce}")
-                        return@withContext nonceResponse.nonce
-                    }
-                } else {
-                    // Log the error if the response is unsuccessful
-                    Log.e(TAG, "Failed to fetch nonce: ${response?.errorBody()?.string()}")
-                    return@withContext null
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.fetchNonce(url = url)
+        }
+
+        result.onSuccess { response ->
+            if (response.isSuccessful) {
+                val responseBody = response.body()?.string()
+                responseBody?.let {
+                    val nonceResponse = Gson().fromJson(it, NonceResponse::class.java)
+                    Log.d(TAG, "Nonce fetched successfully: ${nonceResponse.nonce}")
+                    return@withContext nonceResponse.nonce
                 }
-
-            } catch (e: Exception) {
-                // Handle any exceptions that occur during the API call
-                Log.e(TAG, "Error fetching nonce: ${e.localizedMessage}")
+            } else {
+                Log.e(TAG, "Failed to fetch nonce: ${response.errorBody()?.string()}")
                 return@withContext null
             }
+        }.onFailure { e ->
+            Log.e(TAG, "Error fetching nonce: ${e.localizedMessage}")
+            return@withContext null
         }
+
+        return@withContext null // fallback
     }
+
 
 
     fun generateWUAProofOfPossession(

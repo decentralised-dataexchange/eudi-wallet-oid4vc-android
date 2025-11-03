@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialRevocation
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallCallback
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
 import com.google.gson.Gson
@@ -98,55 +99,45 @@ class IETFTokenStatusList: StatusListInterface {
     fun fetchStatusFromServer(uris: List<String>, callback: (List<StatusModel>) -> Unit) {
         val statusModels = mutableListOf<StatusModel>()
         val apiService = ApiManager.api.getService()
-
         var remainingRequests = uris.size
 
         for (uri in uris) {
-            val call = uri?.let { apiService?.getStatusList(it, "application/statuslist+jwt") }
+            val call = apiService?.getStatusList(uri, "application/statuslist+jwt")
 
-            call?.enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(
-                    call: Call<ResponseBody>,
-                    response: Response<ResponseBody>
-                ) {
-                    if (response.isSuccessful) {
-                        // Handle the response
-                        val responseBody = response.body()?.string()
-                        Log.d("StatusList", "Success: $responseBody")
-                        if (responseBody != null) {
-                            // Decode the JWT and extract status list
-                            val result = decodeStatusListJwt(responseBody)
-                            if (result != null) {
-                                val (fetchDecodedString, bits) = result
-                                if (fetchDecodedString != null && bits != null) {
-                                    val iETFTokenStatusListModel =
-                                        IETFTokenStatusListModel.fromEncoded(fetchDecodedString, bits)
-                                    val statusModel = StatusModel(
-                                        uri,
-                                        iETFTokenStatusListModel
-                                    )
-                                    statusModels.add(statusModel)
-                                }
+            safeApiCallCallback(
+                call,
+                onSuccess = { responseBody ->
+                    try {
+                        val responseString = responseBody.string()
+                        Log.d("StatusList", "Success: $responseString")
+
+                        val result = decodeStatusListJwt(responseString)
+                        if (result != null) {
+                            val (fetchDecodedString, bits) = result
+                            if (fetchDecodedString != null && bits != null) {
+                                val iETFTokenStatusListModel =
+                                    IETFTokenStatusListModel.fromEncoded(fetchDecodedString, bits)
+                                val statusModel = StatusModel(uri, iETFTokenStatusListModel)
+                                statusModels.add(statusModel)
                             }
                         }
-                    } else {
-                        Log.e("StatusList", "Error: ${response.code()} - ${response.message()}")
+                    } catch (e: Exception) {
+                        Log.e("StatusList", "Parsing error: ${e.message}")
+                    } finally {
+                        remainingRequests--
+                        if (remainingRequests == 0) {
+                            callback(statusModels)
+                        }
                     }
-
+                },
+                onError = { errorMsg ->
+                    Log.e("StatusList", "Error for $uri: $errorMsg")
                     remainingRequests--
                     if (remainingRequests == 0) {
                         callback(statusModels)
                     }
                 }
-
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                    Log.e("StatusList", "Failure: ${t.message}")
-                    remainingRequests--
-                    if (remainingRequests == 0) {
-                        callback(statusModels)
-                    }
-                }
-            })
+            )
         }
     }
     fun decodeStatusListJwt(statusListJwt: String): Pair<String?, Int?>? {

@@ -6,6 +6,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
+import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
 import com.ewc.eudi_wallet_oidc_android.models.ProofsV3
@@ -14,6 +15,7 @@ import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
@@ -53,8 +55,9 @@ class ReIssuanceService : ReIssuanceServiceInterface {
                     credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
                     proof = ProofV3(jwt = jwt, proofType = "jwt"),
                 )
-            } else if (authorizationDetail != null && authorizationDetail.type == "openid_credential" && issuerConfig?.nonceEndpoint != null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()) {
-
+            } else if (authorizationDetail != null && authorizationDetail.type == "openid_credential" &&
+                issuerConfig?.nonceEndpoint != null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()
+            ) {
                 CredentialRequest(
                     credentialConfigurationId = authorizationDetail.credentialConfigurationId,
                     proof = ProofV3(jwt = jwt, proofType = "jwt"),
@@ -95,59 +98,56 @@ class ReIssuanceService : ReIssuanceServiceInterface {
 
         request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
 
+        return try {
+            val result = SafeApiCall.safeApiCallResponse {
+                if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
+                    if (credentialRequestEncryptionInfo.jwk != null) {
+                        val type = object : TypeToken<Map<String, Any?>>() {}.type
+                        val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
 
-        val response = if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
-            if (credentialRequestEncryptionInfo.jwk != null) {
-                val type = object : TypeToken<Map<String, Any?>>() {}.type
-                val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
+                        val encryptedJwe = JWEEncrypter().encrypt(
+                            payload = payload,
+                            jwk = credentialRequestEncryptionInfo.jwk
+                        )
+                        val requestBody = encryptedJwe
+                            .toRequestBody("application/jwt".toMediaType())
 
-                val encryptedJwe = JWEEncrypter().encrypt(
-                    payload = payload,
-                    jwk = credentialRequestEncryptionInfo.jwk
-                )
-                val requestBody = encryptedJwe
-                    .toRequestBody("application/jwt".toMediaType())
-                // Send encrypted request
-                ApiManager.api.getService()?.getCredentialEncrypted(
-                    issuerConfig?.credentialEndpoint ?: "",
-                    "application/jwt",
-                    "Bearer ${accessToken?.accessToken}",
-                    requestBody
-                )
-            } else {
-                null
-            }
-        } else {
-            ApiManager.api.getService()?.getCredential(
-                issuerConfig?.credentialEndpoint ?: "",
-                "application/json",
-                "Bearer ${accessToken?.accessToken}",
-                request
-            )
-        }
-        val credentialResponse = when {
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedCredentialResponse(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
+                        ApiManager.api.getService()?.getCredentialEncrypted(
+                            issuerConfig?.credentialEndpoint ?: "",
+                            "application/jwt",
+                            "Bearer ${accessToken?.accessToken}",
+                            requestBody
+                        )
+                    } else null
+                } else {
+                    ApiManager.api.getService()?.getCredential(
+                        issuerConfig?.credentialEndpoint ?: "",
+                        "application/json",
+                        "Bearer ${accessToken?.accessToken}",
+                        request
                     )
-                } catch (e: Exception) {
-                    null
                 }
             }
 
-            response?.isSuccessful == true -> {
-                IssueService().parseCredentialResponse(
-                    response,
-                    ecKeyWithAlgEnc,
-                    credentialEncryptionBuilder
-                )
-            }
-
-            else -> {
-                null
-            }
+            result.fold(
+                onSuccess = { response ->
+                    IssueService().parseCredentialResponse(
+                        response,
+                        ecKeyWithAlgEnc,
+                        credentialEncryptionBuilder
+                    )
+                },
+                onFailure = { error ->
+                    Log.e("IssueService", "Error reissuing credential: ${error.message}")
+                    WrappedCredentialResponse(
+                        credentialResponse = null,
+                        errorResponse = ErrorResponse(errorDescription = error.message)
+                    )
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("IssueService", "Unexpected error while reissuing credential: ${e.message}")
+            null
         }
-        return credentialResponse
     }
 }

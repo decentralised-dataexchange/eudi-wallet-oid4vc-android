@@ -6,6 +6,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 
 class NotificationService : NotificationServiceInterface {
 
@@ -36,26 +37,35 @@ class NotificationService : NotificationServiceInterface {
         Log.d("sendNotificationRequest", "Authorization: Bearer $accessToken")
         Log.d("sendNotificationRequest", "Event: ${event.value}")
         Log.d("sendNotificationRequest", "NotificationId: $notificationId")
-        val response = ApiManager.api.getService()?.sendNotificationRequest(
-            notificationEndPoint,
-            "Bearer $accessToken",
-            NotificationRequest(notificationId, event.value)
-        )
 
-        // If response code is 204, exit the function
-        if (response?.code() == 204) {
-            Log.d("sendNotificationResponse", "Request successful, but no content (204).")
-            return
+        // Use safeApiCallResponse wrapper
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.sendNotificationRequest(
+                notificationEndPoint,
+                "Bearer $accessToken",
+                NotificationRequest(notificationId, event.value)
+            )
         }
 
-        // Handle error responses (400 and above)
-        if ((response?.code() ?: 0) >= 400) {
-            try {
-                val errorBody = response?.errorBody()?.string() ?: "Unknown error"
-                Log.e("sendNotificationResponse", "Error: $errorBody")
-            } catch (e: Exception) {
-                Log.e("sendNotificationResponse", "Exception while logging error: ${e.message}")
+        result.onSuccess { response ->
+            when {
+                response.code() == 204 -> {
+                    Log.d("sendNotificationResponse", "Request successful, but no content (204).")
+                }
+                response.code() >= 400 -> {
+                    val errorBody = try {
+                        response.errorBody()?.string() ?: "Unknown error"
+                    } catch (e: Exception) {
+                        "Error reading errorBody: ${e.message}"
+                    }
+                    Log.e("sendNotificationResponse", "Error: $errorBody")
+                }
+                else -> {
+                    Log.d("sendNotificationResponse", "Request successful: ${response.code()}")
+                }
             }
+        }.onFailure { e ->
+            Log.e("sendNotificationRequest", "Exception while sending notification: ${e.message}")
         }
     }
 

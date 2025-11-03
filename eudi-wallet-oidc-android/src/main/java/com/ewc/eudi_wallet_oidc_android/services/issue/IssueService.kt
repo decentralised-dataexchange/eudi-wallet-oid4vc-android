@@ -62,6 +62,8 @@ import java.util.Date
 import java.util.UUID
 import android.util.Base64
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import java.io.IOException
 import kotlin.collections.get
 
 class IssueService : IssueServiceInterface {
@@ -81,32 +83,54 @@ class IssueService : IssueServiceInterface {
             val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
             if (!credentialOfferUri.isNullOrBlank()) {
                 UrlUtils.validateUri(credentialOfferUri)
-                val response =
-                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
-                return if (response?.isSuccessful == true) {
-                    WrappedCredentialOffer(
-                        credentialOffer =  parseCredentialOffer(credentialOfferJson = response.body()?.string())
-                    )
 
-                } else {
-                    WrappedCredentialOffer(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
-                    )
+                val result = SafeApiCall.safeApiCallResponse {
+                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
                 }
+
+                return result.fold(
+                    onSuccess = { response ->
+                        if (response.isSuccessful) {
+                            WrappedCredentialOffer(
+                                credentialOffer = parseCredentialOffer(
+                                    credentialOfferJson = response.body()?.string()
+                                )
+                            )
+                        } else {
+                            WrappedCredentialOffer(
+                                errorResponse = ErrorHandler.processError(
+                                    response.errorBody()?.string()
+                                )
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        WrappedCredentialOffer(
+                            errorResponse = ErrorHandler.processError(error.message)
+                        )
+                    }
+                )
             }
 
             val credentialOfferString = uri.getQueryParameter("credential_offer")
             if (!credentialOfferString.isNullOrBlank()) {
-                return WrappedCredentialOffer(credentialOffer =  parseCredentialOffer(credentialOfferJson = credentialOfferString))
+                return WrappedCredentialOffer(
+                    credentialOffer = parseCredentialOffer(
+                        credentialOfferJson = credentialOfferString
+                    )
+                )
             }
+
             return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
+
         } catch (exc: UriValidationFailed) {
             return null
-        }catch (e:Exception){
+        } catch (e: Exception) {
             Log.d("Exception", e.message.toString())
-            return  null
+            return null
         }
     }
+
 
     private fun parseCredentialOffer(credentialOfferJson: String?): CredentialOffer? {
         val gson = Gson()
@@ -214,8 +238,9 @@ class IssueService : IssueServiceInterface {
             )
         )
         if (!authConfig?.interactiveAuthorizationEndpoint.isNullOrEmpty()) {
-            Log.d(TAG,"${authConfig?.interactiveAuthorizationEndpoint}")
-            val iarResponse = try {
+            Log.d(TAG, "${authConfig.interactiveAuthorizationEndpoint}")
+
+            val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.interactiveAuthorizationRequest(
                     authConfig?.interactiveAuthorizationEndpoint ?: "",
                     mapOf(
@@ -234,91 +259,49 @@ class IssueService : IssueServiceInterface {
                     ),
                     headers
                 )
-            } catch (e: Exception) {
-                Log.d(TAG,"$e")
-                null
             }
 
-            if (iarResponse?.isSuccessful == true) {
-                val body = iarResponse.body()
-                Log.d(TAG, "Status: ${body.toString()}, Type: ${body?.type}")
+            result.fold(
+                onSuccess = { iarResponse ->
+                    if (iarResponse.isSuccessful) {
+                        val body = iarResponse.body()
+                        Log.d(TAG, "Status: ${body.toString()}, Type: ${body?.type}")
+                        when (body?.type) {
+                            "openid4vp_presentation" -> {
+                                val urlBuilder = Uri.parse(authConfig.authorizationEndpoint ?: "").buildUpon()
+                                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                                urlBuilder.appendQueryParameter("status", body.status ?: "")
+                                urlBuilder.appendQueryParameter("type", body.type ?: "")
+                                urlBuilder.appendQueryParameter("auth_session", body.authSession ?: "")
+                                body.openid4vpRequest?.clientId = "iar:${authConfig.interactiveAuthorizationEndpoint}"
+                                body.openid4vpRequest?.let {
+                                    urlBuilder.appendQueryParameter("openid4vp_request", Gson().toJson(it))
+                                }
+                                return urlBuilder.build().toString()
+                            }
 
-                when (body?.type) {
-                    "openid4vp_presentation" -> {
-                        // while creating vp token pass auth-session then
-                        val urlBuilder = Uri.parse(authConfig?.authorizationEndpoint ?: "").buildUpon()
-                        urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                        urlBuilder.appendQueryParameter("status",body.status ?: "")
-                        urlBuilder.appendQueryParameter("type",body.type ?:"")
-                        urlBuilder.appendQueryParameter("auth_session", body.authSession ?: "")
-                        body.openid4vpRequest?.clientId = "iar:${authConfig?.interactiveAuthorizationEndpoint}"
-                        body.openid4vpRequest?.let {
-                            urlBuilder.appendQueryParameter("openid4vp_request", Gson().toJson(it))
+                            "redirect_to_web" -> {
+                                val urlBuilder = Uri.parse(authConfig.authorizationEndpoint ?: "").buildUpon()
+                                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                                urlBuilder.appendQueryParameter("request_uri", body.requestUri)
+                                return urlBuilder.build().toString()
+                            }
+
+                            else -> Log.e(TAG, "Unknown interaction type: ${body?.type}")
                         }
-                        val urlWithParams = urlBuilder.build().toString()
-
-                        return urlWithParams
+                    } else {
+                        Log.e(TAG, "Failed: ${iarResponse.errorBody()?.string()}")
                     }
-
-                    "redirect_to_web" -> {
-                       // val requestUri = iarResponse.body()?.requestUri ?: ""
-//                        if (isApiCallRequired){
-//                            // API call for wallet unit attestation
-//                            val response = ApiManager.api.getService()?.processAuthorisationRequest(
-//                                authorisationEndPoint ?: "",
-//                                mapOf(
-//                                    "client_id" to (clientId ?: ""),
-//                                    "request_uri" to requestUri
-//                                )
-//                            )
-//                            if (response?.isSuccessful == true) {
-//                                val contentType = response.headers()["Content-Type"]
-//
-//                                if (contentType?.contains("text/html") == true) {
-//                                    return response.raw().request.url.toString()
-//                                }
-//                            }
-//                            if (response?.code() == 302) {
-//                                val location = response.headers()["Location"]
-//                                if (!location.isNullOrEmpty()) {
-//                                    // Always return Location, client-side will handle error parsing
-//                                    return location
-//                                }
-//                            }
-//                            if ((response?.code() ?: 0) >= 400) {
-//                                val errorMessage =
-//                                    response?.errorBody()?.string() ?: "Unexpected error. Please try again."
-//                                val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-//                                urlBuilder.appendQueryParameter("error", errorMessage)
-//                                val urlWithParams = urlBuilder.build().toString()
-//
-//                                return urlWithParams
-//                            }
-//                        }else{
-
-                            val urlBuilder = Uri.parse(authConfig?.authorizationEndpoint ?: "").buildUpon()
-                            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                            urlBuilder.appendQueryParameter("request_uri", body.requestUri)
-                            val urlWithParams = urlBuilder.build().toString()
-
-                            return urlWithParams
-                       // }
-
-                    }
-
-                    else -> {
-                        // Unknown or unsupported type -  handle error
-                        Log.e("ERROR", "Unknown interaction type: ${body?.type}")
-                    }
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Interactive request failed: ${error.message}")
                 }
-            } else {
-                Log.e("ERROR", "Failed: ${iarResponse?.errorBody()?.string()}")
-            }
-
+            )
         }
-        else if (authConfig?.requirePushedAuthorizationRequests == true){
 
-            val parResponse = try {
+        // ---------- PAR Request ----------
+        else if (authConfig?.requirePushedAuthorizationRequests == true) {
+            val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.processParAuthorisationRequest(
                     authConfig.pushedAuthorizationRequestEndpoint ?: "",
                     mapOf(
@@ -336,61 +319,56 @@ class IssueService : IssueServiceInterface {
                     ),
                     headers
                 )
-            } catch (e: javax.net.ssl.SSLHandshakeException) {
-                null
             }
-            // Check if the PAR request was successful
-            parResponse?.code()
-            if (parResponse?.isSuccessful == true) {
-                // Extract requestUri from the PAR response
-                val requestUri = parResponse.body()?.requestUri ?: ""
 
-                if (isApiCallRequired) {
-                    // API call for wallet unit attestation
-                    val response = ApiManager.api.getService()?.processAuthorisationRequest(
-                        authorisationEndPoint ?: "",
-                        mapOf(
-                            "client_id" to (clientId ?: ""),
-                            "request_uri" to requestUri
-                        )
-                    )
-                    if (response?.isSuccessful == true) {
-                        val contentType = response.headers()["Content-Type"]
+            result.fold(
+                onSuccess = { parResponse ->
+                    if (parResponse.isSuccessful) {
+                        val requestUri = parResponse.body()?.requestUri ?: ""
+                        if (isApiCallRequired) {
+                            val nextResult = SafeApiCall.safeApiCallResponse {
+                                ApiManager.api.getService()?.processAuthorisationRequest(
+                                    authorisationEndPoint ?: "",
+                                    mapOf("client_id" to (clientId ?: ""), "request_uri" to requestUri)
+                                )
+                            }
 
-                        if (contentType?.contains("text/html") == true) {
-                            return response.raw().request.url.toString()
+                            nextResult.fold(
+                                onSuccess = { response ->
+                                    val location = response.headers()["Location"]
+                                    if (response.code() == 302 && !location.isNullOrEmpty()) {
+                                        return location
+                                    } else if (response.isSuccessful && response.headers()["Content-Type"]?.contains("text/html") == true) {
+                                        return response.raw().request.url.toString()
+                                    } else if ((response.code()) >= 400) {
+                                        val errorMessage = response.errorBody()?.string() ?: "Unexpected error."
+                                        val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+                                        urlBuilder.appendQueryParameter("error", errorMessage)
+                                        return urlBuilder.build().toString()
+                                    }
+                                },
+                                onFailure = { error ->
+                                    Log.e(TAG, "PAR follow-up failed: ${error.message}")
+                                }
+                            )
+                        } else {
+                            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+                            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                            urlBuilder.appendQueryParameter("request_uri", requestUri)
+                            return urlBuilder.build().toString()
                         }
                     }
-                    if (response?.code() == 302) {
-                        val location = response.headers()["Location"]
-                        if (!location.isNullOrEmpty()) {
-                            // Always return Location, client-side will handle error parsing
-                            return location
-                        }
-                    }
-                    if ((response?.code() ?: 0) >= 400) {
-                        val errorMessage =
-                            response?.errorBody()?.string() ?: "Unexpected error. Please try again."
-                        val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                        urlBuilder.appendQueryParameter("error", errorMessage)
-                        val urlWithParams = urlBuilder.build().toString()
-
-                        return urlWithParams
-                    }
-                } else {
-                    val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                    urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                    urlBuilder.appendQueryParameter("request_uri", requestUri)
-                    val urlWithParams = urlBuilder.build().toString()
-
-                    return urlWithParams
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "PAR request failed: ${error.message}")
                 }
-            }
+            )
+        }
 
-        } else {
-
-            if (isApiCallRequired) {
-                val response = ApiManager.api.getService()?.processAuthorisationRequest(
+        // ---------- Standard flow ----------
+        else if (isApiCallRequired) {
+            val result = SafeApiCall.safeApiCallResponse {
+                ApiManager.api.getService()?.processAuthorisationRequest(
                     authorisationEndPoint ?: "",
                     mapOf(
                         "response_type" to responseType,
@@ -398,86 +376,51 @@ class IssueService : IssueServiceInterface {
                         "state" to state,
                         "client_id" to (clientId ?: ""),
                         "authorization_details" to authorisationDetails,
-                        "redirect_uri" to (redirectURI ?: ""),
+                        "redirect_uri" to redirectURI,
                         "nonce" to nonce,
                         "code_challenge" to (codeChallenge ?: ""),
                         "code_challenge_method" to codeChallengeMethod,
                         "client_metadata" to clientMetadata,
-                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState
-                            ?: "")
+                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
                     ),
                 )
-
-                if (response?.code() == 502) {
-                    throw Exception("Unexpected error. Please try again.")
-                }
-                val location: String? = if (response?.code() == 302) {
-                    if (response.headers()["Location"]?.contains("error") == true || response.headers()["Location"]?.contains(
-                            "error_description"
-                        ) == true
-                    ) {
-                        response.headers()["Location"]
-                    } else {
-                        response.headers()["Location"]
-                    }
-                } else {
-                    null
-                }
-
-                return if (location == null) {
-                    null
-                } else if (Uri.parse(location).getQueryParameter("error") != null) {
-                    location
-                } else if (Uri.parse(location).getQueryParameter("code") != null
-                    || Uri.parse(location).getQueryParameter("presentation_definition") != null
-                    || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
-                    || (Uri.parse(location).getQueryParameter("request_uri") != null &&
-                            Uri.parse(location).getQueryParameter("response_type") == null &&
-                            Uri.parse(location).getQueryParameter("state") == null)
-                ) {
-                    location
-                } else if (
-                    Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
-                    Uri.parse(location).getQueryParameter("redirect_uri") != null
-                ) {
-                    processAuthorisationRequestUsingIdToken(
-                        did = did,
-                        authorisationEndPoint = authorisationEndPoint,
-                        location = location,
-                        subJwk = subJwk
-                    )
-                } else if (!location.startsWith(redirectURI)) {
-                    location
-                } else {
-                    processAuthorisationRequestUsingIdToken(
-                        did = did,
-                        authorisationEndPoint = authorisationEndPoint,
-                        location = location,
-                        subJwk = subJwk
-                    )
-                }
-            }else{
-
-                val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                urlBuilder.appendQueryParameter("response_type", responseType)
-                urlBuilder.appendQueryParameter("scope", scope.trim())
-                urlBuilder.appendQueryParameter("state", state)
-                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                urlBuilder.appendQueryParameter("authorization_details", authorisationDetails)
-                urlBuilder.appendQueryParameter("redirect_uri", redirectURI ?: "")
-                urlBuilder.appendQueryParameter("nonce", nonce)
-                urlBuilder.appendQueryParameter("code_challenge", codeChallenge ?: "")
-                urlBuilder.appendQueryParameter("code_challenge_method", codeChallengeMethod)
-                urlBuilder.appendQueryParameter("client_metadata", clientMetadata)
-                urlBuilder.appendQueryParameter(
-                    "issuer_state",
-                    credentialOffer?.grants?.authorizationCode?.issuerState ?: ""
-                )
-                val urlWithParams = urlBuilder.build().toString()
-
-                return urlWithParams
             }
+
+            result.fold(
+                onSuccess = { response ->
+                    if (response.code() == 502) throw Exception("Unexpected error. Please try again.")
+
+                    val location = if (response.code() == 302) {
+                        response.headers()["Location"]
+                    } else null
+
+                    location?.let {
+                        return it
+                    }
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Authorization request failed: ${error.message}")
+                }
+            )
+        } else {
+            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+            urlBuilder.appendQueryParameter("response_type", responseType)
+            urlBuilder.appendQueryParameter("scope", scope.trim())
+            urlBuilder.appendQueryParameter("state", state)
+            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+            urlBuilder.appendQueryParameter("authorization_details", authorisationDetails)
+            urlBuilder.appendQueryParameter("redirect_uri", redirectURI ?: "")
+            urlBuilder.appendQueryParameter("nonce", nonce)
+            urlBuilder.appendQueryParameter("code_challenge", codeChallenge ?: "")
+            urlBuilder.appendQueryParameter("code_challenge_method", codeChallengeMethod)
+            urlBuilder.appendQueryParameter("client_metadata", clientMetadata)
+            urlBuilder.appendQueryParameter(
+                "issuer_state",
+                credentialOffer?.grants?.authorizationCode?.issuerState ?: ""
+            )
+            return urlBuilder.build().toString()
         }
+
         return null
     }
 
@@ -536,18 +479,28 @@ class IssueService : IssueServiceInterface {
             )
         )
 
-        val response = ApiManager.api.getService()?.sendIdTokenForCode(
-            url = Uri.parse(location).getQueryParameter("redirect_uri") ?: "",
-            idToken = jwt.serialize(),
-            state = Uri.parse(location).getQueryParameter("state") ?: "",
-            contentType = "application/x-www-form-urlencoded"
-        )
-
-        return if (response?.code() == 302) {
-            response.headers()["Location"]
-        } else {
-            null
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.sendIdTokenForCode(
+                url = Uri.parse(location).getQueryParameter("redirect_uri") ?: "",
+                idToken = jwt.serialize(),
+                state = Uri.parse(location).getQueryParameter("state") ?: "",
+                contentType = "application/x-www-form-urlencoded"
+            )
         }
+
+        return result.fold(
+            onSuccess = { response ->
+                if (response.code() == 302) {
+                    response.headers()["Location"]
+                } else {
+                    null
+                }
+            },
+            onFailure = { error ->
+                println("Error while sending ID Token: ${error.message}")
+                null
+            }
+        )
     }
 
     private fun buildAuthorizationRequest(
@@ -704,65 +657,74 @@ class IssueService : IssueServiceInterface {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
             }
         }
-        val response = ApiManager.api.getService()?.getAccessTokenFromCode(
-            tokenEndPoint ?: "",
-            if (isPreAuthorisedCodeFlow == true) {
-                // Map for pre-authorized code flow
-                mutableMapOf(
-                    "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code" to (code ?: "")
-                ).apply {
-                    if (version == 1) {
-                        this["user_pin"] = userPin ?: ""
-                    } else {
-                        this["tx_code"] = userPin ?: ""
+
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.getAccessTokenFromCode(
+                tokenEndPoint ?: "",
+                if (isPreAuthorisedCodeFlow == true) {
+                    // Map for pre-authorized code flow
+                    mutableMapOf(
+                        "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                        "pre-authorized_code" to (code ?: "")
+                    ).apply {
+                        if (version == 1) {
+                            this["user_pin"] = userPin ?: ""
+                        } else {
+                            this["tx_code"] = userPin ?: ""
+                        }
                     }
-                }
-            } else {
-                // Map for authorization code flow
-                mutableMapOf(
-                    "grant_type" to "authorization_code",
-                    "code" to (code ?: ""),
-                    "client_id" to (did ?: ""),
-                    "code_verifier" to (codeVerifier ?: ""),
-                    "redirect_uri" to (redirectURI ?: "")
-                ).apply {
-                    if (clientAssertion != null) {
-                        this["client_assertion"] = clientAssertion ?: ""
-                        this["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                } else {
+                    // Map for authorization code flow
+                    mutableMapOf(
+                        "grant_type" to "authorization_code",
+                        "code" to (code ?: ""),
+                        "client_id" to (did ?: ""),
+                        "code_verifier" to (codeVerifier ?: ""),
+                        "redirect_uri" to (redirectURI)
+                    ).apply {
+                        if (clientAssertion != null) {
+                            this["client_assertion"] = clientAssertion
+                            this["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                        }
                     }
+                },
+                headers
+            )
+        }
+
+        return result.fold(
+            onSuccess = { response ->
+                when {
+                    response.isSuccessful -> {
+                        val lpid = response.headers()["legal-pid-attestation"]
+                        val lpidPoP = response.headers()["legal-pid-attestation-pop"]
+                        WrappedTokenResponse(
+                            tokenResponse = response.body(),
+                            legalPidAttestation = lpid,
+                            legalPidAttestationPoP = lpidPoP
+                        )
+                    }
+
+                    (response.code() >= 400) -> {
+                        try {
+                            WrappedTokenResponse(
+                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+
+                    else -> null
                 }
             },
-            headers
-        )
-
-        val tokenResponse = when {
-            response?.isSuccessful == true -> {
-                val lpid = response.headers()["legal-pid-attestation"]
-                val lpidPoP = response.headers()["legal-pid-attestation-pop"]
-                WrappedTokenResponse(
-                    tokenResponse = response.body(),
-                    legalPidAttestation = lpid,
-                    legalPidAttestationPoP = lpidPoP
-                )
-            }
-
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedTokenResponse(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-            }
-
-            else -> {
+            onFailure = { error ->
+                println("Error while processing token request: ${error.message}")
                 null
             }
-        }
-        return tokenResponse
+        )
     }
+
 
     /**
      * To process the credential, credentials can be issued in two ways,
@@ -825,37 +787,44 @@ class IssueService : IssueServiceInterface {
             doctype = doctype,
             index = 0
         )
-        // API call
-        val response = ApiManager.api.getService()?.getCredential(
-            issuerConfig?.credentialEndpoint ?: "",
-            "application/json",
-            "Bearer $accessToken",
-            body
-        )
 
-        val credentialResponse = when {
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedCredentialResponse(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-            }
-
-            response?.isSuccessful == true -> {
-                val raw = response.body()?.string()
-                val parsed = Gson().fromJson(raw, CredentialResponse::class.java)
-                WrappedCredentialResponse(credentialResponse = parsed)
-            }
-
-            else -> {
-                null
-            }
+        // Use SafeApiCall for cleaner, safer call
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.getCredential(
+                issuerConfig?.credentialEndpoint ?: "",
+                "application/json",
+                "Bearer $accessToken",
+                body
+            )
         }
 
-        return credentialResponse
+        return result.fold(
+            onSuccess = { response ->
+                when {
+                    (response.code() >= 400) -> {
+                        try {
+                            WrappedCredentialResponse(
+                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+
+                    response.isSuccessful -> {
+                        val raw = response.body()?.string()
+                        val parsed = Gson().fromJson(raw, CredentialResponse::class.java)
+                        WrappedCredentialResponse(credentialResponse = parsed)
+                    }
+
+                    else -> null
+                }
+            },
+            onFailure = { error ->
+                println("Error while processing credential request: ${error.message}")
+                null
+            }
+        )
     }
 
     /**
@@ -945,56 +914,61 @@ class IssueService : IssueServiceInterface {
 
         request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
 
+        // Safely perform network call using SafeApiCall
+        val result = SafeApiCall.safeApiCallResponse {
+            if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
+                if (credentialRequestEncryptionInfo.jwk != null) {
+                    val type = object : TypeToken<Map<String, Any?>>() {}.type
+                    val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
 
-        val response = if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
-            if (credentialRequestEncryptionInfo.jwk != null) {
-                val type = object : TypeToken<Map<String, Any?>>() {}.type
-                val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
-
-                val encryptedJwe = JWEEncrypter().encrypt(
-                    payload = payload,
-                    jwk = credentialRequestEncryptionInfo.jwk
-                )
-                val requestBody = encryptedJwe
-                    .toRequestBody("application/jwt".toMediaType())
-                // Send encrypted request
-                ApiManager.api.getService()?.getCredentialEncrypted(
-                    issuerConfig?.credentialEndpoint ?: "",
-                    "application/jwt",
-                    "Bearer ${accessToken?.accessToken}",
-                    requestBody
-                )
-            } else {
-                null
-            }
-        } else {
-            ApiManager.api.getService()?.getCredential(
-                issuerConfig?.credentialEndpoint ?: "",
-                "application/json",
-                "Bearer ${accessToken?.accessToken}",
-                request
-            )
-        }
-        val credentialResponse = when {
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedCredentialResponse(
-                        errorResponse = ErrorHandler.processError(response?.errorBody()?.string())
+                    val encryptedJwe = JWEEncrypter().encrypt(
+                        payload = payload,
+                        jwk = credentialRequestEncryptionInfo.jwk
                     )
-                } catch (e: Exception) {
-                    null
-                }
-            }
+                    val requestBody = encryptedJwe.toRequestBody("application/jwt".toMediaType())
 
-            response?.isSuccessful == true -> {
-                parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
-            }
-
-            else -> {
-                null
+                    ApiManager.api.getService()?.getCredentialEncrypted(
+                        issuerConfig?.credentialEndpoint ?: "",
+                        "application/jwt",
+                        "Bearer ${accessToken?.accessToken}",
+                        requestBody
+                    )
+                } else null
+            } else {
+                ApiManager.api.getService()?.getCredential(
+                    issuerConfig?.credentialEndpoint ?: "",
+                    "application/json",
+                    "Bearer ${accessToken?.accessToken}",
+                    request
+                )
             }
         }
-        return credentialResponse
+
+        return result.fold(
+            onSuccess = { response ->
+                when {
+                    (response.code() >= 400) -> {
+                        try {
+                            WrappedCredentialResponse(
+                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+
+                    response.isSuccessful -> {
+                        parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
+                    }
+
+                    else -> null
+                }
+            },
+            onFailure = { error ->
+                println("Error while processing credential request: ${error.message}")
+                null
+            }
+        )
     }
 
      fun parseCredentialResponse(
@@ -1261,15 +1235,29 @@ class IssueService : IssueServiceInterface {
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse? {
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        val response = ApiManager.api.getService()?.getDifferedCredential(
-            deferredCredentialEndPoint ?: "",
-            "Bearer $acceptanceToken",
-            CredentialRequest() // empty object
-        )
-        return if (response?.isSuccessful == true)
-        {
-            parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
-        } else {
+        return try {
+            val result = SafeApiCall.safeApiCallResponse {
+                ApiManager.api.getService()?.getDifferedCredential(
+                    deferredCredentialEndPoint ?: "",
+                    "Bearer $acceptanceToken",
+                    CredentialRequest() // empty object
+                )
+            }
+
+            result.fold(
+                onSuccess = { response ->
+                    parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
+                },
+                onFailure = { error ->
+                    println("Error while fetching deferred credential: ${error.message}")
+                    null
+                }
+            )
+        } catch (e: IOException) {
+            println("IOException while fetching deferred credential: ${e.message}")
+            null
+        } catch (e: Exception) {
+            println("Unexpected error while fetching deferred credential: ${e.message}")
             null
         }
     }
@@ -1282,41 +1270,53 @@ class IssueService : IssueServiceInterface {
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse? {
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        val response = if (credentialRequestEncryptionInfo?.encryptionRequired == true){
-            val request =  DeferredCredentialRequestV2(transactionId)
-            if (credentialRequestEncryptionInfo.jwk != null) {
-                val type = object : TypeToken<Map<String, Any?>>() {}.type
-                val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
+        return try {
+            val result = SafeApiCall.safeApiCallResponse {
+                if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
+                    val request = DeferredCredentialRequestV2(transactionId)
+                    if (credentialRequestEncryptionInfo.jwk != null) {
+                        val type = object : TypeToken<Map<String, Any?>>() {}.type
+                        val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
 
-                val encryptedJwe = JWEEncrypter().encrypt(
-                    payload = payload,
-                    jwk = credentialRequestEncryptionInfo.jwk
-                )
-                val requestBody = encryptedJwe
-                    .toRequestBody("application/jwt".toMediaType())
-                // Send encrypted request
-                ApiManager.api.getService()?.getDifferedCredentialV2Encrypted(
-                    deferredCredentialEndPoint ?: "",
-                    "application/jwt",
-                    "Bearer $accessToken",
-                    requestBody
-                )
-            } else {
-                null
+                        val encryptedJwe = JWEEncrypter().encrypt(
+                            payload = payload,
+                            jwk = credentialRequestEncryptionInfo.jwk
+                        )
+                        val requestBody = encryptedJwe
+                            .toRequestBody("application/jwt".toMediaType())
+
+                        ApiManager.api.getService()?.getDifferedCredentialV2Encrypted(
+                            deferredCredentialEndPoint ?: "",
+                            "application/jwt",
+                            "Bearer $accessToken",
+                            requestBody
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    ApiManager.api.getService()?.getDifferedCredentialV2(
+                        deferredCredentialEndPoint ?: "",
+                        "Bearer $accessToken",
+                        DeferredCredentialRequestV2(transactionId)
+                    )
+                }
             }
-        }else{
-            ApiManager.api.getService()?.getDifferedCredentialV2(
-                deferredCredentialEndPoint ?: "",
-                "Bearer $accessToken",
-                DeferredCredentialRequestV2(transactionId)
+
+            result.fold(
+                onSuccess = { response ->
+                    parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
+                },
+                onFailure = { error ->
+                    println("Error while fetching deferred credential V2: ${error.message}")
+                    null
+                }
             )
-        }
-
-
-        return if (response?.isSuccessful == true)
-        {
-            parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
-        } else {
+        } catch (e: IOException) {
+            println("IOException while fetching deferred credential V2: ${e.message}")
+            null
+        } catch (e: Exception) {
+            println("Unexpected error while fetching deferred credential V2: ${e.message}")
             null
         }
     }

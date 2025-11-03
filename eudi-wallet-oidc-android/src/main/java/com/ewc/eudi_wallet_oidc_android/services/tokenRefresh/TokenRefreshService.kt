@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.tokenRefresh
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 
 class TokenRefreshService : TokenRefreshInterface {
 
@@ -20,44 +21,46 @@ class TokenRefreshService : TokenRefreshInterface {
         tokenEndPoint: String?,
         refreshToken: String?
     ): WrappedRefreshTokenResponse? {
-        val response = ApiManager.api.getService()?.getRefreshTokenFromCode(
-            tokenEndPoint ?: "",
-            if (refreshToken !=null){
-                println("refreshToken is not null and generating new accessToken")
-                mutableMapOf(
-                    "grant_type" to "refresh_token",
-                    "refresh_token" to (refreshToken),
-                )
-            }
-            else {
-                mutableMapOf(
-                    "grant_type" to null,
-                    "refresh_token" to (null),
-                )
-            },
-        )
 
-        val tokenResponse = when {
-            response?.isSuccessful == true -> {
-                WrappedRefreshTokenResponse(
-                    tokenResponse = response.body()
-                )
-            }
-
-            (response?.code() ?: 0) >= 400 -> {
-                try {
-                    WrappedRefreshTokenResponse(
-                        errorResponse = ErrorResponse(error = null, errorDescription = response?.errorBody().toString())
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-            }
-
-            else -> {
-                null
-            }
+        val requestBody = if (refreshToken != null) {
+            println("refreshToken is not null and generating new accessToken")
+            mutableMapOf(
+                "grant_type" to "refresh_token",
+                "refresh_token" to refreshToken,
+            )
+        } else {
+            mutableMapOf(
+                "grant_type" to null,
+                "refresh_token" to null,
+            )
         }
+
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.getRefreshTokenFromCode(
+                tokenEndPoint ?: "",
+                requestBody
+            )
+        }
+
+        var tokenResponse: WrappedRefreshTokenResponse? = null
+
+        result.onSuccess { response ->
+            if (response.isSuccessful) {
+                tokenResponse = WrappedRefreshTokenResponse(tokenResponse = response.body())
+            } else {
+                tokenResponse = WrappedRefreshTokenResponse(
+                    errorResponse = ErrorResponse(
+                        error = response.code(),
+                        errorDescription = response.message()
+                    )
+                )
+            }
+        }.onFailure { e ->
+            tokenResponse = WrappedRefreshTokenResponse(
+                errorResponse = ErrorResponse(errorDescription = e.message ?: "Unknown error")
+            )
+        }
+
         return tokenResponse
     }
 }
