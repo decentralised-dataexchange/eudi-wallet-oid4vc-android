@@ -10,6 +10,7 @@ import com.ewc.eudi_wallet_oidc_android.models.v2.IssuerWellKnownConfigurationV2
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.google.gson.Gson
 
 class DiscoveryService : DiscoveryServiceInterface {
@@ -27,20 +28,41 @@ class DiscoveryService : DiscoveryServiceInterface {
 
         try {
             UrlUtils.validateUri(credentialIssuer)
-            val response = try {
-                ApiManager.api.getService()
-                    ?.fetchIssuerConfig("$credentialIssuer")
-            } catch (e: javax.net.ssl.SSLHandshakeException) {
-                return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(errorDescription = "Unable to establish a secure connection."))
-            }catch (e:Exception){
-                return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(errorDescription = e.message.toString()))
-            }
-            return if (response?.isSuccessful == true) {
-                parseIssuerConfigurationResponse(issuerConfigResponseJson =response.body()?.string())
 
-            } else {
-                WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
+            var finalResponse: WrappedIssuerConfigResponse? = null
+
+            val result = SafeApiCall.safeApiCallResponse {
+                ApiManager.api.getService()?.fetchIssuerConfig("$credentialIssuer")
             }
+
+            result.onSuccess { response ->
+                finalResponse = if (response.isSuccessful) {
+                    parseIssuerConfigurationResponse(
+                        issuerConfigResponseJson = response.body()?.string()
+                    )
+                } else {
+                    WrappedIssuerConfigResponse(
+                        issuerConfig = null,
+                        errorResponse = ErrorResponse(
+                            error = response.code(),
+                            errorDescription = response.message()
+                        )
+                    )
+                }
+            }.onFailure { e ->
+                val message = when (e) {
+                    is javax.net.ssl.SSLHandshakeException ->
+                        "Unable to establish a secure connection."
+                    else -> e.message.toString()
+                }
+                finalResponse = WrappedIssuerConfigResponse(
+                    issuerConfig = null,
+                    errorResponse = ErrorResponse(errorDescription = message)
+                )
+            }
+
+            return finalResponse
+
         } catch (exc: UriValidationFailed) {
             return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
         }
@@ -86,38 +108,80 @@ class DiscoveryService : DiscoveryServiceInterface {
         var authorizationServer = authorisationServerWellKnownURI?.replace("/.well-known/oauth-authorization-server","")
         authorizationServer = removeTrailingSlash(authorizationServer)
         authorizationServer = "$authorizationServer/.well-known/oauth-authorization-server"
+
         try {
             UrlUtils.validateUri(authorizationServer)
 
-            val response = try {
-                ApiManager.api.getService()
-                    ?.fetchAuthConfig("$authorizationServer")
-            } catch (e: javax.net.ssl.SSLHandshakeException) {
-                return WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(errorDescription = "Unable to establish a secure connection."))
+            var finalResponse: WrappedAuthConfigResponse? = null
+
+            val result = SafeApiCall.safeApiCallResponse {
+                ApiManager.api.getService()?.fetchAuthConfig("$authorizationServer")
             }
-            return if (response?.isSuccessful == true) {
-                WrappedAuthConfigResponse(authConfig = response.body(), errorResponse = null)
-            } else {
-                // If the first attempt fails, modify the authorizationServer URL for the openid-configuration endpoint
-                authorizationServer = authorizationServer.replace("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration")
 
-
-                val fallbackResponse = ApiManager.api.getService()?.fetchAuthConfig(authorizationServer)
-                return if (fallbackResponse?.isSuccessful == true) {
-                    WrappedAuthConfigResponse(authConfig = fallbackResponse.body(), errorResponse = null)
-                }
-                else {
-                    // If both attempts fail, return an error response
-                    WrappedAuthConfigResponse(
-                        authConfig = null,
-                        errorResponse = ErrorResponse(error = fallbackResponse?.code(), errorDescription = fallbackResponse?.message())
+            result.onSuccess { response ->
+                if (response.isSuccessful) {
+                    finalResponse = WrappedAuthConfigResponse(
+                        authConfig = response.body(),
+                        errorResponse = null
                     )
-                }
+                } else {
+                    // Try fallback: openid-configuration
+                    authorizationServer = authorizationServer.replace(
+                        "/.well-known/oauth-authorization-server",
+                        "/.well-known/openid-configuration"
+                    )
 
-                // WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = response?.code(), errorDescription = response?.message()))
+                    val fallbackResult = SafeApiCall.safeApiCallResponse {
+                        ApiManager.api.getService()?.fetchAuthConfig(authorizationServer)
+                    }
+
+                    fallbackResult.onSuccess { fallbackResponse ->
+                        finalResponse = if (fallbackResponse.isSuccessful) {
+                            WrappedAuthConfigResponse(
+                                authConfig = fallbackResponse.body(),
+                                errorResponse = null
+                            )
+                        } else {
+                            WrappedAuthConfigResponse(
+                                authConfig = null,
+                                errorResponse = ErrorResponse(
+                                    error = fallbackResponse.code(),
+                                    errorDescription = fallbackResponse.message()
+                                )
+                            )
+                        }
+                    }.onFailure { e ->
+                        finalResponse = WrappedAuthConfigResponse(
+                            authConfig = null,
+                            errorResponse = ErrorResponse(errorDescription = e.message)
+                        )
+                    }
+                }
+            }.onFailure { e ->
+                val message = when (e) {
+                    is javax.net.ssl.SSLHandshakeException ->
+                        "Unable to establish a secure connection."
+                    else -> e.message.toString()
+                }
+                finalResponse = WrappedAuthConfigResponse(
+                    authConfig = null,
+                    errorResponse = ErrorResponse(errorDescription = message)
+                )
             }
+
+            return finalResponse ?: WrappedAuthConfigResponse(
+                authConfig = null,
+                errorResponse = ErrorResponse(errorDescription = "Unexpected error")
+            )
+
         } catch (exc: UriValidationFailed) {
-            return WrappedAuthConfigResponse(authConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
+            return WrappedAuthConfigResponse(
+                authConfig = null,
+                errorResponse = ErrorResponse(
+                    error = null,
+                    errorDescription = "URI validation failed"
+                )
+            )
         }
     }
 }

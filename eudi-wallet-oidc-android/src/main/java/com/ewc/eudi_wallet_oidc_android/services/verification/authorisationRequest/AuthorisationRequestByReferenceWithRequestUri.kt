@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.ProcessPresentationRequestWithUris.processPresentationRequest
@@ -20,64 +21,69 @@ import com.google.gson.Gson
  * accordingly, returning a `WrappedPresentationRequest` or an error if the process fails.
  */
 class AuthorisationRequestByReferenceWithRequestUri : AuthorisationRequestHandler {
-    override suspend fun processAuthorisationRequest(authorisationRequestData: String): WrappedPresentationRequest {
+    override suspend fun processAuthorisationRequest(
+        authorisationRequestData: String
+    ): WrappedPresentationRequest {
         val uri = Uri.parse(authorisationRequestData)
         val gson = Gson()
         val requestUri = uri.getQueryParameter("request_uri")
-        try {
-            val response =
+
+        return try {
+            val result = safeApiCallResponse {
                 ApiManager.api.getService()
                     ?.getPresentationDefinitionFromRequestUri(requestUri ?: "")
+            }
 
-            if (response?.isSuccessful == true) {
-                val responseString = response.body()?.string()
+            result.fold(
+                onSuccess = { response ->
+                    val responseString = response.body()?.string()
 
-                // Check if responseString is null or empty
-                if (responseString.isNullOrBlank()) {
-                    return WrappedPresentationRequest(
-                        presentationRequest = null,
-                        errorResponse = ErrorResponse(
-                            error = null,
-                            errorDescription = "Response is null or empty."
-                        )
-                    )
-                }
-
-                // Try to parse the response as JSON
-                val json: PresentationRequest? = try {
-                    gson.fromJson(responseString, PresentationRequest::class.java)
-                } catch (e: Exception) {
-                    null // If JSON parsing fails, return null and proceed with JWT validation
-                }
-
-                if (json != null) {
-                    return processPresentationRequest(json)
-                } else {
-                    if (isValidJWT(responseString ?: "")) {
-                        val payload = parseJWTForPayload(responseString ?: "{}")
-                        val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
-                        jwtJson.request = jwtJson.request ?: responseString
-                        return processPresentationRequest(jwtJson)
-
-                    } else {
+                    if (responseString.isNullOrBlank()) {
                         return WrappedPresentationRequest(
                             presentationRequest = null,
                             errorResponse = ErrorResponse(
                                 error = null,
-                                errorDescription = "Invalid Request"
+                                errorDescription = "Response is null or empty."
                             )
                         )
                     }
-                }
-            } else {
-                return WrappedPresentationRequest(
-                    presentationRequest = null,
-                    errorResponse = ErrorResponse(
-                        error = null,
-                        errorDescription = "Unable to process request"
+
+                    // Try parsing as JSON first
+                    val json: PresentationRequest? = try {
+                        gson.fromJson(responseString, PresentationRequest::class.java)
+                    } catch (e: Exception) {
+                        null // If JSON parsing fails, fall back to JWT validation
+                    }
+
+                    if (json != null) {
+                        processPresentationRequest(json)
+                    } else {
+                        if (isValidJWT(responseString)) {
+                            val payload = parseJWTForPayload(responseString)
+                            val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
+                            jwtJson.request = jwtJson.request ?: responseString
+                            processPresentationRequest(jwtJson)
+                        } else {
+                            WrappedPresentationRequest(
+                                presentationRequest = null,
+                                errorResponse = ErrorResponse(
+                                    error = null,
+                                    errorDescription = "Invalid Request"
+                                )
+                            )
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    WrappedPresentationRequest(
+                        presentationRequest = null,
+                        errorResponse = ErrorResponse(
+                            error = null,
+                            errorDescription = error.message ?: "Unable to process request"
+                        )
                     )
-                )
-            }
+                }
+            )
         } catch (e: Exception) {
             return WrappedPresentationRequest(
                 presentationRequest = null,

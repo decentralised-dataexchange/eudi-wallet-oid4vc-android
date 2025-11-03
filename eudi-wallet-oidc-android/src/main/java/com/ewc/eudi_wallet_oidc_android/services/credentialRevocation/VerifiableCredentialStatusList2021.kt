@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialRevocation
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -99,18 +100,13 @@ class VerifiableCredentialStatusList2021:StatusListInterface {
         for (uri in uris) {
             val call = uri?.let { apiService?.getVerifiableCredentialStatusList(it) }
 
-            call?.enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(
-                    call: Call<ResponseBody>,
-                    response: Response<ResponseBody>
-                ) {
-                    if (response.isSuccessful) {
-                        // Handle the response
-                        val responseBody = response.body()?.string()
-                        Log.d("StatusList", "Success: $responseBody")
-                        if (responseBody != null) {
-                            // Decode the JWT and extract status list
-                            val result = decodeStatusListJwt(responseBody)
+            SafeApiCall.safeApiCallCallback(
+                call = call,
+                onSuccess = { responseBody ->
+                    try {
+                        val responseString = responseBody.string()
+                        Log.d("StatusList", "Success: $responseString")
+                        val result = decodeStatusListJwt(responseString)
                             if (result != null) {
                                 val verifiableCredentialsStatusList2021Model =
                                     VerifiableCredentialsStatusList2021Model(result)
@@ -120,25 +116,23 @@ class VerifiableCredentialStatusList2021:StatusListInterface {
                                 )
                                 statusModels.add(statusModel)
                             }
-                        }
-                    } else {
-                        Log.e("StatusList", "Error: ${response.code()} - ${response.message()}")
+                    } catch (e: Exception) {
+                        Log.e("StatusList", "Error parsing response: ${e.message}")
                     }
 
                     remainingRequests--
                     if (remainingRequests == 0) {
                         callback(statusModels)
                     }
-                }
-
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                    Log.e("StatusList", "Failure: ${t.message}")
+                },
+                onError = { errorMessage ->
+                    Log.e("StatusList", "Error: $errorMessage")
                     remainingRequests--
                     if (remainingRequests == 0) {
                         callback(statusModels)
                     }
                 }
-            })
+            )
         }
     }
 

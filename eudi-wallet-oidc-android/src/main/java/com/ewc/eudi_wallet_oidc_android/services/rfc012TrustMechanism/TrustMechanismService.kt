@@ -8,6 +8,7 @@ import com.ewc.eudi_wallet_oidc_android.models.TSPService
 import com.ewc.eudi_wallet_oidc_android.models.TSPServices
 import com.ewc.eudi_wallet_oidc_android.models.TrustServiceProvider
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.TAG
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -29,38 +30,38 @@ class TrustMechanismService : TrustMechanismInterface {
                 return false
             }
 
-            val response =
-                service.getTrustServiceProviders(url?:"https://ewc-consortium.github.io/ewc-trust-list/EWC-TL")
+            val result = safeApiCallResponse {
+                service.getTrustServiceProviders(
+                    url ?: "https://ewc-consortium.github.io/ewc-trust-list/EWC-TL"
+                )
+            }
 
-            if (response.isSuccessful) {
-                val responseBody = response.body()
-                if (responseBody != null) {
-                    val xmlString = responseBody.string()
-                    val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
+            result.fold(
+                onSuccess = { response ->
+                    val responseBody = response.body()
+                    if (responseBody != null) {
+                        val xmlString = responseBody.string()
+                        val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
 
-                    val rootObj = gson.fromJson(jsonString, Root::class.java)
+                        val rootObj = gson.fromJson(jsonString, Root::class.java)
+                        val tspList =
+                            rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
 
-                    val tspList =
-                        rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
+                        val matchedTsp = findMatchedTrustServiceProvider(tspList, x5c)
+                        val hasGranted = hasGrantedServiceStatus(matchedTsp?.tspServices, gson)
 
-                    val matchedTsp = findMatchedTrustServiceProvider(
-                        tspList,
-                        x5c,
-                    )
-
-                    val hasGranted = hasGrantedServiceStatus(matchedTsp?.tspServices, gson)
-
-                    println("Has granted status: $hasGranted")
-
-                    return hasGranted
-                } else {
-                    Log.e(TAG, "Response body is null")
+                        println("Has granted status: $hasGranted")
+                        hasGranted
+                    } else {
+                        Log.e(TAG, "Response body is null")
+                        false
+                    }
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Failed to fetch trust details: ${error.message}")
                     false
                 }
-            } else {
-                Log.e(TAG, "Failed to fetch trust details: ${response.errorBody()?.string()}")
-                false
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching trust details: ${e.message}", e)
             false
@@ -79,36 +80,34 @@ class TrustMechanismService : TrustMechanismInterface {
                 return null
             }
 
-            val response = service.getTrustServiceProviders(
-                url ?: "https://ewc-consortium.github.io/ewc-trust-list/EWC-TL"
-            )
+            val result = safeApiCallResponse {
+                service.getTrustServiceProviders(
+                    url ?: "https://ewc-consortium.github.io/ewc-trust-list/EWC-TL"
+                )
+            }
 
-            if (response.isSuccessful) {
-                val responseBody = response.body()
-                if (responseBody != null) {
-                    val xmlString = responseBody.string()
-                    val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
+            result.fold(
+                onSuccess = { response ->
+                    val responseBody = response.body()
+                    if (responseBody != null) {
+                        val xmlString = responseBody.string()
+                        val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
 
-                    val rootObj = gson.fromJson(jsonString, Root::class.java)
+                        val rootObj = gson.fromJson(jsonString, Root::class.java)
+                        val tspList =
+                            rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
 
-                    val tspList =
-                        rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
-
-                    val matchedTsp = findMatchedTrustServiceProvider(
-                        tspList,
-                        x5c = x5c,
-                    )
-
-                    return matchedTsp
-
-                } else {
-                    Log.e(TAG, "Response body is null")
+                        findMatchedTrustServiceProvider(tspList, x5c = x5c)
+                    } else {
+                        Log.e(TAG, "Response body is null")
+                        null
+                    }
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Failed to fetch trust details: ${error.message}")
                     null
                 }
-            } else {
-                Log.e(TAG, "Failed to fetch trust details: ${response.errorBody()?.string()}")
-                null
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching trust details: ${e.message}", e)
             null

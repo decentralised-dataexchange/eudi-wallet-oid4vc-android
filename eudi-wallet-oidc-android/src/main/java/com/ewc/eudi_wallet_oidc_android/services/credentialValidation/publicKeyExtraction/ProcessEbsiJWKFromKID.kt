@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKey
 
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.mediaparkpk.base58android.Base58
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
@@ -22,28 +23,30 @@ class ProcessEbsiJWKFromKID {
         val did = kid.split("#").getOrNull(0) ?: kid
 
         // --- First attempt with conformance API ---
-        try {
-            val response: Response<DIDDocument>? = service.ebsiDIDResolver(
-                "https://api-conformance.ebsi.eu/did-registry/v5/identifiers/$did"
-            )
-            if (response != null && response.isSuccessful) {
+        val conformanceResult = SafeApiCall.safeApiCallResponse {
+            service.ebsiDIDResolver("https://api-conformance.ebsi.eu/did-registry/v5/identifiers/$did")
+        }
+
+        conformanceResult.onSuccess { response ->
+            if (response.isSuccessful) {
                 val ecKey = extractJWK(response.body(), kid)
                 if (ecKey != null) return ecKey
             }
-        } catch (e: Exception) {
+        }.onFailure { e ->
             println("Conformance API failed: ${e.message}")
         }
 
-        // --- If conformance fails, attempt the pilot API ---
-        try {
-            val response: Response<DIDDocument>? = service.ebsiDIDResolver(
-                "https://api-pilot.ebsi.eu/did-registry/v5/identifiers/$did"
-            )
-            if (response != null && response.isSuccessful) {
+        // --- Fallback: attempt with pilot API ---
+        val pilotResult = SafeApiCall.safeApiCallResponse {
+            service.ebsiDIDResolver("https://api-pilot.ebsi.eu/did-registry/v5/identifiers/$did")
+        }
+
+        pilotResult.onSuccess { response ->
+            if (response.isSuccessful) {
                 val ecKey = extractJWK(response.body(), kid)
                 if (ecKey != null) return ecKey
             }
-        } catch (e: Exception) {
+        }.onFailure { e ->
             println("Pilot API failed: ${e.message}")
         }
 
