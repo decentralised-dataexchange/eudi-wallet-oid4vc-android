@@ -137,4 +137,38 @@ class ProofService {
         return matchingCredential?.cryptographicBindingMethodsSupported?.getOrNull(0)
     }
 
+    fun getCryptographicBindingMethodSupported(
+        credentialsSupported: Any?,
+        credentials: ArrayList<Credentials>?
+    ): List<String>? {
+        if (credentialsSupported == null || credentials.isNullOrEmpty()) {
+            return null
+        }
+
+        // Check if credentialsSupported is empty
+        if ((credentialsSupported is Map<*, *> && credentialsSupported.isEmpty()) ||
+            (credentialsSupported is List<*> && credentialsSupported.isEmpty())) {
+            return null
+        }
+
+        // Extract the first credential type from the credentials list
+        val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
+
+        // Find the matching credential map based on id or map key
+        val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {
+            is Map<*, *> -> credentialsSupported[credentialType] as? Map<String, Any>
+            is List<*> -> (credentialsSupported as? List<Map<String, Any>>)?.find {
+                val id = it["id"] as? String
+                id?.contains(credentialType) == true
+            }
+            else -> null
+        }
+
+        val matchingCredential = matchingCredentialMap?.let {
+            CredentialMetaDataConverter().convertToCredentialDetails(it)
+        }
+
+        return matchingCredential?.cryptographicBindingMethodsSupported
+    }
+
 }
