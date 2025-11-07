@@ -370,10 +370,22 @@ class CborUtils {
                                                 val decodedInnerCBORStream = ByteArrayInputStream(innerChunk)
                                                 val innerDecoder = CborDecoder(decodedInnerCBORStream)
 
+                                                val maxAttempts = 5
+                                                var attempts = 0
+
                                                 while (true) {
                                                     val decodedInnerCBOR = try { innerDecoder.decodeNext() } catch (e: Exception) { break }
 
-                                                    statusList = extractStatusList(decodedInnerCBOR ?: continue)
+                                                    if (decodedInnerCBOR == null) {
+                                                        attempts++
+                                                        if (attempts >= maxAttempts) {
+                                                            println("Decoded CBOR is null for too long, returning from getStatusList")
+                                                            return statusList
+                                                        }
+                                                        continue
+                                                    }
+
+                                                    statusList = extractStatusList(decodedInnerCBOR)
                                                     if (statusList != null) break
                                                 }
                                                 if (statusList != null) break
