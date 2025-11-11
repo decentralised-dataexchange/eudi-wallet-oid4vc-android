@@ -24,9 +24,11 @@ class ProofService {
         nonce: String?,
         issuerConfig: IssuerWellKnownConfiguration?,
         credentialOffer: CredentialOffer?,
+        index: Int = 0
     ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
-        val credentials = credentialOffer?.credentials
+        val credentials = credentialOffer?.credentials?.getOrNull(index)
+
         val bindingMethod: String? = when (credentialsSupported) {
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
@@ -38,7 +40,6 @@ class ProofService {
                 val list = credentialsSupported as? List<Map<String, Any>>
                 getCryptographicBindingMethodsSupported(list, credentials)
             }
-
             else -> null
         }
 
@@ -60,6 +61,8 @@ class ProofService {
 
         if (bindingMethod == "jwk") {
             jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
+        }else{
+            jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
         }
 
         val jwsHeader = jwsHeaderBuilder.build()
@@ -105,9 +108,9 @@ class ProofService {
 
      fun getCryptographicBindingMethodsSupported(
         credentialsSupported: Any?, // Can be either a Map or List of Maps
-        credentials: ArrayList<Credentials>?
+        credentials: Credentials?
     ): String? {
-        if (credentialsSupported == null || credentials.isNullOrEmpty()) {
+        if (credentialsSupported == null || credentials == null) {
             return null
         }
 
@@ -118,7 +121,7 @@ class ProofService {
         }
 
         // Extract the first credential type from the credentials list
-        val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
+        val credentialType = credentials.types?.firstOrNull() ?: return null
 
         // Find the matching credential map based on id or map key
         val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {

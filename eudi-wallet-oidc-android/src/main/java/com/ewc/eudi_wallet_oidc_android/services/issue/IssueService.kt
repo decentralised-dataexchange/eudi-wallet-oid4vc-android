@@ -860,7 +860,7 @@ class IssueService : IssueServiceInterface {
         val TAG = "processCredentialRequestLijoTest"
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer)
+        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null
