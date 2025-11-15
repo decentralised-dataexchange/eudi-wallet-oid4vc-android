@@ -388,15 +388,59 @@ class IssueService : IssueServiceInterface {
 
             result.fold(
                 onSuccess = { response ->
-                    if (response.code() == 502) throw Exception("Unexpected error. Please try again.")
 
-                    val location = if (response.code() == 302) {
+                    // ------ Part 1: 502 check ------
+                    if (response.code() == 502) {
+                        throw Exception("Unexpected error. Please try again.")
+                    }
+
+                    // ------ Part 2: extract redirect ------
+                    val location: String? = if (response.code() == 302) {
                         response.headers()["Location"]
                     } else null
 
-                    location?.let {
-                        return it
+                    // ------ Part 3: Apply the original return logic ------
+                    return when {
+
+                        // Case: no redirect → return null
+                        location == null -> null
+
+                        // Case: ?error= detected
+                        Uri.parse(location).getQueryParameter("error") != null -> location
+
+                        // Case: authorization code / PEX
+                        Uri.parse(location).getQueryParameter("code") != null
+                                || Uri.parse(location).getQueryParameter("presentation_definition") != null
+                                || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
+                                || (
+                                Uri.parse(location).getQueryParameter("request_uri") != null &&
+                                        Uri.parse(location).getQueryParameter("response_type") == null &&
+                                        Uri.parse(location).getQueryParameter("state") == null
+                                ) -> location
+
+                        // Case: ID Token flow
+                        Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
+                                Uri.parse(location).getQueryParameter("redirect_uri") != null ->
+                            processAuthorisationRequestUsingIdToken(
+                                did = did,
+                                authorisationEndPoint = authorisationEndPoint,
+                                location = location,
+                                subJwk = subJwk
+                            )
+
+                        // Case: redirect is to external URL
+                        !location.startsWith(redirectURI) -> location
+
+                        // Case: final fallback → ID Token process
+                        else ->
+                            processAuthorisationRequestUsingIdToken(
+                                did = did,
+                                authorisationEndPoint = authorisationEndPoint,
+                                location = location,
+                                subJwk = subJwk
+                            )
                     }
+
                 },
                 onFailure = { error ->
                     Log.e(TAG, "Authorization request failed: ${error.message}")
@@ -720,7 +764,9 @@ class IssueService : IssueServiceInterface {
             },
             onFailure = { error ->
                 println("Error while processing token request: ${error.message}")
-                null
+                WrappedTokenResponse(
+                    errorResponse = ErrorHandler.processError(error.message)
+                )
             }
         )
     }
@@ -822,7 +868,9 @@ class IssueService : IssueServiceInterface {
             },
             onFailure = { error ->
                 println("Error while processing credential request: ${error.message}")
-                null
+                WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError(error.message)
+                )
             }
         )
     }
@@ -966,7 +1014,9 @@ class IssueService : IssueServiceInterface {
             },
             onFailure = { error ->
                 println("Error while processing credential request: ${error.message}")
-                null
+                WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError(error.message)
+                )
             }
         )
     }

@@ -28,7 +28,15 @@ object SafeApiCall {
                         onError("Empty response body")
                     }
                 } else {
-                    onError("API error: ${response.code()} - ${response.message()}")
+                    // Extract actual error body string
+                    val errorMsg = try {
+                        response.errorBody()?.string()
+                    } catch (e: Exception) {
+                        null
+                    }
+
+                    val message = errorMsg ?: response.message() ?: "Unknown error"
+                    onError(message)
                 }
             }
 
@@ -52,7 +60,15 @@ object SafeApiCall {
             } else if (response.isSuccessful || response.code() in 300..399) { // ✅ Consistent with callback
                 Result.success(response)
             } else {
-                Result.failure(Exception("API error: ${response.code()} - ${response.message()}"))
+                // Extract actual error body string
+                val errorMsg = try {
+                    response.errorBody()?.string()
+                } catch (e: Exception) {
+                    null
+                }
+
+                val message = errorMsg ?: response.message() ?: "Unknown error"
+                Result.failure(Exception(message))
             }
         } catch (e: UnknownHostException) {
             Result.failure(Exception("No Internet or DNS issue"))
