@@ -112,64 +112,55 @@ class DiscoveryService : DiscoveryServiceInterface {
         try {
             UrlUtils.validateUri(authorizationServer)
 
-            var finalResponse: WrappedAuthConfigResponse? = null
-
             val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.fetchAuthConfig("$authorizationServer")
             }
 
             result.onSuccess { response ->
+                // First call succeeded
                 if (response.isSuccessful) {
-                    finalResponse = WrappedAuthConfigResponse(
+                    return WrappedAuthConfigResponse(
                         authConfig = response.body(),
                         errorResponse = null
                     )
-                } else {
-                    // Try fallback: openid-configuration
-                    authorizationServer = authorizationServer.replace(
-                        "/.well-known/oauth-authorization-server",
-                        "/.well-known/openid-configuration"
-                    )
+                }
+                // If not successful, treat as failure → fallback
+            }.onFailure { e ->
+                // Fallback attempt if first call failed (404 or other API error)
+                val fallbackUrl = authorizationServer.replace(
+                    "/.well-known/oauth-authorization-server",
+                    "/.well-known/openid-configuration"
+                )
 
-                    val fallbackResult = SafeApiCall.safeApiCallResponse {
-                        ApiManager.api.getService()?.fetchAuthConfig(authorizationServer)
-                    }
+                val fallbackResult = SafeApiCall.safeApiCallResponse {
+                    ApiManager.api.getService()?.fetchAuthConfig(fallbackUrl)
+                }
 
-                    fallbackResult.onSuccess { fallbackResponse ->
-                        finalResponse = if (fallbackResponse.isSuccessful) {
-                            WrappedAuthConfigResponse(
-                                authConfig = fallbackResponse.body(),
-                                errorResponse = null
-                            )
-                        } else {
-                            WrappedAuthConfigResponse(
-                                authConfig = null,
-                                errorResponse = ErrorResponse(
-                                    error = fallbackResponse.code(),
-                                    errorDescription = fallbackResponse.message()
-                                )
-                            )
-                        }
-                    }.onFailure { e ->
-                        finalResponse = WrappedAuthConfigResponse(
+                fallbackResult.onSuccess { fallbackResponse ->
+                    return if (fallbackResponse.isSuccessful) {
+                        WrappedAuthConfigResponse(
+                            authConfig = fallbackResponse.body(),
+                            errorResponse = null
+                        )
+                    } else {
+                        WrappedAuthConfigResponse(
                             authConfig = null,
-                            errorResponse = ErrorResponse(errorDescription = e.message)
+                            errorResponse = ErrorResponse(
+                                error = fallbackResponse.code(),
+                                errorDescription = fallbackResponse.message()
+                            )
                         )
                     }
+                }.onFailure { fe ->
+                    return WrappedAuthConfigResponse(
+                        authConfig = null,
+                        errorResponse = ErrorResponse(errorDescription = fe.message)
+                    )
                 }
-            }.onFailure { e ->
-                val message = when (e) {
-                    is javax.net.ssl.SSLHandshakeException ->
-                        "Unable to establish a secure connection."
-                    else -> e.message.toString()
-                }
-                finalResponse = WrappedAuthConfigResponse(
-                    authConfig = null,
-                    errorResponse = ErrorResponse(errorDescription = message)
-                )
             }
 
-            return finalResponse ?: WrappedAuthConfigResponse(
+            // If nothing matched above
+            return WrappedAuthConfigResponse(
                 authConfig = null,
                 errorResponse = ErrorResponse(errorDescription = "Unexpected error")
             )
