@@ -1,16 +1,20 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders
 
 import android.util.Base64
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.Document
-import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
-import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import com.ewc.eudi_wallet_oidc_android.services.verification.mdoc.createDeviceSigned
 import com.nimbusds.jose.jwk.JWK
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.PrivateKey
+import java.security.spec.ECGenParameterSpec
 
 class MDocVpTokenBuilder : VpTokenBuilder {
     override fun build(
@@ -37,6 +41,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         val issuerSigned = IssuerSigned(
             nameSpaces = nameSpaces, issuerAuth = issuerAuth
         )
+//        val keyPair = generateEphemeralEcKey()
+//        val privateKey: PrivateKey = keyPair.private
+        val deviceSigned = createDeviceSigned(jwk)
 
         val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
             presentationRequest?.dcqlQuery?.credentials?.size
@@ -46,7 +53,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         repeat(inputDescriptorSize) {
             documentList.add(
                 Document(
-                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = null
+                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = deviceSigned
                 )
             )
         }
@@ -57,9 +64,16 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
         val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-
         return cborToken
     }
+
+    fun generateEphemeralEcKey(): KeyPair {
+        val keyGen = KeyPairGenerator.getInstance("EC")
+        val ecSpec = ECGenParameterSpec("secp256r1") // = P-256
+        keyGen.initialize(ecSpec)
+        return keyGen.generateKeyPair()
+    }
+
 
     override fun buildV2(
         credentialList: List<String>?,
@@ -86,6 +100,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
             nameSpaces = nameSpaces, issuerAuth = issuerAuth
         )
 
+        val deviceSigned = createDeviceSigned(jwk)
+
         val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
             presentationRequest?.dcqlQuery?.credentials?.size
         } else {
@@ -94,7 +110,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         repeat(inputDescriptorSize) {
             documentList.add(
                 Document(
-                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = null
+                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = deviceSigned
                 )
             )
         }
