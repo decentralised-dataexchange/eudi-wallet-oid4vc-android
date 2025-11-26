@@ -955,7 +955,10 @@ class IssueService : IssueServiceInterface {
                 jwt = jwt, index = index
             )
         }
-        if (credentialRequestEncryptionInfo?.encryptionRequired != null || authConfig?.interactiveAuthorizationEndpoint !=null ){
+        if ((issuerConfig?.credentialsSupported is Map<*, *>) &&
+            ((issuerConfig.credentialsSupported as Map<*, *>).values.firstOrNull() is Map<*, *>) &&
+            ((issuerConfig.credentialsSupported as Map<*, *>).values.firstOrNull() as Map<*, *>).containsKey("credential_metadata")
+        ) {
             request.proofs = ProofsV3(jwt = arrayListOf(jwt))
             request.proof = null
         }

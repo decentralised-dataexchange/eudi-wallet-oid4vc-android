@@ -4,6 +4,7 @@ import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.google.gson.Gson
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -28,7 +29,6 @@ class ProofService {
     ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
         val credentials = credentialOffer?.credentials?.getOrNull(index)
-
         val bindingMethod: String? = when (credentialsSupported) {
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
