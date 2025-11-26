@@ -7,6 +7,7 @@ import co.nstant.`in`.cbor.CborDecoder
 import co.nstant.`in`.cbor.CborEncoder
 import co.nstant.`in`.cbor.model.DataItem
 import co.nstant.`in`.cbor.model.MajorType
+import co.nstant.`in`.cbor.model.UnicodeString
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -15,6 +16,7 @@ import co.nstant.`in`.cbor.model.ByteString as CborByteString
 import co.nstant.`in`.cbor.model.Map as CborMap
 import co.nstant.`in`.cbor.model.UnicodeString as CborUnicodeString
 import co.nstant.`in`.cbor.model.UnsignedInteger
+import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
@@ -788,7 +790,7 @@ class CborUtils {
         @OptIn(ExperimentalEncodingApi::class)
         fun processExtractNameSpaces(
             allCredentialList: List<String?>?,
-            presentationRequest: PresentationRequest
+            presentationRequest: PresentationRequest?
         ): CborMap {
             var filteredNameSpaces = CborMap()
 
@@ -796,8 +798,8 @@ class CborUtils {
                 for (credential in allCredentialList) {
                     if (credential.isNullOrBlank()) continue
                     // Process the presentation definition
-                    val presentationDefinition = if (presentationRequest.dcqlQuery == null) {
-                        processPresentationDefinition(presentationRequest.presentationDefinition)
+                    val presentationDefinition = if (presentationRequest?.dcqlQuery == null) {
+                        processPresentationDefinition(presentationRequest?.presentationDefinition)
                     } else null
 
                     try {
@@ -836,11 +838,16 @@ class CborUtils {
                             }
                         }
                         else{
-                            presentationRequest.dcqlQuery?.let { dcqlQuery ->
+                            presentationRequest?.dcqlQuery?.let { dcqlQuery ->
 
                                 dcqlQuery.credentials?.forEach { credential ->
                                     credential.claims?.forEach { claim ->
-                                        val path = "$['${claim.namespace}']['${claim.claimName}']"
+
+                                        val path =  if(claim.namespace != null && claim.claimName != null){
+                                            "$['${claim.namespace}']['${claim.claimName}']"
+                                        }else{
+                                            "$['${claim.path?.getOrNull(0)}']['${claim.path?.getOrNull(1)}']"
+                                        }
                                         val key = extractKey(path)
                                         keyList.add(key.replace("'", ""))
                                     }
@@ -994,6 +1001,31 @@ class CborUtils {
             val cborBytes = outputStream.toByteArray()
 
             println("CBOR encoded VP Token: ${cborBytes.contentToString()}")
+
+            return outputStream.toByteArray()
+        }
+
+        // Function to encode IssuerSigned to CBOR
+        fun encodeIssuerSignedToCbor(issuerSigned: IssuerSigned): ByteArray {
+            val outputStream = ByteArrayOutputStream()
+
+            // Start CBOR map
+            val builder = CborBuilder()
+            val mapBuilder = builder.addMap()
+
+            // Add nameSpaces map
+            mapBuilder.put(UnicodeString("nameSpaces"), issuerSigned.nameSpaces)
+
+            // Add issuerAuth array
+            val issuerAuthArray = mapBuilder.putArray("issuerAuth")
+            val authList: List<DataItem> = issuerSigned.issuerAuth.getDataItems()
+            for (auth in authList) {
+                issuerAuthArray.add(auth)
+            }
+            issuerAuthArray.end()
+
+            // Finish map and encode
+            CborEncoder(outputStream).encode(builder.build())
 
             return outputStream.toByteArray()
         }
