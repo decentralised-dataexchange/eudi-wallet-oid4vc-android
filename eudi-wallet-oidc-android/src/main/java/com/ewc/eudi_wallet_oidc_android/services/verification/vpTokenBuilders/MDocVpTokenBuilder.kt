@@ -60,4 +60,52 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         return cborToken
     }
+
+    override fun buildV2(
+        credentialList: List<String>?,
+        presentationRequest: PresentationRequest?,
+        did: String?,
+        jwk: JWK?,
+        inputDescriptors: Any?
+    ): List<String?> {
+        var processPresentationDefinition: PresentationDefinition?=null
+        if (presentationRequest == null) return listOf()
+        if (presentationRequest?.dcqlQuery==null) {
+            processPresentationDefinition = processPresentationDefinition(
+                presentationRequest.presentationDefinition
+            )
+        }
+
+        val documentList = mutableListOf<Document>()
+        val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
+        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition?.docType
+        val nameSpaces = CborUtils.processExtractNameSpaces(
+            credentialList, presentationRequest
+        )
+        val issuerSigned = IssuerSigned(
+            nameSpaces = nameSpaces, issuerAuth = issuerAuth
+        )
+
+        val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
+            presentationRequest?.dcqlQuery?.credentials?.size
+        } else {
+            processPresentationDefinition?.inputDescriptors?.size
+        } ?: 0
+        repeat(inputDescriptorSize) {
+            documentList.add(
+                Document(
+                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = null
+                )
+            )
+        }
+
+        val generatedVpToken = VpToken(
+            version = "1.0", documents = documentList, status = 0
+        )
+
+        val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
+        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP)
+
+        return listOf(cborToken)
+    }
 }

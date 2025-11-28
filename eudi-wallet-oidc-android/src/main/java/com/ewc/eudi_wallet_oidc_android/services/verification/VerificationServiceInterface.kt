@@ -35,6 +35,15 @@ interface VerificationServiceInterface {
         walletUnitProofOfPossession: String?,
     ): WrappedVpTokenResponse?
 
+    suspend fun processAndSendAuthorisationResponseV2(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<List<String>>? = null,
+        walletUnitAttestationJWT: String? ,
+        walletUnitProofOfPossession: String?,
+    ): WrappedVpTokenResponse?
+
     /**
      * To filter the credential using the input descriptors
      * @param credentialList - list of all issued credentials
