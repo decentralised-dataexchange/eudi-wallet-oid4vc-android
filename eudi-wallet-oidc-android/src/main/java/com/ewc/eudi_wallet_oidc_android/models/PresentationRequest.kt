@@ -42,6 +42,7 @@ data class DCQL(
 data class CredentialList(
     @SerializedName("id") var id: String? = null,
     @SerializedName("format") var format: String? = null,
+    @SerializedName("multiple") var multiple: Boolean = false,
     @SerializedName("meta") var meta: Meta? = null,
     val claims: List<DcqlClaim>?=null,
     val claim_sets: List<List<String>>? = null , // Only present in dc+sd-jwt format

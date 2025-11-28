@@ -65,6 +65,61 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
 
 
     }
+
+    override fun buildV2(
+        credentialList: List<String>?,
+        presentationRequest: PresentationRequest?,
+        did: String?,
+        jwk: JWK?,
+        inputDescriptors: Any?
+    ): List<String?> {
+        val claims = mutableMapOf<String, Any>()
+        Log.d(
+            "ProcessTokenRequest:",
+            "transaction data = ${presentationRequest?.transactionDdata}"
+        )
+        if (presentationRequest?.transactionDdata?.isNotEmpty() == true) {
+            val transactionDataItem =
+                presentationRequest.transactionDdata?.getOrNull(0)
+            if (checkTransactionDataWithInputDescriptor(inputDescriptors, transactionDataItem)) {
+                val hash = generateHash(transactionDataItem ?: "")
+                Log.d(
+                    "ProcessTokenRequest:",
+                    "transactionDataItem has added:${hash}"
+                )
+                if (transactionDataItem != null) {
+                    claims["transaction_data_hashes"] = listOf(hash)
+                    claims["transaction_data_hashes_alg"] = "sha-256"
+                }
+            }
+        } else {
+            Log.d(
+                "ProcessTokenRequest:",
+                "transaction data not added to claims"
+            )
+        }
+        val results = mutableListOf<String?>()
+if (!credentialList.isNullOrEmpty()) {
+    for (cred in credentialList) {
+        val tempCredential = "${cred}${if (cred.endsWith("~")) "" else "~"}"
+        val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
+            aud = presentationRequest?.clientId,
+            credential = tempCredential,
+            subJwk = jwk,
+            claims = if (claims.isNotEmpty()) claims else null,
+            nonce = presentationRequest?.nonce
+        )
+        if (keyBindingResponse != null) {
+            val updatedCredential = "$tempCredential$keyBindingResponse"
+            results.add(updatedCredential)
+        } else {
+            results.add(cred)
+        }
+    }
+}
+return results
+
+    }
     private fun checkTransactionDataWithInputDescriptor(
         inputDescriptors: Any?,
         transactionDataItem: String?

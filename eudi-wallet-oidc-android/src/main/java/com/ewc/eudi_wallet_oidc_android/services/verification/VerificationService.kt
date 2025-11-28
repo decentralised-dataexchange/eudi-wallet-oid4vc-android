@@ -223,6 +223,157 @@ class VerificationService : VerificationServiceInterface {
         }
     }
 
+    override suspend fun processAndSendAuthorisationResponseV2(
+        did: String?,
+        subJwk: JWK?,
+        presentationRequest: PresentationRequest,
+        credentialList: List<List<String>>?,
+        walletUnitAttestationJWT: String?,
+        walletUnitProofOfPossession: String?,
+    ): WrappedVpTokenResponse {
+        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
+        if (responseUri.isNullOrEmpty()) {
+            return WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(
+                    error = null,
+                    errorDescription = "Unable to resolve host: $responseUri"
+                )
+            )
+        }
+
+        val headers = mutableMapOf<String, String>().apply {
+            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+            }
+            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
+                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
+            }
+        }
+
+        return try {
+            val params = AuthorisationResponseHandler().prepareAuthorisationResponseV2(
+                presentationRequest = presentationRequest,
+                credentialList = credentialList,
+                did = did,
+                jwk = subJwk
+            )
+            Log.d("Params value:", params.toString())
+
+            val result = safeApiCallResponse {
+                ApiManager.api.getService()?.sendVPToken(
+                    presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+                    params,
+                    headers
+                )
+            }
+
+            result.fold(
+                onSuccess = { response ->
+                    when {
+                        response.code() == 200 -> {
+                            val bodyString = response.body()?.string()
+                            val gson = Gson()
+                            try {
+                                val vpTokenResponse =
+                                    gson.fromJson(bodyString, VPTokenResponse::class.java)
+                                WrappedVpTokenResponse(
+                                    vpTokenResponse = VPTokenResponse(
+                                        redirectUri = vpTokenResponse.redirectUri ?: run {
+                                            val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
+                                            jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
+                                                ?: "https://www.example.com?code=1"
+                                        }
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                WrappedVpTokenResponse(
+                                    vpTokenResponse = VPTokenResponse(
+                                        redirectUri = "https://www.example.com?code=1"
+                                    )
+                                )
+                            }
+                        }
+
+                        response.code() == 204 -> {
+                            val urlValue = response.raw().request.url.toString()
+                            if (urlValue.isNullOrEmpty()) {
+                                WrappedVpTokenResponse(
+                                    errorResponse = ErrorResponse(
+                                        error = null,
+                                        errorDescription = "The response URL is missing or empty"
+                                    )
+                                )
+                            } else {
+                                WrappedVpTokenResponse(
+                                    vpTokenResponse = VPTokenResponse(location = urlValue)
+                                )
+                            }
+                        }
+
+                        response.code() == 302 || response.code() == 200 -> {
+                            val locationHeader = response.headers()["Location"]
+                            if (locationHeader?.contains("error=") == true) {
+                                val errorParams = locationHeader.substringAfter("?").split("&").associate {
+                                    val (key, value) = it.split("=")
+                                    key to value
+                                }
+                                WrappedVpTokenResponse(
+                                    errorResponse = ErrorResponse(
+                                        error = when (errorParams["error"]) {
+                                            "invalid_request" -> 400
+                                            else -> null
+                                        },
+                                        errorDescription = errorParams["error_description"]
+                                    )
+                                )
+                            } else {
+                                WrappedVpTokenResponse(
+                                    vpTokenResponse = VPTokenResponse(
+                                        location = locationHeader ?: "https://www.example.com?code=1"
+                                    )
+                                )
+                            }
+                        }
+
+                        response.code() >= 400 -> {
+                            val errorBody = response.errorBody()?.string()
+                            val errorMessage =
+                                errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
+                            WrappedVpTokenResponse(
+                                errorResponse = ErrorResponse(
+                                    error = response.code(),
+                                    errorDescription = errorMessage
+                                )
+                            )
+                        }
+
+                        else -> WrappedVpTokenResponse(
+                            errorResponse = ErrorResponse(
+                                error = response.code(),
+                                errorDescription = "An unexpected error occurred"
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    WrappedVpTokenResponse(
+                        errorResponse = ErrorResponse(
+                            error = null,
+                            errorDescription = error.message ?: "Network or API error occurred"
+                        )
+                    )
+                }
+            )
+        } catch (e: Exception) {
+            WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(
+                    error = null,
+                    errorDescription = e.message.toString()
+                )
+            )
+        }
+    }
+
     /**
      * Returns all the list of credentials matching for all input descriptors
      */

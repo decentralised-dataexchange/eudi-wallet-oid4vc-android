@@ -12,4 +12,12 @@ interface VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: Any? = null
     ): String?
+
+    fun buildV2(
+        credentialList: List<String>?,
+        presentationRequest: PresentationRequest?,
+        did: String?,
+        jwk: JWK?,
+        inputDescriptors: Any? = null
+    ): List<String?>
 }
