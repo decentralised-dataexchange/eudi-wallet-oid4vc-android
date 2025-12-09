@@ -711,10 +711,12 @@ class IssueService : IssueServiceInterface {
                         "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
                         "pre-authorized_code" to (code ?: "")
                     ).apply {
-                        if (version == 1) {
-                            this["user_pin"] = userPin ?: ""
-                        } else {
-                            this["tx_code"] = userPin ?: ""
+                        if (userPin != null) {
+                            if (version == 1) {
+                                this["user_pin"] = userPin ?: ""
+                            } else {
+                                this["tx_code"] = userPin ?: ""
+                            }
                         }
                     }
                 } else {
