@@ -32,7 +32,8 @@ data class Filter(
     @SerializedName("type") var type: String? = null,
     @SerializedName("contains") var contains: Contains? = null,
     @SerializedName("pattern") var pattern: String? = null,
-    @SerializedName("const") var const: String? = null
+    @SerializedName("const") var const: Any? = null,
+    @SerializedName("enum") var enumValues: List<String>? = null
 
 )
 
