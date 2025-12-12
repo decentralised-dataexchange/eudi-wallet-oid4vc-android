@@ -32,7 +32,8 @@ class X509SanDnsSchemeHandler : ClientIdSchemeHandler {
                 val isClientIdInDnsNames =
                     X509SanRequestVerifier.Companion.instance.validateClientIDInCertificate(
                         x5cChain,
-                        wrappedPresentationRequest.presentationRequest?.clientId
+                        wrappedPresentationRequest.presentationRequest?.clientId,
+                        wrappedPresentationRequest.presentationRequest?.clientIdScheme
                     )
 
                 val isSignatureValid = X509VerifierNimbus().verifyJwtWithX5C(request)
