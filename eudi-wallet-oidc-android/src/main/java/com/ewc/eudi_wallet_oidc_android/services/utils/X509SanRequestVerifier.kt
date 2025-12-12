@@ -225,10 +225,14 @@ class X509SanRequestVerifier private constructor() {
 
     }
 
-    fun validateClientIDInCertificate(x5cChain: List<String>?, clientID: String?): Boolean {
+    fun validateClientIDInCertificate(
+        x5cChain: List<String>?,
+        clientID: String?,
+        clientIdScheme: String?
+    ): Boolean {
         if (x5cChain.isNullOrEmpty() || clientID.isNullOrEmpty()) return false
 
-        val scheme = ClientIdParser.getClientIdScheme(clientID) ?: return false
+        val scheme = ClientIdParser.getClientIdScheme(clientID) ?:  ClientIdScheme.fromScheme(clientIdScheme ?:"") ?: return false
         val identifier = ClientIdParser.getSchemeSpecificIdentifier(clientID) ?: return false
 
         return try {

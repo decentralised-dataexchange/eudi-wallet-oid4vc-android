@@ -36,7 +36,7 @@ object ClientIdParser {
         return if (identifier.isNotEmpty()) {
             identifier
         } else {
-            null
+            clientId
         }
     }
 }
