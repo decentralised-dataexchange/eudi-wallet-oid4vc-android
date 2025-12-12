@@ -37,7 +37,7 @@ object DCQLFiltering {
         val claims = credentialFilter.claims
         if (claims.isNullOrEmpty()) return emptyList()
         //need to check if $ is needed at the beginning of the path
-        if (credentialFilter.format == "dc+sd-jwt") {
+        if (credentialFilter.format == "dc+sd-jwt" || credentialFilter.format == "vc+sd-jwt") {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) { // loop A
 
                 val matchedFields = mutableListOf<MatchedField>()
