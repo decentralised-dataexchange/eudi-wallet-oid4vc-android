@@ -37,7 +37,7 @@ import co.nstant.`in`.cbor.model.Array as CborArray
 //    return encodeToCborBytes(coseSign1)
 //}
 
-fun createDeviceSignedCose(privateKey: PrivateKey): CborArray {
+fun createDeviceSignedCose(privateKey: PrivateKey, sessionTranscriptCbor: ByteArray): CborArray {
     // Protected header: {1: -7} (alg: ES256)
     val protectedHeader = Map().apply {
         put(UnsignedInteger(1), NegativeInteger(-7)) // alg = ES256
@@ -52,7 +52,7 @@ fun createDeviceSignedCose(privateKey: PrivateKey): CborArray {
         add(UnicodeString("Signature1"))
         add(ByteString(protectedBytes))
         add(ByteString(externalAad))
-        add(SimpleValue.NULL) // payload = null
+        add(ByteString(sessionTranscriptCbor)) // payload = null
     }
 
     val sigToBeSigned = encodeToCborBytes(sigStructure)
@@ -64,7 +64,7 @@ fun createDeviceSignedCose(privateKey: PrivateKey): CborArray {
     return CborArray().apply {
         add(ByteString(protectedBytes)) // h'a10126'
         add(Map())                      // {}
-        add(SimpleValue.NULL)           // null
+        add(ByteString(sessionTranscriptCbor))           // null
         add(ByteString(signatureBytes)) // h'<signature>'
     }
 }
