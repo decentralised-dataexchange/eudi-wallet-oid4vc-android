@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services
 
 import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.DCQL
+import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedField
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedPath
@@ -31,11 +32,117 @@ object DCQLFiltering {
 
      fun filterCredentialUsingSingleDCQLCredentialFilter(
         credentialFilter: CredentialList,
-        credentialList: List<String>
+        credentialList: List<String>,
+        credentialDocType: ArrayList<String?> ?= null
     ): List<MatchedCredential> {
         val filteredList: MutableList<MatchedCredential> = mutableListOf()
         val claims = credentialFilter.claims
-        if (claims.isNullOrEmpty()) return emptyList()
+         if (claims.isNullOrEmpty()) {
+             return when (credentialFilter.format) {
+
+                 "jwt_vc_json" -> {
+                     val typeValues: List<List<String>>? = credentialFilter.meta?.typeValues
+
+                     // If no typeValues provided, we cannot decide which JWT to return
+                     // → return empty list (do NOT return all credentials)
+                     if (typeValues.isNullOrEmpty()) {
+                         return emptyList()
+                     }
+
+                     credentialList.mapIndexedNotNull { index, credential ->
+
+                         // Extract credential types exactly the same way as your non-empty claim logic
+                         val credentialTypes: List<String> = try {
+                             val vcType = JsonPath.read<Any>(credential, "$.vc.type")
+                             when (vcType) {
+                                 is List<*> -> vcType.filterIsInstance<String>()
+                                 is String -> listOf(vcType)
+                                 else -> emptyList()
+                             }
+                         } catch (e: Exception) {
+                             try {
+                                 val type = JsonPath.read<Any>(credential, "$.type")
+                                 when (type) {
+                                     is List<*> -> type.filterIsInstance<String>()
+                                     is String -> listOf(type)
+                                     else -> emptyList()
+                                 }
+                             } catch (e2: Exception) {
+                                 emptyList()
+                             }
+                         }
+
+                         // Match DCQL-type rules exactly like your working path
+                         val matched = typeValues.any { requiredTypes ->
+                             requiredTypes.all { it in credentialTypes }
+                         }
+
+                         if (!matched) return@mapIndexedNotNull null
+
+                         // If type matches → return full JWT credential
+                         MatchedCredential(
+                             index = index,
+                             fields = listOf(
+                                 MatchedField(
+                                     index = 0,
+                                     path = MatchedPath(
+                                         index = 0,
+                                         path = "$",
+                                         value = JsonPath.read<Any>(credential, "$")
+                                     )
+                                 )
+                             )
+                         )
+                     }
+                 }
+
+
+                 "dc+sd-jwt" -> {
+                     credentialList.mapIndexedNotNull { index, cred ->
+
+                         // 1. Must contain `vct`
+                         val matchedVct = try {
+                             JsonPath.read<String>(cred, "$.vct")
+                         } catch (e: Exception) {
+                             return@mapIndexedNotNull null // Not an sd-jwt → skip
+                         }
+
+                         // 2. Must match vctValues
+                         val vctValues = credentialFilter.meta?.vctValues
+                         if (vctValues != null && !vctValues.contains(matchedVct)) {
+                             return@mapIndexedNotNull null
+                         }
+                         MatchedCredential(
+                             index = index,
+                             fields = emptyList()
+                         )
+
+                     }
+                 }
+
+
+                 "mso_mdoc" -> {
+                     val requiredDocType = credentialFilter.meta?.doctypeValue
+
+                     credentialList.mapIndexedNotNull { index, credential ->
+
+                         // 2️⃣ Enforce docType match
+                         if (!requiredDocType.isNullOrBlank() &&
+                             credentialDocType?.getOrNull(index) != requiredDocType) {
+                             return@mapIndexedNotNull null
+                         }
+
+                         // 3️⃣ No claims → no disclosure
+                         MatchedCredential(
+                             index = index,
+                             fields = emptyList()
+                         )
+                     }
+                 }
+
+                 else -> emptyList()
+             }
+         }
         //need to check if $ is needed at the beginning of the path
         if (credentialFilter.format == "dc+sd-jwt" || credentialFilter.format == "vc+sd-jwt") {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) { // loop A
