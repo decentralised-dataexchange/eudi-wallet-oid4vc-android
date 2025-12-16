@@ -19,6 +19,7 @@ class DCQLCredentialFilter {
             var processedCredentials: MutableList<String> = mutableListOf()
             var credentialList: ArrayList<String?> = arrayListOf()
             var credentialFormat: String? = null
+            var credentialDocType: ArrayList<String?> = arrayListOf()
             credentialFormat = dcqlCredential.format
 
 
@@ -34,6 +35,13 @@ class DCQLCredentialFilter {
                     ) ?: emptyList()
                 )
 
+                if(dcqlCredential.claims.isNullOrEmpty()) {
+                    allCredentialList.forEach { credential ->
+                        CborUtils.extractDocTypeFromIssuerAuth(listOf(credential))?.let {
+                            credentialDocType.add(it)
+                        }
+                    }
+                }
             } else {
                 credentialList = splitCredentialsBySdJWT(
                     allCredentialList,
@@ -44,7 +52,7 @@ class DCQLCredentialFilter {
             val filteredCredentialList: MutableList<String> = mutableListOf()
 
             val matches: List<MatchedCredential> =
-                DCQLFiltering.filterCredentialUsingSingleDCQLCredentialFilter(dcqlCredential, processedCredentials)
+                DCQLFiltering.filterCredentialUsingSingleDCQLCredentialFilter(dcqlCredential, processedCredentials,credentialDocType)
 
             for (match in matches) {
                 filteredCredentialList.add(credentialList[match.index] ?: "")
