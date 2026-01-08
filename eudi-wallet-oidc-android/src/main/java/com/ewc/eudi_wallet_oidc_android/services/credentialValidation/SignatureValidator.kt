@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.credentialValidation
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessEbsiJWKFromKID
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromJwksUri
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromKID
+import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromWellKnownEndPoint
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessKeyJWKFromKID
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessTDWFromKID
 import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessWebJWKFromKID
@@ -20,6 +21,7 @@ import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.RSAKey
+import org.json.JSONObject
 class SignatureValidator {
 
     /**
@@ -42,6 +44,9 @@ class SignatureValidator {
                 val kid = header.keyID // Extract the 'kid' (key ID) from the JWT header
                 val algorithm = jwsObject.header.algorithm
                 val x5c = jwsObject.header.toJSONObject()
+                val payload = jwsObject.payload.toString() // Get JWT payload as string
+                val payloadJson = JSONObject(payload)
+                val iss = payloadJson.optString("iss", null)
 
                 var x5cValid = false // Track x5c validation result
                 if (x5c.contains("x5c")) {
@@ -89,6 +94,11 @@ class SignatureValidator {
                 }
                 if (jwksUri!=null) {
                     ProcessJWKFromJwksUri().processJWKFromJwksUri(kid, jwksUri)?.let { jwk ->
+                        responseList.add(jwk)
+                    }
+                }
+                if (responseList.isEmpty() && iss != null && kid != null) {
+                    ProcessJWKFromWellKnownEndPoint().processJWKFromWellKnownEndPoint(kid,iss)?.let{ jwk ->
                         responseList.add(jwk)
                     }
                 }
