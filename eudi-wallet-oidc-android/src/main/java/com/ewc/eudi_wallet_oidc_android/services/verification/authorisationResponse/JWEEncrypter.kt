@@ -84,8 +84,19 @@ class JWEEncrypter {
             .build()
 
         Log.d(TAG, "ECKey created: $publicECJWK")
+        val encSupported = clientMetadataJson
+            .getAsJsonArray("encrypted_response_enc_values_supported")
+            ?.map { it.asString }
+            ?: emptyList()
 
-        val header = JWEHeader.Builder(JWEAlgorithm.ECDH_ES, EncryptionMethod.A128CBC_HS256)
+        Log.d(TAG, "Verifier supported enc methods: $encSupported")
+
+        val encryptionMethod = selectEncryptionMethod(encSupported)
+
+        Log.d(TAG, "Selected encryption method: $encryptionMethod")
+
+
+        val header = JWEHeader.Builder(JWEAlgorithm.ECDH_ES, encryptionMethod)
             .keyID(p256Key?.get("kid")?.asString)
             .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
             .agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
@@ -163,4 +174,32 @@ class JWEEncrypter {
         return requiresEncryption
 
     }
+
+    private fun toEncryptionMethod(enc: String): EncryptionMethod? =
+        when (enc) {
+            "A128CBC-HS256" -> EncryptionMethod.A128CBC_HS256
+            "A128GCM" -> EncryptionMethod.A128GCM
+            "A256GCM" -> EncryptionMethod.A256GCM
+            else -> null
+        }
+    private fun selectEncryptionMethod(
+        supported: List<String>
+    ): EncryptionMethod {
+        val preferenceOrder = listOf(
+            "A128CBC-HS256",
+            "A128GCM",
+            "A256GCM"
+        )
+
+        val selected = preferenceOrder
+            .firstOrNull { it in supported }
+            ?: throw IllegalArgumentException(
+                "No supported encryption method found. Verifier supports: $supported"
+            )
+
+        return toEncryptionMethod(selected)
+            ?: throw IllegalStateException("Unsupported enc method: $selected")
+    }
+
+
 }
