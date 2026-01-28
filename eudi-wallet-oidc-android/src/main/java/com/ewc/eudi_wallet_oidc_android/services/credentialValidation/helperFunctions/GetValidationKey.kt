@@ -30,7 +30,22 @@ suspend fun getValidationKey(issuerAuth: CborArray, jwksUri: String?): PublicKey
     if (x5chainValue != null) {
         val certBytes = when (x5chainValue) {
             is CborByteString -> x5chainValue.bytes
-            is CborArray -> (x5chainValue.dataItems[0] as CborByteString).bytes
+            is CborArray -> {
+                val dataItem = x5chainValue.dataItems.firstOrNull()
+                    ?: throw IllegalArgumentException("Empty x5c array")
+
+                when (dataItem) {
+                    is CborByteString -> dataItem.bytes
+
+                    is CborUnicodeString ->
+                        java.util.Base64.getDecoder().decode(dataItem.string)
+
+                    else -> throw IllegalArgumentException(
+                        "Unsupported x5c entry type: ${dataItem.javaClass}"
+                    )
+                }
+            }
+
             else -> throw IllegalArgumentException("Unsupported x5chain format")
         }
         val cf = CertificateFactory.getInstance("X.509")
