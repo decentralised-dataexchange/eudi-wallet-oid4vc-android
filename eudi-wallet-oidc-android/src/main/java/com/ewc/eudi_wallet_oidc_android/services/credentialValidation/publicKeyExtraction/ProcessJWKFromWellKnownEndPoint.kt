@@ -34,8 +34,11 @@ class ProcessJWKFromWellKnownEndPoint {
             val metadata = JSONObject(body)
 
             // 3. Extract jwks_uri or jwks
-            val jwksUri = metadata.optString("jwks_uri", null)
-            val jwks = metadata.optJSONObject("jwks")?.toString()
+            val jwksUri =
+                if (!metadata.isNull("jwks_uri")) metadata.getString("jwks_uri") else null
+
+            val jwks =
+                if (!metadata.isNull("jwks")) metadata.getJSONObject("jwks").toString() else null
 
             // 4. Resolve JWK
             when {
