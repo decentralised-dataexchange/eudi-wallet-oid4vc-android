@@ -23,10 +23,10 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         var processPresentationDefinition: PresentationDefinition?=null
         if (presentationRequest == null) return null
         if (presentationRequest?.dcqlQuery==null) {
-             processPresentationDefinition = processPresentationDefinition(
+            processPresentationDefinition = processPresentationDefinition(
                 presentationRequest.presentationDefinition
             )
-       }
+        }
 
         val documentList = mutableListOf<Document>()
         val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
@@ -56,7 +56,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         )
 
         val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
-        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP)
+        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
         return cborToken
     }
@@ -104,7 +104,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         )
 
         val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
-        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP)
+        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
         return listOf(cborToken)
     }
