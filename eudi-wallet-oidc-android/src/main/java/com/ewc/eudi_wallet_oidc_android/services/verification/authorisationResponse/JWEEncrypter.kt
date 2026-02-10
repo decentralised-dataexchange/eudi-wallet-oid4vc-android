@@ -74,20 +74,58 @@ class JWEEncrypter {
 
         Log.d(TAG, "Creating ECKey with kid: ${p256Key?.get("kid")?.asString}")
 
+        val jweAlgorithm: JWEAlgorithm =
+            clientMetadataJson
+                .getAsJsonPrimitive("authorization_encrypted_response_alg")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+                ?.let { alg ->
+                    val parsedAlg = try {
+                        JWEAlgorithm.parse(alg)
+                    } catch (e: Exception) {
+                        throw IllegalArgumentException("Unsupported JWE encryption algorithm.", e)
+                    }
+
+                    if (parsedAlg != JWEAlgorithm.ECDH_ES) {
+                        throw IllegalArgumentException("The specified JWE encryption algorithm is not supported.")
+                    }
+
+                    parsedAlg
+                }
+                ?: JWEAlgorithm.ECDH_ES
+
+        Log.d(TAG, "Selected JWE algorithm: $jweAlgorithm")
+
         val publicECJWK = ECKey.Builder(
             Curve.P_256,
             Base64URL.from(p256Key?.get("x")?.asString),
             Base64URL.from(p256Key?.get("y")?.asString)
         )
             .keyID(p256Key?.get("kid")?.asString)
-            .algorithm(JWEAlgorithm.ECDH_ES)
+            .algorithm(jweAlgorithm)
             .build()
 
         Log.d(TAG, "ECKey created: $publicECJWK")
-        val encSupported = clientMetadataJson
-            .getAsJsonArray("encrypted_response_enc_values_supported")
-            ?.map { it.asString }
-            ?: emptyList()
+        val encSupported: List<String> = when {
+
+            clientMetadataJson.has("authorization_encrypted_response_enc") ->
+                listOf(
+                    clientMetadataJson
+                        .getAsJsonPrimitive("authorization_encrypted_response_enc")
+                        .asString
+                )
+
+            clientMetadataJson.has("encrypted_response_enc_values_supported") ->
+                clientMetadataJson
+                    .getAsJsonArray("encrypted_response_enc_values_supported")
+                    .map { it.asString }
+
+            clientMetadataJson.has("jwks") -> {
+                listOf("A128GCM")
+            }
+
+            else -> emptyList()
+        }
 
         Log.d(TAG, "Verifier supported enc methods: $encSupported")
 
@@ -95,8 +133,7 @@ class JWEEncrypter {
 
         Log.d(TAG, "Selected encryption method: $encryptionMethod")
 
-
-        val header = JWEHeader.Builder(JWEAlgorithm.ECDH_ES, encryptionMethod)
+        val header = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
             .keyID(p256Key?.get("kid")?.asString)
             .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
             .agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
