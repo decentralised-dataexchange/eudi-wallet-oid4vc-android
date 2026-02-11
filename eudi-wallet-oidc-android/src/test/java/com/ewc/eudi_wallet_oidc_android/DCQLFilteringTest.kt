@@ -5,7 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.DCQL
 import com.ewc.eudi_wallet_oidc_android.models.DcqlClaim
 import com.ewc.eudi_wallet_oidc_android.models.Meta
-import com.ewc.eudi_wallet_oidc_android.services.DCQLFiltering
+import com.ewc.eudi_wallet_oidc_android.services.dcql.DCQLFiltering
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
