@@ -1,8 +1,9 @@
-package com.ewc.eudi_wallet_oidc_android.services
+package com.ewc.eudi_wallet_oidc_android.services.dcql
 
 import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.DCQL
-import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
+import com.ewc.eudi_wallet_oidc_android.models.DcqlClaim
+import com.ewc.eudi_wallet_oidc_android.services.dcql.DcqlValueMatcher.matchesClaimValues
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedField
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedPath
@@ -31,9 +32,9 @@ object DCQLFiltering {
     }
 
      fun filterCredentialUsingSingleDCQLCredentialFilter(
-        credentialFilter: CredentialList,
-        credentialList: List<String>,
-        credentialDocType: ArrayList<String?> ?= null
+         credentialFilter: CredentialList,
+         credentialList: List<String>,
+         credentialDocType: ArrayList<String?> ?= null
     ): List<MatchedCredential> {
         val filteredList: MutableList<MatchedCredential> = mutableListOf()
         val claims = credentialFilter.claims
@@ -163,6 +164,10 @@ object DCQLFiltering {
                     try {
                         val matchedPathValue = JsonPath.read<Any>(credential, ensureJsonPathPrefix(joinedPath))
 
+                        if (!matchesClaimValues(claim, matchedPathValue)) {
+                            continue@credentialLoop
+                        }
+
                         matchedFields.add(
                             MatchedField(
                                 index = credentialIndex,
@@ -179,10 +184,12 @@ object DCQLFiltering {
                     }
                 }
                 // If all claims matched, add credential to filteredList
-                filteredList.add(MatchedCredential(
-                    index = credentialIndex,
-                    fields = matchedFields
-                ))
+                filteredList.add(
+                    MatchedCredential(
+                        index = credentialIndex,
+                        fields = matchedFields
+                    )
+                )
             }
         } else if (credentialFilter.format == "mso_mdoc") {
             credentialLoop@ for ((credentialIndex, credential) in credentialList.withIndex()) {
@@ -211,6 +218,11 @@ object DCQLFiltering {
                     try {
                         val matchedPathValue = JsonPath.read<Any>(credential, path)
 
+                        if (!matchesClaimValues(claim, matchedPathValue)) {
+                            continue@credentialLoop
+                        }
+
+
                         matchedFields.add(
                             MatchedField(
                                 index = credentialIndex,
@@ -227,10 +239,12 @@ object DCQLFiltering {
                     }
                 }
 
-                filteredList.add(MatchedCredential(
-                    index = credentialIndex,
-                    fields = matchedFields
-                ))
+                filteredList.add(
+                    MatchedCredential(
+                        index = credentialIndex,
+                        fields = matchedFields
+                    )
+                )
             }
         }
         else if (credentialFilter.format == "jwt_vc_json") {
@@ -313,6 +327,10 @@ object DCQLFiltering {
                     }
 
                     if (matched && matchedPath != null && matchedValue != null) {
+
+                        if (!matchesClaimValues(claim, matchedValue)) {
+                            continue@credentialLoop
+                        }
                         matchedFields.add(
                             MatchedField(
                                 index = credentialIndex,
@@ -339,6 +357,8 @@ object DCQLFiltering {
 
         return filteredList
     }
+
+
 
     private fun ensureJsonPathPrefix(path: String): String {
         return if (path.startsWith("$.")) path else if (path.isNotEmpty()) "$.$path" else ""

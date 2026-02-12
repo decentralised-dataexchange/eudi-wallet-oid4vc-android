@@ -7,7 +7,7 @@ import com.ewc.eudi_wallet_oidc_android.models.DCQL
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
-import com.ewc.eudi_wallet_oidc_android.services.DCQLFiltering
+import com.ewc.eudi_wallet_oidc_android.services.dcql.DCQLFiltering
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.processCredentialsToJsonString
 import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.splitCredentialsBySdJWT

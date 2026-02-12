@@ -66,7 +66,8 @@ data class DcqlClaim(
     val id: String?=null,
     @SerializedName("path") val path: List<String>? = null,
     @SerializedName("namespace") val namespace: String? = null,
-    @SerializedName("claim_name") val claimName: String? = null
+    @SerializedName("claim_name") val claimName: String? = null,
+    @SerializedName("values") val values: List<Any>? = null,
 )
 data class CredentialSet(
     val purpose: String?=null,
