@@ -112,9 +112,11 @@ object WalletAttestationUtil {
 
             WalletAttestationResult(
                 walletUnitAttestationCredential?.credentialOffer,
+                walletUnitAttestationCredential?.walletUnitAttestation,
                 clientAssertion,
                 did,
-                ecKey
+                ecKey,
+                walletUnitAttestationCredential?.credentialIssuer
             )
 
         } catch (e: Exception) {
