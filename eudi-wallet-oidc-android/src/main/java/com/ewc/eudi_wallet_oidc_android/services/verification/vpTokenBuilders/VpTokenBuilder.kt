@@ -10,7 +10,8 @@ interface VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any? = null
+        inputDescriptors: Any? = null,
+        isScaFlow: Boolean = false
     ): String?
 
     fun buildV2(
@@ -18,6 +19,7 @@ interface VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any? = null
+        inputDescriptors: Any? = null,
+        isScaFlow: Boolean = false
     ): List<String?>
 }

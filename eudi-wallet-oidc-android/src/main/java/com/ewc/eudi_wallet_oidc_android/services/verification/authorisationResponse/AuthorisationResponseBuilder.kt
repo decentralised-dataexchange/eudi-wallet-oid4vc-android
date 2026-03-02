@@ -34,6 +34,7 @@ class AuthorisationResponseBuilder {
         credentialList: List<String>?,
         did: String?,
         jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, Any?> {
         var params = mapOf<String, Any?>()
         if (presentationRequest.dcqlQuery != null) {
@@ -41,7 +42,8 @@ class AuthorisationResponseBuilder {
                 presentationRequest = presentationRequest,
                 credentialsList = credentialList,
                 did = did,
-                jwk = jwk
+                jwk = jwk,
+                isScaFlow = isScaFlow
             )
         } else {
             var vpToken: List<String>? = null
@@ -49,7 +51,7 @@ class AuthorisationResponseBuilder {
             var presentationSubmission: PresentationSubmission? = null
 
             val processTokenResponse =
-                processTokenRequest(presentationRequest, did, credentialList, jwk)
+                processTokenRequest(presentationRequest, did, credentialList, jwk, isScaFlow)
             vpToken = processTokenResponse.first
             Log.d("processAndSendAuthorisationResponse", "vpToken:$vpToken")
             idToken = processTokenResponse.second
@@ -117,6 +119,7 @@ class AuthorisationResponseBuilder {
         credentialList: List<List<String>>?,
         did: String?,
         jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, Any?> {
         var params = mapOf<String, Any?>()
         if (presentationRequest.dcqlQuery != null) {
@@ -124,7 +127,8 @@ class AuthorisationResponseBuilder {
                 presentationRequest = presentationRequest,
                 credentialsList = credentialList,
                 did = did,
-                jwk = jwk
+                jwk = jwk,
+                isScaFlow = isScaFlow
             )
         } else {
             var vpToken: List<String>? = null
@@ -132,7 +136,7 @@ class AuthorisationResponseBuilder {
             var presentationSubmission: PresentationSubmission? = null
 
             val processTokenResponse =
-                processTokenRequestV2(presentationRequest, did, credentialList, jwk)
+                processTokenRequestV2(presentationRequest, did, credentialList, jwk, isScaFlow)
             vpToken = processTokenResponse.first
             Log.d("processAndSendAuthorisationResponse", "vpToken:$vpToken")
             idToken = processTokenResponse.second
@@ -199,7 +203,8 @@ class AuthorisationResponseBuilder {
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<String>?,
-        subJwk: JWK?
+        subJwk: JWK?,
+        isScaFlow: Boolean = false
     ): Triple<List<String>?, String?, PresentationSubmission?> {
 
         val vpTokenList: MutableList<String> = mutableListOf()
@@ -263,7 +268,8 @@ class AuthorisationResponseBuilder {
                                 presentationRequest = presentationRequest,
                                 did = did,
                                 jwk = subJwk ,
-                                inputDescriptors = inputDescriptors
+                                inputDescriptors = inputDescriptors,
+                                isScaFlow = isScaFlow
                             )
                             if (updatedCredential!=null)
                             {
@@ -367,7 +373,8 @@ class AuthorisationResponseBuilder {
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<List<String>>?,
-        subJwk: JWK?
+        subJwk: JWK?,
+        isScaFlow: Boolean = false
     ): Triple<List<String>?, String?, PresentationSubmission?> {
 
         val vpTokenList: MutableList<String> = mutableListOf()
@@ -431,7 +438,8 @@ class AuthorisationResponseBuilder {
                                 presentationRequest = presentationRequest,
                                 did = did,
                                 jwk = subJwk ,
-                                inputDescriptors = inputDescriptors
+                                inputDescriptors = inputDescriptors,
+                                isScaFlow = isScaFlow
                             )
                             if (updatedCredential!=null)
                             {

@@ -17,6 +17,7 @@ class AuthorisationResponseHandler {
         credentialList: List<String>?,
         did: String?,
         jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, String> {
         Log.d(TAG, "Preparing authorisation response...")
         Log.d(TAG, "Response mode: ${presentationRequest.responseMode}")
@@ -31,7 +32,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 ).also {
                     Log.d(TAG, "DIRECT_POST response built: $it")
                 }
@@ -52,7 +54,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 )
                 Log.d(TAG, "DIRECT_POST_JWT payload: $authorisationResponsePayload")
 
@@ -79,7 +82,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 ).also {
                     Log.d(TAG, "IAR_POST response built: $it")
                 }
@@ -108,7 +112,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 )
                 Log.d(TAG, "IAR_POST_JWT payload: $authorisationResponsePayload")
 
@@ -139,6 +144,7 @@ class AuthorisationResponseHandler {
         credentialList: List<List<String>>?,
         did: String?,
         jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, String> {
         Log.d(TAG, "Preparing authorisation response...")
         Log.d(TAG, "Response mode: ${presentationRequest.responseMode}")
@@ -153,7 +159,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 ).also {
                     Log.d(TAG, "DIRECT_POST response built: $it")
                 }
@@ -174,7 +181,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 )
                 Log.d(TAG, "DIRECT_POST_JWT payload: $authorisationResponsePayload")
 
@@ -201,7 +209,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 ).also {
                     Log.d(TAG, "IAR_POST response built: $it")
                 }
@@ -230,7 +239,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    isScaFlow = isScaFlow
                 )
                 Log.d(TAG, "IAR_POST_JWT payload: $authorisationResponsePayload")
 

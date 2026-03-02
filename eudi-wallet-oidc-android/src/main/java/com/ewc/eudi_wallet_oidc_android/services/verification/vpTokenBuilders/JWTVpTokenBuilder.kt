@@ -21,7 +21,8 @@ class JWTVpTokenBuilder: VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): String? {
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"
@@ -80,7 +81,8 @@ class JWTVpTokenBuilder: VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): List<String?> {
         val iat = Date()
         val jti = "urn:uuid:${UUID.randomUUID()}"

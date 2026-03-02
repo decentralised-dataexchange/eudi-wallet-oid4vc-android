@@ -22,7 +22,8 @@ class DCQLAuthorisationResponseBuilder {
         credentialsList: List<String>?,
         presentationRequest: PresentationRequest,
         did: String?,
-        jwk: JWK?
+        jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
         val presentationDefinition =
@@ -52,7 +53,8 @@ class DCQLAuthorisationResponseBuilder {
                     inputDescriptors = if (presentationRequest.dcqlQuery != null)
                         presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
                     else
-                        presentationDefinition.inputDescriptors?.getOrNull(index)
+                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                    isScaFlow = isScaFlow
                 )
                 val gson = Gson()
                 val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
@@ -76,7 +78,8 @@ class DCQLAuthorisationResponseBuilder {
         credentialsList: List<List<String>>?,
         presentationRequest: PresentationRequest,
         did: String?,
-        jwk: JWK?
+        jwk: JWK?,
+        isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
         val presentationDefinition =
@@ -106,7 +109,8 @@ class DCQLAuthorisationResponseBuilder {
                     inputDescriptors = if (presentationRequest.dcqlQuery != null)
                         presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
                     else
-                        presentationDefinition.inputDescriptors?.getOrNull(index)
+                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                    isScaFlow = isScaFlow
                 )
                 val gson = Gson()
                 val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
@@ -140,7 +144,8 @@ class DCQLAuthorisationResponseBuilder {
         did: String?,
         type: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean = false
     ): String? {
         return if (type == "mso_mdoc") {
             MDocVpTokenBuilder().build(
@@ -155,7 +160,8 @@ class DCQLAuthorisationResponseBuilder {
                 presentationRequest = presentationRequest,
                 did = did,
                 jwk = jwk ,
-                inputDescriptors = inputDescriptors
+                inputDescriptors = inputDescriptors,
+                isScaFlow = isScaFlow
             )
         }else if(type == "jwt"){
             JWTVpTokenBuilder().build(
@@ -176,7 +182,8 @@ class DCQLAuthorisationResponseBuilder {
         did: String?,
         type: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean = false
     ): List<String?>? {
         return if (type == "mso_mdoc") {
             val vpTokenList: MutableList<String?> = mutableListOf()
@@ -197,7 +204,8 @@ class DCQLAuthorisationResponseBuilder {
                 presentationRequest = presentationRequest,
                 did = did,
                 jwk = jwk ,
-                inputDescriptors = inputDescriptors
+                inputDescriptors = inputDescriptors,
+                isScaFlow = isScaFlow
             )
         }else if(type == "jwt"){
             val vpTokenList: MutableList<String?> = mutableListOf()

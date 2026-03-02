@@ -340,60 +340,7 @@ object WalletAttestationUtil {
     }
 
 
-    fun createKeyBindingJWT(
-        aud: String?,
-        credential: String,
-        subJwk: JWK?,
-        claims: Map<String, Any>?,
-        nonce: String?
-    ): String? {
-        try {
-            // Start building the JWT claims
-            val claimsSetBuilder = JWTClaimsSet.Builder()
-                .claim("nonce",nonce ?: UUID.randomUUID().toString())
-                .claim("aud", aud)
-                .claim("iat", Date())
-                .claim("sd_hash", SDJWTService().calculateSHA256Hash(credential))
 
-            // If claims are provided, add them to the claims set
-            claims?.forEach { (key, value) ->
-                claimsSetBuilder.claim(key, value)
-            }
-
-            // Build the claims set
-            val claimsSet = claimsSetBuilder.build()
-            Log.d("processToken:", "createKeyBindingJWT claimsSet value = ${claimsSet.toJSONObject()}")
-
-            // Create JWT header
-            val header = JWSHeader.Builder(JWSAlgorithm.ES256)
-                .type(JOSEObjectType("kb+jwt"))
-                .build()
-
-            // Sign the JWT
-            val signedJWT = SignedJWT(header, claimsSet)
-
-            // Create signer with the private key
-            if (subJwk is ECKey) {
-                Log.d("processToken:", "subJwk private key = ${subJwk.toPrivateKey()}")
-            }
-            else{
-                Log.d("processToken:", "subJwk type = ${subJwk?.javaClass?.name}")
-
-            }
-            val signer = ECDSASigner(subJwk as ECKey)
-
-            // Sign the JWT
-            signedJWT.sign(signer)
-            Log.d("processToken:","createKeyBindingJWT signedJWT returned successfully")
-            // Return the serialized JWT
-            return signedJWT.serialize()
-
-
-        } catch (e: Exception) {
-            Log.d("processToken:", "createKeyBindingJWT signedJWT error ${e.message.toString()}")
-            return null
-        }
-    }
     fun generateHash(input: String): String? {
         return try {
             val digest = MessageDigest.getInstance("SHA-256")

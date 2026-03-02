@@ -5,6 +5,7 @@ import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.services.utils.createKeyBindingJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.generateHash
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
@@ -18,7 +19,8 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): String? {
                 val claims = mutableMapOf<String, Any>()
                 Log.d(
@@ -46,13 +48,19 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
                     )
                 }
                 val tempCredenital = "${credentialList?.getOrNull(0)}${if (credentialList?.getOrNull(0)?.endsWith("~") == true) "" else "~"}"
-                val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
+                val keyBindingResponse = createKeyBindingJWT(
                     aud = presentationRequest?.clientId,
                     credential = tempCredenital,
                     subJwk = jwk,
                     claims = if (claims.isNotEmpty()) claims else null,
-                    nonce = presentationRequest?.nonce
-
+                    nonce = presentationRequest?.nonce,
+                    responseMode = if (isScaFlow) presentationRequest?.responseMode else null,
+                    amr = if (isScaFlow) {
+                        listOf(
+                            mapOf("possession" to "key_in_local_native_wscd"),
+                            mapOf("inherence" to "fingerprint_device")
+                        )
+                    } else null
                 )
                 if (keyBindingResponse != null) {
                     val updatedCredential =
@@ -71,7 +79,8 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): List<String?> {
         val claims = mutableMapOf<String, Any>()
         Log.d(
@@ -102,12 +111,19 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
 if (!credentialList.isNullOrEmpty()) {
     for (cred in credentialList) {
         val tempCredential = "${cred}${if (cred.endsWith("~")) "" else "~"}"
-        val keyBindingResponse = WalletAttestationUtil.createKeyBindingJWT(
+        val keyBindingResponse = createKeyBindingJWT(
             aud = presentationRequest?.clientId,
             credential = tempCredential,
             subJwk = jwk,
             claims = if (claims.isNotEmpty()) claims else null,
-            nonce = presentationRequest?.nonce
+            nonce = presentationRequest?.nonce,
+            responseMode = if (isScaFlow) presentationRequest?.responseMode else null,
+            amr = if (isScaFlow) {
+                listOf(
+                    mapOf("possession" to "key_in_local_native_wscd"),
+                    mapOf("inherence" to "fingerprint_device")
+                )
+            } else null
         )
         if (keyBindingResponse != null) {
             val updatedCredential = "$tempCredential$keyBindingResponse"

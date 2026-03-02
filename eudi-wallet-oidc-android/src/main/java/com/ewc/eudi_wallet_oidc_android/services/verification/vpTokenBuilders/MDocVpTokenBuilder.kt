@@ -18,7 +18,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): String? {
         var processPresentationDefinition: PresentationDefinition?=null
         if (presentationRequest == null) return null
@@ -66,7 +67,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         presentationRequest: PresentationRequest?,
         did: String?,
         jwk: JWK?,
-        inputDescriptors: Any?
+        inputDescriptors: Any?,
+        isScaFlow: Boolean
     ): List<String?> {
         var processPresentationDefinition: PresentationDefinition?=null
         if (presentationRequest == null) return listOf()
