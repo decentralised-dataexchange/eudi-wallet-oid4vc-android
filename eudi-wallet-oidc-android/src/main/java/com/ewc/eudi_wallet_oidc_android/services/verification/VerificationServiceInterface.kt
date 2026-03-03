@@ -33,6 +33,7 @@ interface VerificationServiceInterface {
         credentialList: List<String>? = null,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
+        isScaFlow: Boolean = false
     ): WrappedVpTokenResponse?
 
     suspend fun processAndSendAuthorisationResponseV2(
@@ -42,6 +43,7 @@ interface VerificationServiceInterface {
         credentialList: List<List<String>>? = null,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
+        isScaFlow: Boolean = false
     ): WrappedVpTokenResponse?
 
     /**
