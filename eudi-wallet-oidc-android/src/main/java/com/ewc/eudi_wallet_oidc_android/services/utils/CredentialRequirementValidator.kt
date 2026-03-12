@@ -15,7 +15,7 @@ object CredentialRequirementValidator {
     fun validate(
         credentialList: List<List<Any?>>,
         presentationRequest: PresentationRequest?
-    ): Boolean {
+    ): Pair<Boolean, List<String>> {
         val credentialSets = presentationRequest?.dcqlQuery?.credential_sets ?: emptyList()
         val credentialsFromDcql = presentationRequest?.dcqlQuery?.credentials ?: emptyList()
 
@@ -41,7 +41,8 @@ object CredentialRequirementValidator {
             }
 
             if (isRequired && !setSatisfied) {
-                return false // at least one mandatory set not satisfied
+                val missingIds = optionsList.flatten().distinct()
+                return Pair(false, missingIds)// at least one mandatory set not satisfied
             }
 
             if (!isRequired && setSatisfied) {
@@ -51,9 +52,10 @@ object CredentialRequirementValidator {
 
         // Extra rule: if all sets are optional, at least one must be satisfied
         if (!hasMandatorySet && !anyOptionalSatisfied) {
-            return false
+            val allMissingIds = credentialSets.flatMap { it.options?.flatten() ?: emptyList() }.distinct()
+            return Pair(false, allMissingIds)
         }
 
-        return true
+        return Pair(true, emptyList())
     }
 }
