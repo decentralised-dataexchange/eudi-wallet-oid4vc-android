@@ -21,6 +21,7 @@ object CredentialRequirementValidator {
 
         var hasMandatorySet = false
         var anyOptionalSatisfied = false
+        val missingIds = mutableSetOf<String>()
 
         for (set in credentialSets) {
             val isRequired = set.required != false // default = true
@@ -41,13 +42,16 @@ object CredentialRequirementValidator {
             }
 
             if (isRequired && !setSatisfied) {
-                val missingIds = optionsList.flatten().distinct()
-                return Pair(false, missingIds)// at least one mandatory set not satisfied
+                missingIds.addAll(optionsList.flatten())
             }
 
             if (!isRequired && setSatisfied) {
                 anyOptionalSatisfied = true
             }
+        }
+
+        if (missingIds.isNotEmpty()) {
+            return Pair(false, missingIds.toList())
         }
 
         // Extra rule: if all sets are optional, at least one must be satisfied
