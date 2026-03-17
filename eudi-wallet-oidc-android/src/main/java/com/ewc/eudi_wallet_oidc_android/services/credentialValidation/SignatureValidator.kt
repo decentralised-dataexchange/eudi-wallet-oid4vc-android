@@ -48,6 +48,8 @@ class SignatureValidator {
                 val payloadJson = JSONObject(payload)
                 val iss = payloadJson.optString("iss", null)
 
+                val plainJwk = header.jwk
+
                 var x5cValid = false // Track x5c validation result
                 if (x5c.contains("x5c")) {
                     val x5cChain: List<String>? = X509SanRequestVerifier.instance.extractX5cFromJWT(jwt)
@@ -62,6 +64,12 @@ class SignatureValidator {
 
                 // If x5c validation failed, proceed with kid-based validation
                 val responseList: MutableList<JWK> = mutableListOf()
+
+                //Support for plain JWK in header
+                if (plainJwk != null) {
+                    responseList.add(plainJwk)
+                }
+
                 if (kid != null && kid.startsWith("did:key:z")){
                     ProcessKeyJWKFromKID().processKeyJWKFromKID(kid, algorithm)?.let { jwk ->
                         responseList.add(jwk) // Only add if not null
