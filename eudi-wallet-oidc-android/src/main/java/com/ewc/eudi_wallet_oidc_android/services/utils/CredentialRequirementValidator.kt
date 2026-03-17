@@ -42,7 +42,17 @@ object CredentialRequirementValidator {
             }
 
             if (isRequired && !setSatisfied) {
-                missingIds.addAll(optionsList.flatten())
+                // Look through all options that could have satisfied this set
+                optionsList.forEach { optionGroup ->
+                    optionGroup.forEach { optionId ->
+                        val position = credentialsFromDcql.indexOfFirst { it.id == optionId }
+                        // Only add to missingIds if the list at this position is null or empty
+                        val itemsAtPosition = credentialList.getOrNull(position)
+                        if (itemsAtPosition.isNullOrEmpty()) {
+                            missingIds.add(optionId)
+                        }
+                    }
+                }
             }
 
             if (!isRequired && setSatisfied) {
