@@ -58,34 +58,49 @@ fun createDeviceSignedCose(
     // val namespacesTagged = ByteString(encodeToCborBytes(namespaces)).also { it.setTag(24) }
 
     // 3. Build DeviceAuthentication array
+//    sessionTranscriptCbor MUST be a CborArray DataItem, not raw bytes
     val deviceAuthentication = CborArray().apply {
         add(UnicodeString("DeviceAuthentication"))
-        add(sessionTranscriptCbor)
+        add(sessionTranscriptCbor)                           // CborArray DataItem
         add(UnicodeString("eu.europa.ec.eudi.pid.1"))
-        add(namespaces)  // must be #6.24 tagged bstr
+        add(namespaces)                                      // #6.24 tagged bstr
     }
 
-    // 4. Wrap DeviceAuthentication as #6.24 tagged bstr
-    val deviceAuthenticationBytes = encodeToCborBytes(deviceAuthentication)
-    val deviceAuthTagged = ByteString(deviceAuthenticationBytes).also { it.setTag(24) }
+// 4. Encode DeviceAuthentication to CBOR bytes (the "inner" bytes)
+    val innerCbor: ByteArray = encodeToCborBytes(deviceAuthentication)
 
-    // 5. Build Sig_Structure
+// 5. Wrap as #6.24(bstr .cbor DeviceAuthentication)
+//    This is DeviceAuthenticationBytes — the full tagged structure
+//    The verifier does: cbor2.dumps(cbor2.CBORTag(24, inner_cbor))
+    val deviceAuthTagged = ByteString(innerCbor).also { it.setTag(24) }
+    val deviceAuthenticationBytes: ByteArray = encodeToCborBytes(deviceAuthTagged)
+//    ↑ This is what gets signed — CBOR encoding of the tag-24 item
+
+// 6. Build Sig_Structure
+//    Per RFC 8152 Section 4.4:
+//    Sig_Structure = [
+//        "Signature1",
+//        protected,       ; bstr
+//        external_aad,    ; bstr (h'' if none)
+//        payload          ; bstr — DeviceAuthenticationBytes (the tag-24 encoded bytes)
+//    ]
     val sigStructure = CborArray().apply {
         add(UnicodeString("Signature1"))
         add(ByteString(protectedBytes))
-        add(ByteString(ByteArray(0)))                         // external_aad = h''
-        add(ByteString(deviceAuthenticationBytes))            // detached payload (NOT tagged here)
+        add(ByteString(ByteArray(0)))                        // external_aad = h''
+        add(ByteString(deviceAuthenticationBytes))           // ← tag-24 wrapped bytes ✅
     }
 
-    // 6. Sign
+// 7. Sign Sig_Structure
     val sigStructureBytes = encodeToCborBytes(sigStructure)
     val signatureBytes = signEs256(privateKey, sigStructureBytes)
 
-    // 7. Build COSE_Sign1 — payload is detached (null)
+// 8. Build COSE_Sign1 — payload is null (detached)
+//    [protected, unprotected, nil, signature]
     return CborArray().apply {
         add(ByteString(protectedBytes))
-        add(Map())                   // unprotected: empty map
-        add(SimpleValue.NULL)        // payload: detached
+        add(co.nstant.`in`.cbor.model.Map())                // unprotected: empty map
+        add(SimpleValue.NULL)                               // payload: detached (nil)
         add(ByteString(signatureBytes))
     }
 }
@@ -99,9 +114,9 @@ fun signEs256(privateKey: PrivateKey, sigStructureData: ByteArray): ByteArray {
     dsa.initSign(privateKey)
     dsa.update(sigStructureData)
     val derSignature = dsa.sign()
-
+return derSignature
     // 2. Convert DER to Raw (R + S)
-    return derToP1363(derSignature, 32)
+//    return derToP1363(derSignature, 32)
 }
 
 fun derToP1363(der: ByteArray, size: Int): ByteArray {

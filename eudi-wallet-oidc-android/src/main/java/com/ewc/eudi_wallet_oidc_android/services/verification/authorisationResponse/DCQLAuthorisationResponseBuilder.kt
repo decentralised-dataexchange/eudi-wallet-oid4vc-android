@@ -18,7 +18,7 @@ import org.json.JSONObject
 
 class DCQLAuthorisationResponseBuilder {
 
-    fun buildResponse(
+    suspend fun buildResponse(
         credentialsList: List<String>?,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -26,8 +26,6 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-        val presentationDefinition =
-            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
@@ -50,10 +48,8 @@ class DCQLAuthorisationResponseBuilder {
                     did = did,
                     type = credentialType,
                     jwk = jwk,
-                    inputDescriptors = if (presentationRequest.dcqlQuery != null)
-                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
-                    else
-                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                    inputDescriptors =
+                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index),
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
@@ -80,7 +76,7 @@ class DCQLAuthorisationResponseBuilder {
         return params
     }
 
-    fun buildResponseV2(
+    suspend fun buildResponseV2(
         credentialsList: List<List<String>>?,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -88,8 +84,6 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-        val presentationDefinition =
-            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
@@ -112,10 +106,8 @@ class DCQLAuthorisationResponseBuilder {
                     did = did,
                     type = credentialType,
                     jwk = jwk,
-                    inputDescriptors = if (presentationRequest.dcqlQuery != null)
-                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
-                    else
-                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                    inputDescriptors =
+                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index) ,
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
@@ -150,7 +142,7 @@ class DCQLAuthorisationResponseBuilder {
         }
     }
 
-    private fun generateVpTokensBasedOnCredentialFormat(
+    private suspend fun generateVpTokensBasedOnCredentialFormat(
         credential: String,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -188,7 +180,7 @@ class DCQLAuthorisationResponseBuilder {
         }
     }
 
-    private fun generateVpTokensBasedOnCredentialFormat(
+    private suspend fun generateVpTokensBasedOnCredentialFormat(
         credential: List<String>,
         presentationRequest: PresentationRequest,
         did: String?,

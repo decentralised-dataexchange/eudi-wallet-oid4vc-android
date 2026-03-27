@@ -200,8 +200,21 @@ class AuthorisationResponseHandler {
             }
 
             ResponseModes.DC_API_JWT -> {
-                Log.d(TAG, "Handling DC_API_JWT response mode. (Empty response)")
-                return mapOf()
+                Log.d(TAG, "Handling DIRECT_POST_JWT response mode.")
+                val authorisationResponsePayload = AuthorisationResponseBuilder().buildResponseV2(
+                    presentationRequest = presentationRequest,
+                    credentialList = credentialList,
+                    did = did,
+                    jwk = jwk
+                )
+                Log.d(TAG, "DIRECT_POST_JWT payload: $authorisationResponsePayload")
+
+                val jwe = JWEEncrypter().encrypt(
+                    payload = authorisationResponsePayload,
+                    presentationRequest = presentationRequest
+                )
+                Log.d(TAG, "Encrypted JWE: $jwe")
+                return mapOf("response" to jwe)
             }
 
             ResponseModes.IAR_POST -> {

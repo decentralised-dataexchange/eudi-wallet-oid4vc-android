@@ -14,7 +14,7 @@ import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 
 class SDJWTVpTokenBuilder : VpTokenBuilder {
-    override fun build(
+    override suspend fun build(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
@@ -74,7 +74,7 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
 
     }
 
-    override fun buildV2(
+    override suspend fun buildV2(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
