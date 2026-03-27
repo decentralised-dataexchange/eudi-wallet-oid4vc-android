@@ -43,7 +43,6 @@ class SignatureValidator {
                 val header = jwsObject.header // Retrieve the header from the parsed JWT
                 val kid = header.keyID // Extract the 'kid' (key ID) from the JWT header
                 val algorithm = jwsObject.header.algorithm
-                val plainJwk = header.jwk
                 val x5c = jwsObject.header.toJSONObject()
                 val payload = jwsObject.payload.toString() // Get JWT payload as string
                 val payloadJson = JSONObject(payload)

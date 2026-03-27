@@ -26,7 +26,7 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-        val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
+         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
             return params
