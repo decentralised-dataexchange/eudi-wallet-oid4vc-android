@@ -5,7 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.nimbusds.jose.jwk.JWK
 
 interface VpTokenBuilder {
-    fun build(
+    suspend fun build(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
@@ -14,7 +14,7 @@ interface VpTokenBuilder {
         isScaFlow: Boolean = false
     ): String?
 
-    fun buildV2(
+    suspend fun buildV2(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,

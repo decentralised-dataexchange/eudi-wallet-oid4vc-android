@@ -2,7 +2,6 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResp
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
-import com.ewc.eudi_wallet_oidc_android.services.credentialValidation.publicKeyExtraction.ProcessJWKFromJwksUri
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.nimbusds.jose.EncryptionMethod
@@ -41,71 +40,11 @@ class JWEEncrypter {
 
         val gson = Gson()
         val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
-        val jwksUri = clientMetadataJson.getAsJsonPrimitive("jwks_uri")?.asString
-        Log.d(TAG, "JWKS URI: $jwksUri")
 
-        val p256Key = if (jwksUri != null) {
-            Log.d(TAG, "Fetching key from JWKS URI...")
-            ProcessJWKFromJwksUri().fetchJwks(
-                jwksUri = jwksUri,
-                kid = null,
-                keyUse = "enc"
-            )?.let {
-                Log.d(TAG, "Fetched key: $it")
-                Gson().toJsonTree(it).asJsonObject
-            }
-        } else {
-            Log.d(TAG, "Extracting key from embedded JWKS...")
-            val jwksJson = clientMetadataJson.getAsJsonObject("jwks")
-            val keysArray = jwksJson.getAsJsonArray("keys")
-            val matchedKey = keysArray.find {
-                it.asJsonObject.get("crv").asString == "P-256"
-            }?.asJsonObject
-
-            if (matchedKey == null) {
-                Log.e(TAG, "No P-256 curve key found in client metadata.")
-            } else {
-                Log.d(TAG, "Found P-256 key: $matchedKey")
-            }
-
-            matchedKey
-                ?: throw IllegalArgumentException("No P-256 curve key found in client metadata")
-        }
-
-        Log.d(TAG, "Creating ECKey with kid: ${p256Key?.get("kid")?.asString}")
-
-        val jweAlgorithm: JWEAlgorithm =
-            clientMetadataJson
-                .getAsJsonPrimitive("authorization_encrypted_response_alg")
-                ?.asString
-                ?.takeIf { it.isNotBlank() }
-                ?.let { alg ->
-                    val parsedAlg = try {
-                        JWEAlgorithm.parse(alg)
-                    } catch (e: Exception) {
-                        throw IllegalArgumentException("Unsupported JWE encryption algorithm.", e)
-                    }
-
-                    if (parsedAlg != JWEAlgorithm.ECDH_ES) {
-                        throw IllegalArgumentException("The specified JWE encryption algorithm is not supported.")
-                    }
-
-                    parsedAlg
-                }
-                ?: JWEAlgorithm.ECDH_ES
-
-        Log.d(TAG, "Selected JWE algorithm: $jweAlgorithm")
-
-        val publicECJWK = ECKey.Builder(
-            Curve.P_256,
-            Base64URL.from(p256Key?.get("x")?.asString),
-            Base64URL.from(p256Key?.get("y")?.asString)
-        )
-            .keyID(p256Key?.get("kid")?.asString)
-            .algorithm(jweAlgorithm)
-            .build()
-
-        Log.d(TAG, "ECKey created: $publicECJWK")
+        val jweAlgorithm = VerifierJwk.deriveJWEAlgorithmFromClientMetadata(clientMetadataJson)
+        val clientJwk = VerifierJwk.deriveVerifiersJWKFromClientMetadata(clientMetadataJson, jweAlgorithm)
+        Log.d(TAG, "Creating ECKey with kid: ${clientJwk?.keyID}")
+        Log.d(TAG, "ECKey created: $clientJwk")
         val encSupported: List<String> = when {
 
             clientMetadataJson.has("authorization_encrypted_response_enc") ->
@@ -133,16 +72,21 @@ class JWEEncrypter {
 
         Log.d(TAG, "Selected encryption method: $encryptionMethod")
 
-        val header = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
-            .keyID(p256Key?.get("kid")?.asString)
-            .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
-            .agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
-            .build()
+        val builder = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
+            .keyID(clientJwk?.keyID)
+
+        if (presentationRequest.nonce !=null){
+            builder .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
+        }
+        if (presentationRequest.clientId !=null){
+            builder.agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
+        }
+        val header = builder.build()
 
         Log.d(TAG, "JWEHeader created: $header")
 
         val encryptedJWT = JWEObject(header, Payload(payload))
-        val encryptor = ECDHEncrypter(publicECJWK)
+        val encryptor = ECDHEncrypter(clientJwk)
 
         Log.d(TAG, "Encrypting JWEObject...")
         encryptedJWT.encrypt(encryptor)

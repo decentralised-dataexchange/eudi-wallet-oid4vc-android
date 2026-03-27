@@ -29,7 +29,7 @@ import java.nio.charset.StandardCharsets
 import kotlin.collections.contains
 
 class AuthorisationResponseBuilder {
-    fun buildResponse(
+    suspend fun buildResponse(
         presentationRequest: PresentationRequest,
         credentialList: List<String>?,
         did: String?,
@@ -114,7 +114,7 @@ class AuthorisationResponseBuilder {
         return params
     }
 
-    fun buildResponseV2(
+    suspend fun buildResponseV2(
         presentationRequest: PresentationRequest,
         credentialList: List<List<String>>?,
         did: String?,
@@ -199,7 +199,7 @@ class AuthorisationResponseBuilder {
         return params
     }
 
-     fun processTokenRequest(
+     suspend fun processTokenRequest(
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<String>?,
@@ -369,7 +369,7 @@ class AuthorisationResponseBuilder {
         return Triple(vpTokenList, idToken, presentationSubmission)
     }
 
-    fun processTokenRequestV2(
+    suspend fun processTokenRequestV2(
         presentationRequest: PresentationRequest,
         did: String?,
         credentialList: List<List<String>>?,

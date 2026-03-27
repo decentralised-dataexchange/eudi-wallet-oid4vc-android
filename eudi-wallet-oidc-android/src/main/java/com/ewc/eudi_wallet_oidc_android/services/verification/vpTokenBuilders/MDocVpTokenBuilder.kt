@@ -9,7 +9,6 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.verification.PresentationDefinitionProcessor.processPresentationDefinition
-import com.ewc.eudi_wallet_oidc_android.services.verification.mdoc.createDeviceSigned
 import com.nimbusds.jose.jwk.JWK
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -17,14 +16,26 @@ import java.security.spec.ECGenParameterSpec
 import co.nstant.`in`.cbor.model.*
 import co.nstant.`in`.cbor.CborBuilder
 import co.nstant.`in`.cbor.CborEncoder
+import com.ewc.eudi_wallet_oidc_android.models.DeviceSigned
+import com.ewc.eudi_wallet_oidc_android.services.verification.ResponseModes
+import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.VerifierJwk
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.JWKThumbprint
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildDeviceAuthenticationBytes
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildDeviceSignatureCoseSign1
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildProtectedHeader
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildSessionTranscriptForOpenID4VP
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.encodeEmptyDeviceNameSpaces
+import com.ewc.eudi_wallet_oidc_android.services.verification.mdoc.toHex
+import com.google.gson.Gson
 import com.nimbusds.jose.util.Base64URL
 import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.interfaces.ECPrivateKey
+import java.security.interfaces.ECPublicKey
 
 class MDocVpTokenBuilder : VpTokenBuilder {
-    override fun build(
+    override suspend fun build(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
@@ -32,9 +43,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         inputDescriptors: Any?,
         isScaFlow: Boolean
     ): String? {
-        var processPresentationDefinition: PresentationDefinition?=null
+        var processPresentationDefinition: PresentationDefinition? = null
         if (presentationRequest == null) return null
-        if (presentationRequest?.dcqlQuery==null) {
+        if (presentationRequest?.dcqlQuery == null) {
             processPresentationDefinition = processPresentationDefinition(
                 presentationRequest.presentationDefinition
             )
@@ -42,23 +53,66 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val documentList = mutableListOf<Document>()
         val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition?.docType
+        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList)
+            ?: processPresentationDefinition?.docType
         val nameSpaces = CborUtils.processExtractNameSpaces(
             credentialList, presentationRequest
         )
         val issuerSigned = IssuerSigned(
             nameSpaces = nameSpaces, issuerAuth = issuerAuth
         )
-//        val keyPair = generateEphemeralEcKey()
-//        val privateKey: PrivateKey = keyPair.private
 
-        val (sessionTranscript, sessionTranscriptBytes) = buildSessionTranscriptFor18013_7(
+        val clientJWK = try {
+            val gson = Gson()
+            val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
+            val jweAlgorithm = VerifierJwk.deriveJWEAlgorithmFromClientMetadata(clientMetadataJson)
+            VerifierJwk.deriveVerifiersJWKFromClientMetadata(clientMetadataJson, jweAlgorithm)
+        } catch (e: Exception) {
+            null
+        }
+        val sessionTranscript = buildSessionTranscriptForOpenID4VP(
             clientId = presentationRequest.clientId ?: "",
             nonce = presentationRequest.nonce ?: "",
-            responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri ?: ""
+            jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
+            responseUri = if (presentationRequest.responseMode == ResponseModes.DC_API.value || presentationRequest.responseMode == ResponseModes.DC_API_JWT.value)
+                null
+            else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+            responseMode = presentationRequest.responseMode
         )
 
-        val deviceSigned = createDeviceSigned(jwk, sessionTranscript)
+        val emptyNameSpace = encodeEmptyDeviceNameSpaces()
+
+        val deviceAuthentication = buildDeviceAuthenticationBytes(
+            sessionTranscriptArray = sessionTranscript.first,
+            docType = docType?:"",
+            deviceNameSpacesBytes = emptyNameSpace
+        )
+
+        val protectedArray = buildProtectedHeader()
+
+        val ecJwk = jwk?.toECKey()
+
+        // ---- Public Key ----
+        val publicKey = ecJwk?.toPublicKey() as ECPublicKey
+        val publicKeyEncoded = publicKey.encoded
+        Log.d("Device signing", "Public Key (X.509 DER, hex): ${publicKeyEncoded.toHex()}")
+
+
+        // ---- Private Key ----
+        val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
+        val privateKeyEncoded = privateKey.encoded
+        Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+
+        val sig = buildDeviceSignatureCoseSign1(
+            deviceAuthenticationBytes = deviceAuthentication,
+            protectedHeaderBytes = protectedArray,
+            privateKey = privateKey
+        )
+
+        val deviceAuth = Map().apply {
+            put(UnicodeString("deviceSignature"), sig)
+        }
+        val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
 
         val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
             presentationRequest?.dcqlQuery?.credentials?.size
@@ -68,7 +122,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         repeat(inputDescriptorSize) {
             documentList.add(
                 Document(
-                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = deviceSigned
+                    docType = docType ?: "",
+                    issuerSigned = issuerSigned,
+                    deviceSigned = deviceSigned
                 )
             )
         }
@@ -78,50 +134,43 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         )
 
         val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
-        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val cborToken =
+            Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         return cborToken
     }
 
-    fun computeJwkThumbprint(): ByteArray {
-        // RFC 7638 – required EC members in lexicographic order
-//        val kty = jwk["kty"] ?: throw IllegalArgumentException("Missing kty")
-//
-//        if (kty != "EC") {
-//            throw IllegalArgumentException("Unsupported key type: $kty")
-//        }
+    /**
+     * Computes the JWK Thumbprint (RFC 7638) of a [JWK] as raw SHA-256 bytes.
+     *
+     * This is what the verifier calls `jwk_thumbprint_bytes` — the raw 32-byte
+     * SHA-256 digest that goes into OpenID4VPHandoverInfo as a CBOR bstr.
+     *
+     * Nimbus provides [JWK.computeThumbprint] which returns the thumbprint as a
+     * Base64URL string. We decode that back to raw bytes here, matching exactly
+     * what the Python verifier does:
+     *
+     *   padded = jwk_thumbprint + "=" * padding
+     *   jwk_thumbprint_bytes = base64.urlsafe_b64decode(padded)
+     *
+     * @param jwk The JWK whose thumbprint to compute (EC, RSA, OKP, etc.)
+     * @return Raw 32-byte SHA-256 thumbprint (bstr for CBOR encoding).
+     * @throws JOSEException if the thumbprint cannot be computed.
+     */
+    fun computeJwkThumbprintBytes(jwk: JWK): ByteArray {
+        // Nimbus computes RFC 7638 thumbprint: SHA-256 of canonical JSON members.
+        // Returns a Base64URL-encoded string (no padding).
+        val thumbprintBase64Url: Base64URL = jwk.computeThumbprint("SHA-256")
 
+        // Decode Base64URL → raw bytes (these are the 32 SHA-256 hash bytes).
+        return thumbprintBase64Url.decode()
+    }
 
-        val requiredMembers = mapOf(
-            "kty" to "EC",
-            "use" to "enc",
-            "crv" to "P-256",
-            "kid" to "405a5a9c-a70f-4844-bcfa-f379573202d9",
-            "x" to "jxptvuIKEua5o2w7Y6ocLJn27hWQ5kKgEvauub2pNMU",
-            "y" to "tn3mK-2IjyWLcrGGX5SnIZukfCiIe1nAGMLgdHj9CeU",
-            "alg" to "ECDH-ES"
-        )
-
-        // Canonical JSON: sorted keys, no whitespace
-        val canonicalJson = requiredMembers
-            .toSortedMap()
-            .entries
-            .joinToString(
-                prefix = "{",
-                postfix = "}",
-                separator = ","
-            ) { (key, value) ->
-                "\"$key\":\"$value\""
-            }
-
-        Log.d("Device signing", "computeJwkThumbprint: $canonicalJson")
-        // UTF-8 bytes
-        val jsonBytes = canonicalJson.toByteArray(StandardCharsets.UTF_8)
-
-        // SHA-256 hash
-        val digest = MessageDigest.getInstance("SHA-256")
-        val thumbprint = digest.digest(jsonBytes)
-
-        return thumbprint
+    /**
+     * Convenience overload — returns the thumbprint as a Base64URL [String]
+     * (no padding), e.g. for logging or JWK "kid" assignment.
+     */
+    fun computeJwkThumbprintBase64Url(jwk: JWK): String {
+        return jwk.computeThumbprint("SHA-256").toString()
     }
 
     fun generateEphemeralEcKey(): KeyPair {
@@ -132,7 +181,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
     }
 
 
-    override fun buildV2(
+    override suspend fun buildV2(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
@@ -140,9 +189,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         inputDescriptors: Any?,
         isScaFlow: Boolean
     ): List<String?> {
-        var processPresentationDefinition: PresentationDefinition?=null
+        var processPresentationDefinition: PresentationDefinition? = null
         if (presentationRequest == null) return listOf()
-        if (presentationRequest?.dcqlQuery==null) {
+        if (presentationRequest?.dcqlQuery == null) {
             processPresentationDefinition = processPresentationDefinition(
                 presentationRequest.presentationDefinition
             )
@@ -150,7 +199,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val documentList = mutableListOf<Document>()
         val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList) ?: processPresentationDefinition?.docType
+        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList)
+            ?: processPresentationDefinition?.docType
         val nameSpaces = CborUtils.processExtractNameSpaces(
             credentialList, presentationRequest
         )
@@ -158,12 +208,57 @@ class MDocVpTokenBuilder : VpTokenBuilder {
             nameSpaces = nameSpaces, issuerAuth = issuerAuth
         )
 
-        val (sessionTranscript, sessionTranscriptBytes) = buildSessionTranscriptFor18013_5(
-            clientId = presentationRequest.clientId ?:"",
-            nonce =presentationRequest.nonce?:"",
-            responseUri = presentationRequest.responseUri?: presentationRequest.redirectUri?:""
+        val clientJWK = try {
+            val gson = Gson()
+            val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
+            val jweAlgorithm = VerifierJwk.deriveJWEAlgorithmFromClientMetadata(clientMetadataJson)
+            VerifierJwk.deriveVerifiersJWKFromClientMetadata(clientMetadataJson, jweAlgorithm)
+        } catch (e: Exception) {
+            null
+        }
+        val sessionTranscript = buildSessionTranscriptForOpenID4VP(
+            clientId = presentationRequest.clientId ?: "",
+            nonce = presentationRequest.nonce ?: "",
+            responseUri =  if (presentationRequest.responseMode == ResponseModes.DC_API.value || presentationRequest.responseMode == ResponseModes.DC_API_JWT.value)
+                null
+            else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+            jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
+            responseMode = presentationRequest.responseMode
         )
-        val deviceSigned = createDeviceSigned(jwk, sessionTranscript)
+
+        val emptyNameSpace = encodeEmptyDeviceNameSpaces()
+
+        val deviceAuthentication = buildDeviceAuthenticationBytes(
+            sessionTranscriptArray = sessionTranscript.first,
+            docType = docType ?:"",
+            deviceNameSpacesBytes = emptyNameSpace
+        )
+
+        val protectedArray = buildProtectedHeader()
+
+        val ecJwk = jwk?.toECKey()
+
+        // ---- Public Key ----
+        val publicKey = ecJwk?.toPublicKey() as ECPublicKey
+        val publicKeyEncoded = publicKey.encoded
+        Log.d("Device signing", "Public Key (X.509 DER, hex): ${publicKeyEncoded.toHex()}")
+
+
+        // ---- Private Key ----
+        val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
+        val privateKeyEncoded = privateKey.encoded
+        Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+
+        val sig = buildDeviceSignatureCoseSign1(
+            deviceAuthenticationBytes = deviceAuthentication,
+            protectedHeaderBytes = protectedArray,
+            privateKey = privateKey
+        )
+
+        val deviceAuth = Map().apply {
+            put(UnicodeString("deviceSignature"), sig)
+        }
+        val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
 
         val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
             presentationRequest?.dcqlQuery?.credentials?.size
@@ -173,7 +268,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         repeat(inputDescriptorSize) {
             documentList.add(
                 Document(
-                    docType = docType ?: "", issuerSigned = issuerSigned, deviceSigned = deviceSigned
+                    docType = docType ?: "",
+                    issuerSigned = issuerSigned,
+                    deviceSigned = deviceSigned
                 )
             )
         }
@@ -183,103 +280,105 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         )
 
         val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
-        val cborToken = Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        val cborToken =
+            Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
         return listOf(cborToken)
     }
 
-   fun buildSessionTranscriptFor18013_7(
-       clientId: String,
-       nonce: String,
-       responseUri: String
-    ): Pair<co.nstant.`in`.cbor.model.Array, ByteArray> {
-        // 1. Encode handover info
-        val (handover, handoverBytes) = buildOpenID4VPHandoverInfo(
-            clientId = clientId,
-            nonce = nonce,
-            responseUri = responseUri
-        )
-
-       Log.d("buildSessionTranscriptFor18013_7", "Handover CBOR object     : $handover")
-       Log.d(
-           "buildSessionTranscriptFor18013_7",
-           "Handover CBOR bytes len : ${handoverBytes.size}"
-       )
-       Log.d(
-           "buildSessionTranscriptFor18013_7",
-           "Handover CBOR bytes(hex): ${
-               handoverBytes.joinToString("") { "%02x".format(it) }
-           }"
-       )
-        // 4. Build SessionTranscript
-        val (sessionTranscript, sessionTranscriptBytes) = buildSessionTranscript(handover)
-       Log.d("buildSessionTranscriptFor18013_7", "SessionTranscript CBOR object     : $sessionTranscript")
-       Log.d(
-           "buildSessionTranscriptFor18013_7",
-           "SessionTranscript bytes len      : ${sessionTranscriptBytes.size}"
-       )
-       Log.d(
-           "buildSessionTranscriptFor18013_7",
-           "SessionTranscript bytes (hex)    : ${
-               sessionTranscriptBytes.joinToString("") { "%02x".format(it) }
-           }"
-       )
-
-       Log.d("buildSessionTranscriptFor18013_7", "=== buildSessionTranscriptFor18013_5 END ===")
-       return Pair(sessionTranscript, sessionTranscriptBytes)
-    }
-
-    fun buildSessionTranscriptFor18013_5(
+    fun buildSessionTranscriptFor18013_7(
         clientId: String,
         nonce: String,
         responseUri: String
     ): Pair<co.nstant.`in`.cbor.model.Array, ByteArray> {
-
-        val tag = "Device Signing"
-
-        Log.d(tag, "=== buildSessionTranscriptFor18013_5 START ===")
-        Log.d(tag, "clientId     : $clientId")
-        Log.d(tag, "nonce        : $nonce")
-        Log.d(tag, "responseUri  : $responseUri")
-
-        // 1. Build OpenID4VP Handover Info
         val (handover, handoverBytes) = buildOpenID4VPHandoverInfo(
             clientId = clientId,
             nonce = nonce,
             responseUri = responseUri
         )
-
-        Log.d(tag, "Handover CBOR object     : $handover")
-        Log.d(
-            tag,
-            "Handover CBOR bytes len : ${handoverBytes.size}"
-        )
-        Log.d(
-            tag,
-            "Handover CBOR bytes(hex): ${
-                handoverBytes.joinToString("") { "%02x".format(it) }
-            }"
-        )
-
-        // 2. Build SessionTranscript
-        val (sessionTranscript, sessionTranscriptBytes) =
-            buildSessionTranscript(handover)
-
-        Log.d(tag, "SessionTranscript CBOR object     : $sessionTranscript")
-        Log.d(
-            tag,
-            "SessionTranscript bytes len      : ${sessionTranscriptBytes.size}"
-        )
-        Log.d(
-            tag,
-            "SessionTranscript bytes (hex)    : ${
-                sessionTranscriptBytes.joinToString("") { "%02x".format(it) }
-            }"
-        )
-
-        Log.d(tag, "=== buildSessionTranscriptFor18013_5 END ===")
-
+        val (sessionTranscript, sessionTranscriptBytes) = buildSessionTranscript(handover)
         return Pair(sessionTranscript, sessionTranscriptBytes)
+    }
+
+    fun buildSessionTranscriptForRedirect(
+        clientId: String,
+        nonce: String,
+        jwkThumbprint: ByteArray?, // null if response not encrypted
+    ): co.nstant.`in`.cbor.model.Array {
+
+        // 1. Encode handover info
+        val infoBytes = buildOpenID4VPHandoverInfoRedirect(
+            clientId = clientId,
+            nonce = nonce,
+            jwkThumbprint = jwkThumbprint,
+        )
+
+        // 2. Hash it
+        val infoHash = sha256(infoBytes)
+
+        // 3. Build OpenID4VPHandover
+        val handoverBytes = buildOpenID4VPHandoverRedirect(infoHash)
+
+        // 4. Build SessionTranscript
+        return buildSessionTranscriptRedirect(handoverBytes)
+    }
+
+    fun buildSessionTranscriptRedirect(handoverBytes: ByteArray): co.nstant.`in`.cbor.model.Array {
+        val baos = ByteArrayOutputStream()
+
+        val builder = CborBuilder()
+        val array = builder.addArray()
+        array.add(SimpleValue.NULL) // DeviceEngagementBytes = null
+        array.add(SimpleValue.NULL) // EReaderKeyBytes = null
+
+        // The handover is a CBOR structure, so embed raw CBOR bytes
+        array.add(ByteString(handoverBytes))
+
+        array.end()
+
+        val dataItems = builder.build()
+        val sessionTranscriptArray =
+            dataItems.first() as co.nstant.`in`.cbor.model.Array
+
+        CborEncoder(baos).encode(builder.build())
+        return sessionTranscriptArray
+    }
+
+    fun buildOpenID4VPHandoverRedirect(infoHash: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+
+        val builder = CborBuilder()
+        val array = builder.addArray()
+        array.add("OpenID4VPDCAPIHandover")
+        array.add(ByteString(infoHash))
+        array.end()
+
+        CborEncoder(baos).encode(builder.build())
+        return baos.toByteArray()
+    }
+
+    fun buildOpenID4VPHandoverInfoRedirect(
+        clientId: String,
+        nonce: String,
+        jwkThumbprint: ByteArray?, // null if not encrypted
+    ): ByteArray {
+        val baos = ByteArrayOutputStream()
+
+        val builder = CborBuilder()
+        val array = builder.addArray()
+        array.add(clientId)
+        array.add(nonce)
+
+        if (jwkThumbprint != null) {
+            array.add(ByteString(jwkThumbprint))
+        } else {
+            array.add(SimpleValue.NULL)
+        }
+
+        array.end()
+
+        CborEncoder(baos).encode(builder.build())
+        return baos.toByteArray()
     }
 
 
@@ -305,13 +404,13 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         return Pair(sessionTranscriptArray, baos.toByteArray())
     }
 
-   fun buildOpenID4VPHandover(infoHash: ByteArray): co.nstant.`in`.cbor.model.Array {
-       val array = Array().apply {
-           add(UnicodeString("OpenID4VPHandover"))
-           add(ByteString(infoHash))
-       }
-       return array
-   }
+    fun buildOpenID4VPHandover(infoHash: ByteArray): co.nstant.`in`.cbor.model.Array {
+        val array = Array().apply {
+            add(UnicodeString("OpenID4VPHandover"))
+            add(ByteString(infoHash))
+        }
+        return array
+    }
 
     fun sha256(data: ByteArray): ByteArray {
         return MessageDigest.getInstance("SHA-256").digest(data)
@@ -352,19 +451,15 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         // ⚠️ NOT spec-correct – should be cryptographically random
         val mdocGeneratedNonce = clientId
 
-        Log.d("Device signing", "Mdoc generated nonce: $mdocGeneratedNonce")
-
         // clientIdHash = SHA-256(CBOR([clientId, mdocGeneratedNonce]))
         val clientIdHash = sha256(
             cborArrayBytes(clientId, mdocGeneratedNonce)
         )
 
-        Log.d("Device Signing", "buildOpenID4VPHandoverInfo: ClientId Hash: ${String(clientIdHash)}")
         // responseUriHash = SHA-256(CBOR([responseUri, mdocGeneratedNonce]))
         val responseUriHash = sha256(
             cborArrayBytes(responseUri, mdocGeneratedNonce)
         )
-        Log.d("Device Signing", "buildOpenID4VPHandoverInfo: response uri Hash: ${String(responseUriHash)}")
 
         // ---- Build CBOR ----
         val baos = ByteArrayOutputStream()

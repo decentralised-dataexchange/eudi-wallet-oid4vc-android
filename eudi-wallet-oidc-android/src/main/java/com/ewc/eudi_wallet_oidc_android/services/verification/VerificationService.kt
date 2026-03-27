@@ -113,8 +113,7 @@ class VerificationService : VerificationServiceInterface {
             val result = safeApiCallResponse {
                 ApiManager.api.getService()?.sendVPToken(
                     presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params,
-                    headers
+                    params
                 )
             }
 
@@ -216,6 +215,7 @@ class VerificationService : VerificationServiceInterface {
                 }
             )
         } catch (e: Exception) {
+            Log.d("milna", "processAndSendAuthorisationResponse: ${e.message}")
             WrappedVpTokenResponse(
                 errorResponse = ErrorResponse(
                     error = null,
@@ -266,8 +266,7 @@ class VerificationService : VerificationServiceInterface {
             val result = safeApiCallResponse {
                 ApiManager.api.getService()?.sendVPToken(
                     presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params,
-                    headers
+                    params
                 )
             }
 
@@ -369,6 +368,7 @@ class VerificationService : VerificationServiceInterface {
                 }
             )
         } catch (e: Exception) {
+            Log.d("milna", "processAndSendAuthorisationResponseV2: ${e.message}")
             WrappedVpTokenResponse(
                 errorResponse = ErrorResponse(
                     error = null,

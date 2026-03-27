@@ -734,7 +734,7 @@ class IssueService : IssueServiceInterface {
                         }
                     }
                 },
-                headers
+//                headers
             )
         }
 

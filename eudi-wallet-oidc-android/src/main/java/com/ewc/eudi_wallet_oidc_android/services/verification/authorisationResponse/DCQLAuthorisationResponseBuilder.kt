@@ -18,7 +18,7 @@ import org.json.JSONObject
 
 class DCQLAuthorisationResponseBuilder {
 
-    fun buildResponse(
+    suspend fun buildResponse(
         credentialsList: List<String>?,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -26,8 +26,8 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-        val presentationDefinition =
-            processPresentationDefinition(presentationRequest.presentationDefinition)
+//        val presentationDefinition =
+//            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
@@ -50,7 +50,7 @@ class DCQLAuthorisationResponseBuilder {
                     did = did,
                     type = credentialType,
                     jwk = jwk,
-                    inputDescriptors = if (presentationRequest.dcqlQuery != null)
+                    inputDescriptors =
                         presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
                     else
                         presentationDefinition.inputDescriptors?.getOrNull(index),
@@ -74,7 +74,7 @@ class DCQLAuthorisationResponseBuilder {
         return params
     }
 
-    fun buildResponseV2(
+    suspend fun buildResponseV2(
         credentialsList: List<List<String>>?,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -82,8 +82,8 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-        val presentationDefinition =
-            processPresentationDefinition(presentationRequest.presentationDefinition)
+//        val presentationDefinition =
+//            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
@@ -106,25 +106,33 @@ class DCQLAuthorisationResponseBuilder {
                     did = did,
                     type = credentialType,
                     jwk = jwk,
-                    inputDescriptors = if (presentationRequest.dcqlQuery != null)
+                    inputDescriptors =
                         presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
                     else
                         presentationDefinition.inputDescriptors?.getOrNull(index),
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
-                val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
-                val version = clientMetadataJson.getAsJsonPrimitive("version")?.asString
-                credentialMap[credential.id ?: ""] = if (version == "draft_23") {
-                    vpToken?.get(0) ?: ""
-                } else {
-                    vpToken
+                if (presentationRequest.clientMetaDetails!=null) {
+                    val clientMetadataJson =
+                        gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
+                    val version = clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                    credentialMap[credential.id ?: ""] = if (version == "draft_23") {
+                        vpToken?.get(0) ?: ""
+                    } else {
+                        vpToken
+                    }
+                }else {
+                    credentialMap[credential.id ?: ""] =
+                        vpToken
+
                 }
             }
         }
 
         val mainVpToken = generateMainVPToken(credentialMap)
         params["vp_token"] = mainVpToken
+//        params["vp_token"] = com.nimbusds.jose.shaded.json.JSONObject(credentialMap)
         params["state"] = presentationRequest.state ?: ""
 
         return params
@@ -138,7 +146,7 @@ class DCQLAuthorisationResponseBuilder {
         }
     }
 
-    private fun generateVpTokensBasedOnCredentialFormat(
+    private suspend fun generateVpTokensBasedOnCredentialFormat(
         credential: String,
         presentationRequest: PresentationRequest,
         did: String?,
@@ -176,7 +184,7 @@ class DCQLAuthorisationResponseBuilder {
         }
     }
 
-    private fun generateVpTokensBasedOnCredentialFormat(
+    private suspend fun generateVpTokensBasedOnCredentialFormat(
         credential: List<String>,
         presentationRequest: PresentationRequest,
         did: String?,

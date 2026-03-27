@@ -57,12 +57,12 @@ class ProofService {
             if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256
         )
             .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .keyID(generateKeyId(bindingMethod, subJwk, did))
+//            .keyID(generateKeyId(bindingMethod, subJwk, did))
 
-        if (bindingMethod == "jwk") {
-            jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
-        }else{
+        if (bindingMethod?.lowercase()?.startsWith("did") == true) {
             jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
+        } else {
+            jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
         }
 
         val jwsHeader = jwsHeaderBuilder.build()
