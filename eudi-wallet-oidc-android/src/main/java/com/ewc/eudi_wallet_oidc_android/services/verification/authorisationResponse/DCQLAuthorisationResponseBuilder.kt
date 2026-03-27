@@ -26,9 +26,7 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-//        val presentationDefinition =
-//            processPresentationDefinition(presentationRequest.presentationDefinition)
-        val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
+         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
             return params
@@ -51,9 +49,7 @@ class DCQLAuthorisationResponseBuilder {
                     type = credentialType,
                     jwk = jwk,
                     inputDescriptors =
-                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
-                    else
-                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index),
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
@@ -82,8 +78,6 @@ class DCQLAuthorisationResponseBuilder {
         isScaFlow: Boolean = false
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
-//        val presentationDefinition =
-//            processPresentationDefinition(presentationRequest.presentationDefinition)
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
         if (dcqlCredentials == null || credentialsList == null || dcqlCredentials.size != credentialsList.size) {
             println("Mismatch or missing data in dcqlQuery or credentialsList")
@@ -107,9 +101,7 @@ class DCQLAuthorisationResponseBuilder {
                     type = credentialType,
                     jwk = jwk,
                     inputDescriptors =
-                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index)
-                    else
-                        presentationDefinition.inputDescriptors?.getOrNull(index),
+                        presentationRequest.dcqlQuery?.credentials?.getOrNull(index) ,
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
