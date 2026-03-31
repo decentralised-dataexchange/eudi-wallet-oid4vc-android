@@ -57,8 +57,14 @@ class DCQLAuthorisationResponseBuilder {
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
-                val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
-                val version = clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                val version = presentationRequest.clientMetaDetails?.let { meta ->
+                    try {
+                        val clientMetadataJson = gson.toJsonTree(meta).asJsonObject
+                        clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                    } catch (e: Exception) {
+                        null
+                    }
+                } ?: "version_1"
                 credentialMap[credential.id ?: ""] = if (version == "draft_23") {
                     vpToken ?: ""
                 } else {
@@ -113,8 +119,14 @@ class DCQLAuthorisationResponseBuilder {
                     isScaFlow = isScaFlow
                 )
                 val gson = Gson()
-                val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
-                val version = clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                val version = presentationRequest.clientMetaDetails?.let { meta ->
+                    try {
+                        val clientMetadataJson = gson.toJsonTree(meta).asJsonObject
+                        clientMetadataJson.getAsJsonPrimitive("version")?.asString
+                    } catch (e: Exception) {
+                        null
+                    }
+                } ?: "version_1"
                 credentialMap[credential.id ?: ""] = if (version == "draft_23") {
                     vpToken?.get(0) ?: ""
                 } else {
