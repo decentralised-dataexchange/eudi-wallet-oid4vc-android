@@ -133,11 +133,18 @@ class JWEEncrypter {
 
         Log.d(TAG, "Selected encryption method: $encryptionMethod")
 
-        val header = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
+        val builder = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
             .keyID(p256Key?.get("kid")?.asString)
-            .agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
-            .agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
-            .build()
+
+        if (presentationRequest.nonce != null) {
+            builder.agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
+        }
+
+        if (presentationRequest.clientId != null) {
+            builder.agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
+        }
+
+        val header = builder.build()
 
         Log.d(TAG, "JWEHeader created: $header")
 
