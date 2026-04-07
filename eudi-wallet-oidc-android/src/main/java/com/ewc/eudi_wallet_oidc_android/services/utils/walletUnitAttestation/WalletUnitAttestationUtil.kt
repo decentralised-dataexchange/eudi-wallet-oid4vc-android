@@ -14,6 +14,7 @@ import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.nonceRequest.NonceService
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
+import com.ewc.eudi_wallet_oidc_android.services.utils.generateHash
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.StandardIntegrityManager
 import com.google.gson.Gson
@@ -338,25 +339,6 @@ object WalletAttestationUtil {
         }
 
     }
-
-
-
-    fun generateHash(input: String): String? {
-        return try {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hashBytes = digest.digest(input.toByteArray(StandardCharsets.UTF_8))
-            val hexString = java.lang.StringBuilder()
-            for (b in hashBytes) {
-                val hex = Integer.toHexString(0xff and b.toInt())
-                if (hex.length == 1) hexString.append('0')
-                hexString.append(hex)
-            }
-            hexString.toString()
-        } catch (e: NoSuchAlgorithmException) {
-            throw RuntimeException("SHA-256 algorithm not found!", e)
-        }
-    }
-
 
     private fun generateES256Key(): KeyPair? {
 

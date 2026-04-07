@@ -6,8 +6,8 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialList
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.utils.createKeyBindingJWT
+import com.ewc.eudi_wallet_oidc_android.services.utils.generateHash
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil
-import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.generateHash
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
 import com.nimbusds.jose.jwk.JWK
 import org.json.JSONObject
