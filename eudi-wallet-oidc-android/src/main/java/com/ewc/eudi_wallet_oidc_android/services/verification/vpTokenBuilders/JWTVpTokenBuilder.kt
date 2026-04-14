@@ -16,7 +16,7 @@ import java.util.Date
 import java.util.UUID
 
 class JWTVpTokenBuilder: VpTokenBuilder {
-    override fun build(
+    override suspend fun build(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,
@@ -76,7 +76,7 @@ class JWTVpTokenBuilder: VpTokenBuilder {
         return jwtSerialize
     }
 
-    override fun buildV2(
+    override suspend fun buildV2(
         credentialList: List<String>?,
         presentationRequest: PresentationRequest?,
         did: String?,

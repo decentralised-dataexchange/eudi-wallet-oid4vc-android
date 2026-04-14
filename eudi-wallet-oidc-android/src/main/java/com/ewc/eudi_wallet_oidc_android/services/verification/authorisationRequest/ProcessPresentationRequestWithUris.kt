@@ -30,8 +30,8 @@ object ProcessPresentationRequestWithUris {
     private suspend fun validatePresentationRequest(
         presentationRequest: WrappedPresentationRequest
     ): WrappedPresentationRequest {
-        val wrappedPresentationRequest =
-            ClientIdSchemeRequestHandler().handle(presentationRequest)
-        return wrappedPresentationRequest
+//        val wrappedPresentationRequest =
+//            ClientIdSchemeRequestHandler().handle(presentationRequest)
+        return presentationRequest
     }
 }

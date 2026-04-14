@@ -988,6 +988,12 @@ class CborUtils {
                 }
                 issuerAuthArray.end()
                 issuerSignedMap.end()
+
+                val deviceSignedMap = docMap.putMap("deviceSigned")
+                deviceSignedMap.put(CborUnicodeString("nameSpaces"), doc.deviceSigned.nameSpaces)
+                deviceSignedMap.put(CborUnicodeString("deviceAuth"), doc.deviceSigned.deviceAuth)
+                deviceSignedMap.end()
+
                 docMap.end()
             }
 

@@ -58,10 +58,10 @@ class ProofService {
         )
             .type(JOSEObjectType("openid4vci-proof+jwt"))
 
-        if (bindingMethod == "jwk") {
-            jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
-        }else{
+        if (bindingMethod?.lowercase()?.startsWith("did") == true) {
             jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
+        } else {
+            jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
         }
 
         val jwsHeader = jwsHeaderBuilder.build()
