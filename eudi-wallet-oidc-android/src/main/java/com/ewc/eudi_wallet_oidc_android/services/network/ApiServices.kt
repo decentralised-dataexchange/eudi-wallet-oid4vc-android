@@ -74,7 +74,7 @@ interface ApiService {
     suspend fun getAccessTokenFromCode(
         @Url url: String,
         @FieldMap map: Map<String, String?>,
-//        @HeaderMap headers: Map<String, String> = emptyMap()
+        @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<TokenResponse>
 
     @POST

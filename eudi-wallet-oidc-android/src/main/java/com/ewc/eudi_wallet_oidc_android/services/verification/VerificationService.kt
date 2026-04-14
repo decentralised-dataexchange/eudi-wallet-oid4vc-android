@@ -113,7 +113,8 @@ class VerificationService : VerificationServiceInterface {
             val result = safeApiCallResponse {
                 ApiManager.api.getService()?.sendVPToken(
                     presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params
+                    params,
+                    headers
                 )
             }
 
@@ -266,7 +267,8 @@ class VerificationService : VerificationServiceInterface {
             val result = safeApiCallResponse {
                 ApiManager.api.getService()?.sendVPToken(
                     presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params
+                    params,
+                    headers
                 )
             }
 
