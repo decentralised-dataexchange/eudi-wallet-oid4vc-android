@@ -314,13 +314,16 @@ object WalletAttestationUtil {
             val claimsSet = JWTClaimsSet.Builder()
                 .issuer(did)
                 .audience(aud)
+                .issueTime(now)
                 .notBeforeTime(now)
                 .expirationTime(expirationTime)
                 .jwtID("urn:uuid:${UUID.randomUUID().toString()}")
                 .build()
 
             // Create the JWS header
-            val header = JWSHeader.Builder(JWSAlgorithm.ES256).build()
+            val header = JWSHeader.Builder(JWSAlgorithm.ES256)
+                .type(JOSEObjectType("oauth-client-attestation-pop+jwt"))
+                .build()
 
             // Sign the JWT
             val signedJWT = SignedJWT(header, claimsSet)
