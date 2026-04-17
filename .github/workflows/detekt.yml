@@ -1,0 +1,63 @@
+name: Detekt
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  DETEKT_VERSION: "1.23.7"
+
+jobs:
+  detekt:
+    name: Detekt static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Download detekt-cli
+        run: |
+          curl -sSLO "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}.zip"
+          unzip -q "detekt-cli-${DETEKT_VERSION}.zip"
+          echo "${PWD}/detekt-cli-${DETEKT_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Run detekt
+        continue-on-error: true
+        run: |
+          detekt-cli \
+            --input . \
+            --excludes '**/build/**,**/.gradle/**,**/generated/**' \
+            --report sarif:detekt.sarif \
+            --report html:detekt.html \
+            --build-upon-default-config
+
+      - name: Upload detekt SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: detekt.sarif
+          category: detekt
+
+      - name: Upload detekt HTML report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-report
+          path: detekt.html
+          if-no-files-found: ignore
