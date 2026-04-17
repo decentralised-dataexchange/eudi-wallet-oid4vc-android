@@ -107,15 +107,15 @@ class VerifiableCredentialStatusList2021:StatusListInterface {
                         val responseString = responseBody.string()
                         Log.d("StatusList", "Success: $responseString")
                         val result = decodeStatusListJwt(responseString)
-                            if (result != null) {
-                                val verifiableCredentialsStatusList2021Model =
-                                    VerifiableCredentialsStatusList2021Model(result)
-                                val statusModel = StatusModel(
-                                    uri,
-                                    verifiableCredentialsStatusList2021Model
-                                )
-                                statusModels.add(statusModel)
-                            }
+                        if (result != null) {
+                            val verifiableCredentialsStatusList2021Model =
+                                VerifiableCredentialsStatusList2021Model(result)
+                            val statusModel = StatusModel(
+                                uri,
+                                verifiableCredentialsStatusList2021Model
+                            )
+                            statusModels.add(statusModel)
+                        }
                     } catch (e: Exception) {
                         Log.e("StatusList", "Error parsing response: ${e.message}")
                     }
