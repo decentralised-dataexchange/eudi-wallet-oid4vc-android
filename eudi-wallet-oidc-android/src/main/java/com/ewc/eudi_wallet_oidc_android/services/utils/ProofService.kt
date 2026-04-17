@@ -60,7 +60,10 @@ class ProofService {
 
         if (bindingMethod?.lowercase()?.startsWith("did") == true) {
             jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
-        } else {
+        } else if (credentialOffer?.credentials?.getOrNull(index)?.trustFramework!= null){
+            jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
+        }
+        else {
             jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
         }
 
