@@ -195,12 +195,30 @@ class AuthorisationResponseHandler {
             }
 
             ResponseModes.DC_API -> {
-                Log.d(TAG, "Handling DC_API response mode. (Empty response)")
-                return mapOf()
+                Log.d(TAG, "Handling DIRECT_POST response mode.")
+                presentationRequest.clientId = "origin:${presentationRequest.clientId}"
+                val authorisationResponse = AuthorisationResponseBuilder().buildResponseV2(
+                    presentationRequest = presentationRequest,
+                    credentialList = credentialList,
+                    did = did,
+                    jwk = jwk
+                ).also {
+                    Log.d(TAG, "DIRECT_POST response built: $it")
+                }
+                val responseMap: Map<String, String> =
+                    authorisationResponse.mapValues { (_, value) ->
+                        when (value) {
+                            is String -> value
+                            null -> ""
+                            else -> Gson().toJson(value) // Converts List, Map, etc. to proper JSON string
+                        }
+                    }
+                return responseMap
             }
 
             ResponseModes.DC_API_JWT -> {
                 Log.d(TAG, "Handling DIRECT_POST_JWT response mode.")
+                presentationRequest.clientId = "origin:${presentationRequest.clientId}"
                 val authorisationResponsePayload = AuthorisationResponseBuilder().buildResponseV2(
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
