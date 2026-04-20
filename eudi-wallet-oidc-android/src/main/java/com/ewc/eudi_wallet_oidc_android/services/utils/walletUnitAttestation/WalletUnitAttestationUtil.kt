@@ -228,7 +228,7 @@ object WalletAttestationUtil {
             val payload = JWTClaimsSet.Builder()
                 .audience(baseUrl)
                 .claim("client_id", did)
-                .claim("cnf", mapOf("jwk" to ecKey.toJSONObject()))
+                .claim("cnf", mapOf("jwk" to ecKey.toPublicJWK().toJSONObject()))
                 .expirationTime(expTime)
                 .issueTime(now)
                 .issuer(did)

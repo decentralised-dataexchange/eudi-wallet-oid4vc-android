@@ -90,7 +90,7 @@ class ProofService {
     private fun generateKeyId(bindingMethod: String?, subJwk: JWK?, did: String?): String {
         return when (bindingMethod) {
             "did:jwk" -> {
-                val processedDidJwk = subJwk?.let { createDidJwk(it.toJSONString()) }
+                val processedDidJwk = subJwk?.let { createDidJwk(it.toPublicJWK().toJSONString()) }
                 processedDidJwk ?: ""
             }
             "jwk" ->{
