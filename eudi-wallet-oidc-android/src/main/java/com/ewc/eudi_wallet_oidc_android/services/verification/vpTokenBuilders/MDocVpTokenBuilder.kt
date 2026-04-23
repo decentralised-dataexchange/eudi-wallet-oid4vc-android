@@ -52,15 +52,6 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         }
 
         val documentList = mutableListOf<Document>()
-        val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList)
-            ?: processPresentationDefinition?.docType
-        val nameSpaces = CborUtils.processExtractNameSpaces(
-            credentialList, presentationRequest
-        )
-        val issuerSigned = IssuerSigned(
-            nameSpaces = nameSpaces, issuerAuth = issuerAuth
-        )
 
         val clientJWK = try {
             val gson = Gson()
@@ -82,12 +73,6 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val emptyNameSpace = encodeEmptyDeviceNameSpaces()
 
-        val deviceAuthentication = buildDeviceAuthenticationBytes(
-            sessionTranscriptArray = sessionTranscript.first,
-            docType = docType?:"",
-            deviceNameSpacesBytes = emptyNameSpace
-        )
-
         val protectedArray = buildProtectedHeader()
 
         val ecJwk = jwk?.toECKey()
@@ -102,28 +87,29 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
         val privateKeyEncoded = privateKey.encoded
         Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+        credentialList?.forEach { credential ->
+            val singleList = listOf(credential)
+            val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
+                ?: processPresentationDefinition?.docType
 
-        val sig = buildDeviceSignatureCoseSign1(
-            deviceAuthenticationBytes = deviceAuthentication,
-            protectedHeaderBytes = protectedArray,
-            privateKey = privateKey
-        )
+            val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
 
-        val deviceAuth = Map().apply {
-            put(UnicodeString("deviceSignature"), sig)
-        }
-        val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
+            val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
 
-        val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
-            presentationRequest?.dcqlQuery?.credentials?.size
-        } else {
-            processPresentationDefinition?.inputDescriptors?.size
-        } ?: 0
-        repeat(inputDescriptorSize) {
+            val deviceAuthBytes = buildDeviceAuthenticationBytes(
+                sessionTranscriptArray = sessionTranscript.first,
+                docType = docType ?: "",
+                deviceNameSpacesBytes = emptyNameSpace
+            )
+
+            val sig = buildDeviceSignatureCoseSign1(deviceAuthBytes, protectedArray, privateKey)
+
+            val deviceSigned = DeviceSigned(emptyNameSpace, Map().apply { put(UnicodeString("deviceSignature"), sig) })
+
             documentList.add(
                 Document(
                     docType = docType ?: "",
-                    issuerSigned = issuerSigned,
+                    issuerSigned = IssuerSigned(nameSpaces, issuerAuth),
                     deviceSigned = deviceSigned
                 )
             )
