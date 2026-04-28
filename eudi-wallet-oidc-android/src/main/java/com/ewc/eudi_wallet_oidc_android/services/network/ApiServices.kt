@@ -36,7 +36,7 @@ interface ApiService {
     suspend fun fetchIssuerConfig(@Url url: String): Response<ResponseBody>
 
     @GET
-    suspend fun fetchAuthConfig(@Url url: String): Response<AuthorisationServerWellKnownConfiguration>
+    suspend fun fetchAuthConfig(@Url url: String): Response<ResponseBody>
 
     @GET
     suspend fun processAuthorisationRequest(

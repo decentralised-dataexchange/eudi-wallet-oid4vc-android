@@ -11,6 +11,7 @@ import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
 import com.google.gson.Gson
 
 class DiscoveryService : DiscoveryServiceInterface {
@@ -75,13 +76,23 @@ class DiscoveryService : DiscoveryServiceInterface {
         }
     }
     private fun parseIssuerConfigurationResponse(issuerConfigResponseJson:String?): WrappedIssuerConfigResponse?{
+        val jsonToParse = if (JwtUtils.isValidJWT(issuerConfigResponseJson)) {
+            try {
+                JwtUtils.parseJWTForPayload(issuerConfigResponseJson)
+            }
+            catch (e: Exception) {
+                issuerConfigResponseJson
+            }
+        } else {
+            issuerConfigResponseJson
+        }
         val gson = Gson()
         val issuerWellKnownConfigurationV2Response = try {
-            gson.fromJson(issuerConfigResponseJson, IssuerWellKnownConfigurationV2::class.java)
+            gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV2::class.java)
         } catch (e: Exception) { null }
         return if (issuerWellKnownConfigurationV2Response?.credentialConfigurationsSupported == null){
             val issuerWellKnownConfigurationV1Response = try {
-                gson.fromJson(issuerConfigResponseJson, IssuerWellKnownConfigurationV1::class.java)
+                gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV1::class.java)
             } catch (e: Exception) { null }
             if(issuerWellKnownConfigurationV1Response?.credentialsSupported==null){
                 null
@@ -119,8 +130,9 @@ class DiscoveryService : DiscoveryServiceInterface {
             result.onSuccess { response ->
                 // First call succeeded
                 if (response.isSuccessful) {
+                    val bodyString = response.body()?.string()
                     return WrappedAuthConfigResponse(
-                        authConfig = response.body(),
+                        authConfig = parseAuthConfigJson(bodyString),
                         errorResponse = null
                     )
                 }
@@ -138,8 +150,9 @@ class DiscoveryService : DiscoveryServiceInterface {
 
                 fallbackResult.onSuccess { fallbackResponse ->
                     return if (fallbackResponse.isSuccessful) {
+                        val bodyString = fallbackResponse.body()?.string()
                         WrappedAuthConfigResponse(
-                            authConfig = fallbackResponse.body(),
+                            authConfig = parseAuthConfigJson(bodyString),
                             errorResponse = null
                         )
                     } else {
@@ -173,6 +186,18 @@ class DiscoveryService : DiscoveryServiceInterface {
                     errorDescription = "URI validation failed"
                 )
             )
+        }
+    }
+    private fun parseAuthConfigJson(jsonOrJwt: String?): AuthorisationServerWellKnownConfiguration? {
+        val jsonToParse = if (JwtUtils.isValidJWT(jsonOrJwt)) {
+            try { JwtUtils.parseJWTForPayload(jsonOrJwt) } catch (e: Exception) { jsonOrJwt }
+        } else {
+            jsonOrJwt
+        }
+        return try {
+            Gson().fromJson(jsonToParse, AuthorisationServerWellKnownConfiguration::class.java)
+        } catch (e: Exception) {
+            null
         }
     }
 }
