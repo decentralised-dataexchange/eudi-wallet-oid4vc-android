@@ -61,11 +61,16 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         } catch (e: Exception) {
             null
         }
+        val isDcApi = presentationRequest.responseMode == ResponseModes.DC_API.value ||
+                presentationRequest.responseMode == ResponseModes.DC_API_JWT.value
+        val handoverClientId = (presentationRequest.clientId ?: "").let {
+            if (isDcApi) it.removePrefix("origin:") else it
+        }
         val sessionTranscript = buildSessionTranscriptForOpenID4VP(
-            clientId = presentationRequest.clientId ?: "",
+            clientId = handoverClientId,
             nonce = presentationRequest.nonce ?: "",
             jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
-            responseUri = if (presentationRequest.responseMode == ResponseModes.DC_API.value || presentationRequest.responseMode == ResponseModes.DC_API_JWT.value)
+            responseUri = if (isDcApi)
                 null
             else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
             responseMode = presentationRequest.responseMode
@@ -202,10 +207,15 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         } catch (e: Exception) {
             null
         }
+        val isDcApi = presentationRequest.responseMode == ResponseModes.DC_API.value ||
+                presentationRequest.responseMode == ResponseModes.DC_API_JWT.value
+        val handoverClientId = (presentationRequest.clientId ?: "").let {
+            if (isDcApi) it.removePrefix("origin:") else it
+        }
         val sessionTranscript = buildSessionTranscriptForOpenID4VP(
-            clientId = presentationRequest.clientId ?: "",
+            clientId = handoverClientId,
             nonce = presentationRequest.nonce ?: "",
-            responseUri =  if (presentationRequest.responseMode == ResponseModes.DC_API.value || presentationRequest.responseMode == ResponseModes.DC_API_JWT.value)
+            responseUri = if (isDcApi)
                 null
             else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
             jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
