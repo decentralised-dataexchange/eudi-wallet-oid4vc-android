@@ -73,20 +73,17 @@ fun buildSessionTranscriptForOpenID4VP(
         }
     }
     val handoverInfoBytes = encodeCbor(handoverInfo)
-//    Log.d(TAG, "HandoverInfo Bytes (Hex): ${handoverInfoBytes.toHexString()}")
 
     // Step 2: Hash HandoverInfo
     val handoverInfoHash = MessageDigest.getInstance("SHA-256").digest(handoverInfoBytes)
-//    Log.d(TAG, "HandoverInfo Hash (Hex): ${handoverInfoHash.toHexString()}")
 
     // Step 3: OpenID4VPHandover = ["OpenID4VPHandover", hash]
     val handoverArray = CborArray().apply {
         add(if (responseMode == ResponseModes.DC_API.value ||
-            responseMode == ResponseModes.DC_API_JWT.value) UnicodeString("OpenID4VPHandover")
+            responseMode == ResponseModes.DC_API_JWT.value) UnicodeString("OpenID4VPDCAPIHandover")
                 else UnicodeString("OpenID4VPHandover"))
         add(ByteString(handoverInfoHash))
     }
-//    Log.d(TAG, "OpenID4VPHandover Array (Hex): ${encodeCbor(handoverArray).toHexString()}")
 
     // Step 4: SessionTranscript = [null, null, OpenID4VPHandover]
     val stArray = CborArray().apply {
@@ -96,7 +93,6 @@ fun buildSessionTranscriptForOpenID4VP(
     }
 
     val finalSessionTranscriptBytes = encodeCbor(stArray)
-//    Log.d(TAG, "Final SessionTranscript (Hex): ${finalSessionTranscriptBytes.toHexString()}")
 
     return Pair(stArray, finalSessionTranscriptBytes)
 }
@@ -160,8 +156,6 @@ fun buildDeviceAuthenticationBytes(
     CborEncoder(innerBaos).encode(deviceAuthenticationArray)
     val innerBytes = innerBaos.toByteArray()
 
-//    Log.d(TAG, "DeviceAuthentication Array (Inner Hex): ${innerBytes.toHexString()}")
-
     // 2. Outer: wrap as #6.24(bstr .cbor DeviceAuthentication)
     // This is what ISO 18013-5 §9.1.3.4 calls 'DeviceAuthenticationBytes'
     val tagged = ByteString(innerBytes).also { it.setTag(24) }
@@ -169,8 +163,6 @@ fun buildDeviceAuthenticationBytes(
     val outerBaos = ByteArrayOutputStream()
     CborEncoder(outerBaos).encode(tagged)
     val deviceAuthenticationBytes = outerBaos.toByteArray()
-
-//    Log.d(TAG, "DeviceAuthenticationBytes (Tagged Hex): ${deviceAuthenticationBytes.toHexString()}")
 
     return deviceAuthenticationBytes
 }
@@ -239,7 +231,6 @@ fun buildDeviceSignatureCoseSign1(
 
     // 2. Encode the Sig_Structure to bytes
     val toBeSigned = encodeCbor(sigStructure)
-//    Log.d(TAG, "To-Be-Signed (Sig_Structure Hex): ${toBeSigned.toHexString()}")
 
     // 3. Sign and FORCE conversion to P1363 (64 bytes)
     val derSignature = signEs256(privateKey, toBeSigned)
@@ -252,8 +243,6 @@ fun buildDeviceSignatureCoseSign1(
         derSignature
     }
 
-//    Log.d(TAG, "Final Signature (P1363 Hex): ${signatureBytes.toHexString()}")
-//    Log.d(TAG, "Final Signature Length: ${signatureBytes.size} bytes")
 
     // 4. Final COSE_Sign1: [protected, unprotected, payload, signature]
     val coseSign1 = CborArray().apply {
