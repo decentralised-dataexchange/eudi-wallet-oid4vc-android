@@ -93,7 +93,7 @@ class VerificationService : VerificationServiceInterface {
 
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
             }
             if (!walletUnitProofOfPossession.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
@@ -247,7 +247,7 @@ class VerificationService : VerificationServiceInterface {
 
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
             }
             if (!walletUnitProofOfPossession.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
