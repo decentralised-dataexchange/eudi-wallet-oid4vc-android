@@ -76,7 +76,8 @@ interface IssueServiceInterface {
         clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
-        redirectUri: String? = null
+        redirectUri: String? = null,
+        isDPOPSupported: Boolean? = false
     ): WrappedTokenResponse?
 
     /**

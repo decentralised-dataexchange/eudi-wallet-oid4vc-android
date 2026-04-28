@@ -28,6 +28,7 @@ data class AuthorisationServerWellKnownConfiguration(
     @SerializedName("pushed_authorization_request_endpoint") var pushedAuthorizationRequestEndpoint: String? = null,
     @SerializedName("id_token_signing_alg_values_supported") var idTokenSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("interactive_authorization_endpoint") var interactiveAuthorizationEndpoint: String? = null,
+    @SerializedName("dpop_signing_alg_values_supported") var dpopSigningAlgValuesSupported: ArrayList<String> = arrayListOf()
 )
 
 data class RequestAuthenticationMethodsSupported(
