@@ -198,7 +198,7 @@ class IssueService : IssueServiceInterface {
     ): String? {
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
             }
             if (!walletUnitProofOfPossession.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
@@ -695,7 +695,7 @@ class IssueService : IssueServiceInterface {
         val redirectURI = redirectUri ?: "openid://callback"
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT
+                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
             }
             if (!walletUnitProofOfPossession.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
