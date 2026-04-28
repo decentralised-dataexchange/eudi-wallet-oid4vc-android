@@ -63,6 +63,7 @@ import java.util.UUID
 import android.util.Base64
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import java.io.IOException
 import kotlin.collections.get
 
@@ -690,15 +691,25 @@ class IssueService : IssueServiceInterface {
         clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
-        redirectUri: String?
+        redirectUri: String?,
+        isDPOPSupported: Boolean?
     ): WrappedTokenResponse? {
         val redirectURI = redirectUri ?: "openid://callback"
+        val dpop = if (isDPOPSupported == true && !tokenEndPoint.isNullOrEmpty()) {
+            DPoPProofService().generateDPoP(
+                httpMethod = "POST",
+                targetUri = tokenEndPoint
+            )
+        } else null
         val headers = mutableMapOf<String, String>().apply {
             if (!walletUnitAttestationJWT.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
             }
             if (!walletUnitProofOfPossession.isNullOrEmpty()) {
                 this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
+            }
+            if (!dpop.isNullOrEmpty()) {
+                this["DPoP"] = dpop
             }
         }
 
