@@ -10,6 +10,7 @@ import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import org.json.JSONObject
 
@@ -77,7 +78,7 @@ interface IssueServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String? = null,
-        isDPOPSupported: Boolean? = false
+        dpopKey: ECKey?
     ): WrappedTokenResponse?
 
     /**
@@ -118,7 +119,8 @@ interface IssueServiceInterface {
         index: Int,
         ecKeyWithAlgEnc:ECKeyWithAlgEnc? =null,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
-        authConfig: AuthorisationServerWellKnownConfiguration?
+        authConfig: AuthorisationServerWellKnownConfiguration?,
+        dpopKey: ECKey?
     ): WrappedCredentialResponse?
 
     /**

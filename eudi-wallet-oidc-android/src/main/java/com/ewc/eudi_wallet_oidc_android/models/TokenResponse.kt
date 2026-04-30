@@ -20,7 +20,8 @@ data class WrappedTokenResponse(
     var tokenResponse: TokenResponse? = null,
     var errorResponse: ErrorResponse? = null,
     var legalPidAttestation: String? = null,
-    var legalPidAttestationPoP: String? = null
+    var legalPidAttestationPoP: String? = null,
+    var dpop: String? = null
 )
 
 data class AuthorizationDetail(

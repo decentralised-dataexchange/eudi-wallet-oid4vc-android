@@ -692,13 +692,14 @@ class IssueService : IssueServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String?,
-        isDPOPSupported: Boolean?
+        dpopKey: ECKey?
     ): WrappedTokenResponse? {
         val redirectURI = redirectUri ?: "openid://callback"
-        val dpop = if (isDPOPSupported == true && !tokenEndPoint.isNullOrEmpty()) {
+        val dpop = if (dpopKey != null && !tokenEndPoint.isNullOrEmpty()) {
             DPoPProofService().generateDPoP(
                 httpMethod = "POST",
-                targetUri = tokenEndPoint
+                targetUri = tokenEndPoint,
+                dpopKey = dpopKey
             )
         } else null
         val headers = mutableMapOf<String, String>().apply {
@@ -758,7 +759,8 @@ class IssueService : IssueServiceInterface {
                         WrappedTokenResponse(
                             tokenResponse = response.body(),
                             legalPidAttestation = lpid,
-                            legalPidAttestationPoP = lpidPoP
+                            legalPidAttestationPoP = lpidPoP,
+                            dpop = dpop
                         )
                     }
 
@@ -853,6 +855,7 @@ class IssueService : IssueServiceInterface {
                 issuerConfig?.credentialEndpoint ?: "",
                 "application/json",
                 "Bearer $accessToken",
+                null,
                 body
             )
         }
@@ -916,9 +919,35 @@ class IssueService : IssueServiceInterface {
         index: Int,
         ecKeyWithAlgEnc:ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
-        authConfig: AuthorisationServerWellKnownConfiguration?
+        authConfig: AuthorisationServerWellKnownConfiguration?,
+        dpopKey: ECKey?
     ): WrappedCredentialResponse? {
         val TAG = "processCredentialRequestLijoTest"
+
+        val dpopHeaderValue =
+            if (!issuerConfig?.credentialEndpoint.isNullOrEmpty()
+                && dpopKey != null
+                && accessToken?.accessToken != null
+            ) {
+                val athValue = DPoPProofService().computeAccessTokenHash(accessToken.accessToken)
+
+                val claims = mapOf(
+                    "ath" to athValue,
+                )
+
+                DPoPProofService().generateDPoP(
+                    httpMethod = "POST",
+                    targetUri = issuerConfig.credentialEndpoint ?: "",
+                    dpopKey = dpopKey,
+                    claims = claims
+                )
+            } else null
+
+        val authHeaderValue = if (dpopHeaderValue != null) {
+            "DPoP ${accessToken?.accessToken}"
+        } else {
+            "Bearer ${accessToken?.accessToken}"
+        }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
         val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index)
@@ -994,7 +1023,8 @@ class IssueService : IssueServiceInterface {
                     ApiManager.api.getService()?.getCredentialEncrypted(
                         issuerConfig?.credentialEndpoint ?: "",
                         "application/jwt",
-                        "Bearer ${accessToken?.accessToken}",
+                        authHeaderValue,
+                        dpopHeaderValue,
                         requestBody
                     )
                 } else null
@@ -1002,7 +1032,8 @@ class IssueService : IssueServiceInterface {
                 ApiManager.api.getService()?.getCredential(
                     issuerConfig?.credentialEndpoint ?: "",
                     "application/json",
-                    "Bearer ${accessToken?.accessToken}",
+                    authHeaderValue,
+                    dpopHeaderValue,
                     request
                 )
             }

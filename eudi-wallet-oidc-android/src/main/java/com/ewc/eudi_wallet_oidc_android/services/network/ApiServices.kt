@@ -82,6 +82,7 @@ interface ApiService {
         @Url url: String,
         @Header("content-type") contentType: String,
         @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
         @Body body: CredentialRequest
     ): Response<ResponseBody>
 
@@ -90,6 +91,7 @@ interface ApiService {
         @Url url: String,
         @Header("content-type") contentType: String,
         @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
         @Body body: RequestBody
     ): Response<ResponseBody>
 

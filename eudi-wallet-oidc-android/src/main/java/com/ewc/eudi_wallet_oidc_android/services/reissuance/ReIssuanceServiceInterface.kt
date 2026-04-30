@@ -7,6 +7,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 
 interface ReIssuanceServiceInterface {
@@ -21,7 +22,8 @@ interface ReIssuanceServiceInterface {
         index: Int,
         ecKeyWithAlgEnc:ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
-        interactiveAuthorizationEndpoint: String?
+        interactiveAuthorizationEndpoint: String?,
+        dpopKey: ECKey?
     ): WrappedCredentialResponse?
 
 }
