@@ -1,13 +1,10 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
-import android.util.Log
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
-import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
-import com.nimbusds.jose.jwk.gen.ECKeyGenerator
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.util.Date
@@ -23,44 +20,43 @@ class DPoPProofService {
      * @param targetUri The full Token Endpoint URL
      * @return Serialized JWT string or null if generation fails
      */
-    fun generateDPoP(httpMethod: String, targetUri: String): String? {
+    fun generateDPoP(
+        httpMethod: String,
+        targetUri: String,
+        dpopKey: ECKey?,
+        claims: Map<String, Any>? = null
+    ): String? {
         return try {
-            // 1. Generate a fresh P-256 EC KeyPair internally
-            // This key contains both Public and Private parts
-            val ecKey: ECKey = ECKeyGenerator(Curve.P_256)
-                .keyID(UUID.randomUUID().toString())
-                .generate()
-
-            // 2. Create the JWS Header
-            // We must include the Public Key (JWK) so the server can verify the signature
             val header = JWSHeader.Builder(JWSAlgorithm.ES256)
                 .type(JOSEObjectType("dpop+jwt"))
-                .jwk(ecKey.toPublicJWK())
+                .jwk(dpopKey?.toPublicJWK())
                 .build()
 
-            // 3. Create the JWT Payload (Claims)
-            val claimsSet = JWTClaimsSet.Builder()
-                .jwtID(UUID.randomUUID().toString()) // Replay protection
+            val claimsBuilder = JWTClaimsSet.Builder()
+                .jwtID(UUID.randomUUID().toString())
                 .claim("htm", httpMethod.uppercase())
                 .claim("htu", targetUri)
-                // iat: Backdated by 60s for server clock synchronization
-                .issueTime(Date(System.currentTimeMillis() - 60000))
-                .build()
+                .issueTime(Date())
 
-            // 4. Sign the JWT
-            val signedJWT = SignedJWT(header, claimsSet)
-            val signer = ECDSASigner(ecKey)
-            signedJWT.sign(signer)
+            claims?.forEach { (key, value) ->
+                claimsBuilder.claim(key, value)
+            }
 
-            // 5. Serialize
-            val result = signedJWT.serialize()
-            Log.d(TAG, "New DPoP generated with internal key: $result")
-
-            result
-
+            val signedJWT = SignedJWT(header, claimsBuilder.build())
+            signedJWT.sign(ECDSASigner(dpopKey))
+            signedJWT.serialize()
         } catch (e: Exception) {
-            Log.e(TAG, "Internal DPoP Generation Failed: ${e.message}")
             null
         }
+    }
+
+    fun computeAccessTokenHash(token: String?): String {
+        if (token == null) return ""
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(token.toByteArray(Charsets.US_ASCII))
+        return android.util.Base64.encodeToString(
+            hash,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
+        )
     }
 }

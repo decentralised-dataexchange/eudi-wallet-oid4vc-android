@@ -16,11 +16,13 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -37,9 +39,33 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         index: Int,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
-        interactiveAuthorizationEndpoint: String?
+        interactiveAuthorizationEndpoint: String?,
+        dpopKey: ECKey?
     ): WrappedCredentialResponse? {
+        val dpopHeaderValue =
+            if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
+                dpopKey != null &&
+                accessToken?.accessToken != null
+            ) {
+                val athValue = DPoPProofService().computeAccessTokenHash(accessToken?.accessToken)
 
+                val claims = mapOf(
+                    "ath" to athValue,
+                )
+
+                DPoPProofService().generateDPoP(
+                    httpMethod = "POST",
+                    targetUri = issuerConfig?.credentialEndpoint ?: "",
+                    dpopKey = dpopKey,
+                    claims = claims
+                )
+            } else null
+
+        val authHeaderValue = if (dpopHeaderValue != null) {
+            "DPoP ${accessToken?.accessToken}"
+        } else {
+            "Bearer ${accessToken?.accessToken}"
+        }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
         val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index)
@@ -115,7 +141,8 @@ class ReIssuanceService : ReIssuanceServiceInterface {
                         ApiManager.api.getService()?.getCredentialEncrypted(
                             issuerConfig?.credentialEndpoint ?: "",
                             "application/jwt",
-                            "Bearer ${accessToken?.accessToken}",
+                            authHeaderValue,
+                            dpopHeaderValue,
                             requestBody
                         )
                     } else null
@@ -123,7 +150,8 @@ class ReIssuanceService : ReIssuanceServiceInterface {
                     ApiManager.api.getService()?.getCredential(
                         issuerConfig?.credentialEndpoint ?: "",
                         "application/json",
-                        "Bearer ${accessToken?.accessToken}",
+                        authHeaderValue,
+                        dpopHeaderValue,
                         request
                     )
                 }
