@@ -69,7 +69,7 @@ class DCQLAuthorisationResponseBuilder {
             }
         }
 
-        val mainVpToken = generateMainVPToken(credentialMap)
+        val mainVpToken = credentialMap
         params["vp_token"] = mainVpToken
         params["state"] = presentationRequest.state ?: ""
 
@@ -127,7 +127,7 @@ class DCQLAuthorisationResponseBuilder {
             }
         }
 
-        val mainVpToken = generateMainVPToken(credentialMap)
+        val mainVpToken = credentialMap
         params["vp_token"] = mainVpToken
         params["state"] = presentationRequest.state ?: ""
 
