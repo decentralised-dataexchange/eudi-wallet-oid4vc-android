@@ -28,19 +28,19 @@ class ProofService {
         index: Int = 0
     ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
-        val credentials = credentialOffer?.credentials?.getOrNull(index)
-        val bindingMethod: String? = when (credentialsSupported) {
+        val credentials = credentialOffer?.credentials
+        val cryptographicBindingMethodsSupported = when (credentialsSupported) {
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
                 val map = credentialsSupported as? Map<String, Any>
-                getCryptographicBindingMethodsSupported(map, credentials)
+                getCryptographicBindingMethodSupported(map, credentials)
             }
             is List<*> -> {
                 @Suppress("UNCHECKED_CAST")
                 val list = credentialsSupported as? List<Map<String, Any>>
-                getCryptographicBindingMethodsSupported(list, credentials)
+                getCryptographicBindingMethodSupported(list, credentials)
             }
-            else -> null
+            else -> emptyList()
         }
 
         // Add claims
@@ -57,11 +57,12 @@ class ProofService {
             if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256
         )
             .type(JOSEObjectType("openid4vci-proof+jwt"))
+        val bindingMethod = cryptographicBindingMethodsSupported?.firstOrNull { it.startsWith("did") }
 
         if (bindingMethod?.lowercase()?.startsWith("did") == true) {
             jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
         } else if (credentialOffer?.credentials?.getOrNull(index)?.trustFramework!= null){
-            jwsHeaderBuilder.keyID(generateKeyId(bindingMethod, subJwk, did))
+            jwsHeaderBuilder.keyID(generateKeyId(cryptographicBindingMethodsSupported?.firstOrNull(), subJwk, did))
         }
         else {
             jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
