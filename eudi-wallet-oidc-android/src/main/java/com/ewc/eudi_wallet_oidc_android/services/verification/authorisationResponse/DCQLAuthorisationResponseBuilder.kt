@@ -100,7 +100,8 @@ class DCQLAuthorisationResponseBuilder {
                 else -> ""
             }
 
-            if (credentialsList[index].isNotEmpty()) {
+            if (credentialsList[index].isNotEmpty() &&
+                credentialsList[index].any { it.isNotEmpty() }) {
                 val vpToken = generateVpTokensBasedOnCredentialFormat(
                     credential = credentialsList[index],
                     presentationRequest = presentationRequest,
