@@ -233,7 +233,8 @@ class VerificationService : VerificationServiceInterface {
         credentialList: List<List<String>>?,
         walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
-        isScaFlow: Boolean
+        isScaFlow: Boolean,
+        jwkList: List<List<JWK?>>?
     ): WrappedVpTokenResponse {
         val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
         if (responseUri.isNullOrEmpty()) {
@@ -260,7 +261,8 @@ class VerificationService : VerificationServiceInterface {
                 credentialList = credentialList,
                 did = did,
                 jwk = subJwk,
-                isScaFlow = isScaFlow
+                isScaFlow = isScaFlow,
+                jwkList = jwkList
             )
             Log.d("Params value:", params.toString())
 

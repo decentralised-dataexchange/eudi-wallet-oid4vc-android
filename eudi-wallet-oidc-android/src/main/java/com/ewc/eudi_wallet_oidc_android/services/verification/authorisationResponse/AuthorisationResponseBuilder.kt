@@ -118,7 +118,8 @@ class AuthorisationResponseBuilder {
         credentialList: List<List<String>>?,
         did: String?,
         jwk: JWK?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<List<JWK?>>? = null
     ): Map<String, Any?> {
         var params = mapOf<String, Any?>()
         if (presentationRequest.dcqlQuery != null) {
@@ -127,7 +128,8 @@ class AuthorisationResponseBuilder {
                 credentialsList = credentialList,
                 did = did,
                 jwk = jwk,
-                isScaFlow = isScaFlow
+                isScaFlow = isScaFlow,
+                jwkList = jwkList
             )
         } else {
             var vpToken: List<String>? = null
@@ -135,7 +137,7 @@ class AuthorisationResponseBuilder {
             var presentationSubmission: PresentationSubmission? = null
 
             val processTokenResponse =
-                processTokenRequestV2(presentationRequest, did, credentialList, jwk, isScaFlow)
+                processTokenRequestV2(presentationRequest, did, credentialList, jwk, isScaFlow, jwkList)
             vpToken = processTokenResponse.first
             Log.d("processAndSendAuthorisationResponse", "vpToken:$vpToken")
             idToken = processTokenResponse.second
@@ -373,7 +375,8 @@ class AuthorisationResponseBuilder {
         did: String?,
         credentialList: List<List<String>>?,
         subJwk: JWK?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<List<JWK?>>? = null
     ): Triple<List<String>?, String?, PresentationSubmission?> {
 
         val vpTokenList: MutableList<String> = mutableListOf()
@@ -383,7 +386,9 @@ class AuthorisationResponseBuilder {
         if (presentationRequest.responseType?.contains("vp_token") == true) {
 
             val jwtList: MutableList<String> = mutableListOf()
+            val jwtKeyList: MutableList<JWK?> = mutableListOf()
             val mdocList: MutableList<String> = mutableListOf()
+            val mdocKeyList: MutableList<JWK?> = mutableListOf()
             val descriptorMap: ArrayList<DescriptorMap> = ArrayList()
 
             val presentationDefinitionProcess: PresentationDefinition? =
@@ -393,6 +398,7 @@ class AuthorisationResponseBuilder {
                     processPresentationDefinition(presentationRequest.presentationDefinition)
 
                 credentials.forEachIndexed { credentialIndex, credential ->
+                    val currentCredentialJwkList = jwkList?.getOrNull(credentialIndex)
                     try {
                         var claimsSet: JWTClaimsSet? = null
                         if (presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)?.format?.containsKey(
@@ -412,6 +418,7 @@ class AuthorisationResponseBuilder {
                             presentationDefinition.format?.contains("mso_mdoc") == true
                         ) {
                             mdocList.add(credential.getOrNull(0)?:"")
+                            mdocKeyList.add(currentCredentialJwkList?.getOrNull(0) ?: subJwk)
                             if (!vpTokenList.contains("mdoc")) {
                                 vpTokenList.add("mdoc")
                             }
@@ -431,17 +438,20 @@ class AuthorisationResponseBuilder {
                         // sdjwt
 
                         else if (claimsSet?.getStringClaim("vct") != null) {
-                            val inputDescriptors = presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)
-                            val updatedCredential =   SDJWTVpTokenBuilder().build(
+                            val inputDescriptors =
+                                presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)
+                            val updatedCredentials = SDJWTVpTokenBuilder().buildV2(
                                 credentialList = credential,
                                 presentationRequest = presentationRequest,
                                 did = did,
                                 jwk = subJwk ,
                                 inputDescriptors = inputDescriptors,
-                                isScaFlow = isScaFlow
+                                isScaFlow = isScaFlow,
+                                jwkList = currentCredentialJwkList
                             )
-                            if (updatedCredential!=null)
-                            {
+                            //NEW: Iterate through results (SD-JWT buildV2 returns a list)
+                            updatedCredentials.forEach { updatedCredential ->
+                           if (updatedCredential != null) {
                                 vpTokenList.add(updatedCredential)
                                 val currentVpTokenIndex = vpTokenList.lastIndex
 
@@ -458,12 +468,14 @@ class AuthorisationResponseBuilder {
                                 )
                                 descriptorMap.add(descriptor)
 
+                                }
                             }
                         }
                         //jwt
 
                         else {
                             jwtList.add(credential.getOrNull(0)?:"")
+                            jwtKeyList.add(currentCredentialJwkList?.getOrNull(0) ?: subJwk)
                             if (!vpTokenList.contains("jwt")) {
                                 vpTokenList.add("jwt")
                             }
@@ -496,31 +508,46 @@ class AuthorisationResponseBuilder {
             }
 
             if (jwtList.isNotEmpty()) {
+                if (jwtList.size > 1) {
                 val jwtSerialize = JWTVpTokenBuilder().build(
                     credentialList = jwtList,
                     presentationRequest = presentationRequest,
                     did = did,
                     jwk = subJwk
                 )
-
-                // Replace "jwt" with jwtSerialize in vpTokenList if "jwt" is present
                 val jwtIndex = vpTokenList.indexOf("jwt")
                 if (jwtIndex != -1) {
                     vpTokenList[jwtIndex] = jwtSerialize ?: ""
                 }
+                }else{
+                    val jwtSerializeList = JWTVpTokenBuilder().buildV2(
+                        credentialList = jwtList,
+                        presentationRequest = presentationRequest,
+                        did = did,
+                        jwk = subJwk,
+                        jwkList = jwtKeyList
+                    )
+                    val jwtIndex = vpTokenList.indexOf("jwt")
+                    if (jwtIndex != -1) {
+                        vpTokenList.removeAt(jwtIndex)
+                        vpTokenList.addAll(jwtIndex, jwtSerializeList.filterNotNull())
+                    }
+                }
             }
             if (mdocList.isNotEmpty()) {
-                val cborToken = MDocVpTokenBuilder().build(
+                val cborTokenList = MDocVpTokenBuilder().buildV2(
                     credentialList = mdocList,
                     presentationRequest = presentationRequest,
                     did = did,
-                    jwk = subJwk
+                    jwk = subJwk,
+                    jwkList = mdocKeyList
                 )
 
                 // Replace "mdoc" with cborToken in vpTokenList if "mdoc" is present
                 val mdocIndex = vpTokenList.indexOf("mdoc")
                 if (mdocIndex != -1) {
-                    vpTokenList[mdocIndex] = cborToken ?: ""
+                    vpTokenList.removeAt(mdocIndex)
+                    vpTokenList.addAll(mdocIndex, cborTokenList.filterNotNull())
                 }
 
             }

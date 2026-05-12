@@ -80,7 +80,8 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         did: String?,
         jwk: JWK?,
         inputDescriptors: Any?,
-        isScaFlow: Boolean
+        isScaFlow: Boolean,
+        jwkList: List<JWK?>?
     ): List<String?> {
         val claims = mutableMapOf<String, Any>()
         Log.d(
@@ -109,12 +110,13 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         }
         val results = mutableListOf<String?>()
 if (!credentialList.isNullOrEmpty()) {
-    for (cred in credentialList) {
+    credentialList.forEachIndexed  { index, cred ->
+        val credentialJwk = jwkList?.getOrNull(index) ?: jwk
         val tempCredential = "${cred}${if (cred.endsWith("~")) "" else "~"}"
         val keyBindingResponse = createKeyBindingJWT(
             aud = presentationRequest?.clientId,
             credential = tempCredential,
-            subJwk = jwk,
+            subJwk = credentialJwk,
             claims = if (claims.isNotEmpty()) claims else null,
             nonce = presentationRequest?.nonce,
             responseMode = if (isScaFlow) presentationRequest?.responseMode else null,

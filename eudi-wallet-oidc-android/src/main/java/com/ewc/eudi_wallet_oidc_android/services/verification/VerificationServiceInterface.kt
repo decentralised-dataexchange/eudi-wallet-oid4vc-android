@@ -43,7 +43,8 @@ interface VerificationServiceInterface {
         credentialList: List<List<String>>? = null,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<List<JWK?>>? = null
     ): WrappedVpTokenResponse?
 
     /**
