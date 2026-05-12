@@ -178,7 +178,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         did: String?,
         jwk: JWK?,
         inputDescriptors: Any?,
-        isScaFlow: Boolean
+        isScaFlow: Boolean,
+        jwkList: List<JWK?>?
     ): List<String?> {
         var processPresentationDefinition: PresentationDefinition? = null
         if (presentationRequest == null) return listOf()
@@ -189,15 +190,6 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         }
 
         val documentList = mutableListOf<Document>()
-        val issuerAuth = CborUtils.processExtractIssuerAuth(credentialList)
-        val docType = CborUtils.extractDocTypeFromIssuerAuth(credentialList)
-            ?: processPresentationDefinition?.docType
-        val nameSpaces = CborUtils.processExtractNameSpaces(
-            credentialList, presentationRequest
-        )
-        val issuerSigned = IssuerSigned(
-            nameSpaces = nameSpaces, issuerAuth = issuerAuth
-        )
 
         val clientJWK = try {
             val gson = Gson()
@@ -223,27 +215,26 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         )
 
         val emptyNameSpace = encodeEmptyDeviceNameSpaces()
-
-        val deviceAuthentication = buildDeviceAuthenticationBytes(
-            sessionTranscriptArray = sessionTranscript.first,
-            docType = docType ?:"",
-            deviceNameSpacesBytes = emptyNameSpace
-        )
-
         val protectedArray = buildProtectedHeader()
 
-        val ecJwk = jwk?.toECKey()
+        credentialList?.forEachIndexed { index, credentialJwt ->
+            val credentialJwk = jwkList?.getOrNull(index) ?: jwk
+            val ecJwk = credentialJwk?.toECKey()
+            val privateKey = ecJwk?.toPrivateKey() as? ECPrivateKey ?: return@forEachIndexed
+            // 3. Extract Metadata for this specific credential
+            val singleList = listOf(credentialJwt)
+            val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
+                ?: processPresentationDefinition?.docType ?: ""
 
-        // ---- Public Key ----
-        val publicKey = ecJwk?.toPublicKey() as ECPublicKey
-        val publicKeyEncoded = publicKey.encoded
-        Log.d("Device signing", "Public Key (X.509 DER, hex): ${publicKeyEncoded.toHex()}")
+            val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
+            val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
 
-
-        // ---- Private Key ----
-        val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
-        val privateKeyEncoded = privateKey.encoded
-        Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+            // 4. Generate Device Signature (Binding) using the specific Private Key
+        val deviceAuthentication = buildDeviceAuthenticationBytes(
+            sessionTranscriptArray = sessionTranscript.first,
+            docType = docType,
+            deviceNameSpacesBytes = emptyNameSpace
+        )
 
         val sig = buildDeviceSignatureCoseSign1(
             deviceAuthenticationBytes = deviceAuthentication,
@@ -256,16 +247,11 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         }
         val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
 
-        val inputDescriptorSize = if (presentationRequest?.dcqlQuery != null) {
-            presentationRequest?.dcqlQuery?.credentials?.size
-        } else {
-            processPresentationDefinition?.inputDescriptors?.size
-        } ?: 0
-        repeat(inputDescriptorSize) {
+            // 5. Add this uniquely signed document to the list
             documentList.add(
                 Document(
-                    docType = docType ?: "",
-                    issuerSigned = issuerSigned,
+                    docType = docType,
+                    issuerSigned = IssuerSigned(nameSpaces, issuerAuth),
                     deviceSigned = deviceSigned
                 )
             )

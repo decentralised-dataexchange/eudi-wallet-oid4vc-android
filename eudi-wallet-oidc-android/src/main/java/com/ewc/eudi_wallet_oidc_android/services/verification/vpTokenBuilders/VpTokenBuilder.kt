@@ -20,6 +20,7 @@ interface VpTokenBuilder {
         did: String?,
         jwk: JWK?,
         inputDescriptors: Any? = null,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<JWK?>? = null
     ): List<String?>
 }

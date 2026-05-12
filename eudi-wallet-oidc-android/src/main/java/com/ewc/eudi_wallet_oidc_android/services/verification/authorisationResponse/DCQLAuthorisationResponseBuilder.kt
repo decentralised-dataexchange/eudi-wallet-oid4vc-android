@@ -81,7 +81,8 @@ class DCQLAuthorisationResponseBuilder {
         presentationRequest: PresentationRequest,
         did: String?,
         jwk: JWK?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<List<JWK?>>? = null
     ): Map<String, Any?> {
         val params = mutableMapOf<String, Any?>()
         val dcqlCredentials = presentationRequest.dcqlQuery?.credentials
@@ -108,7 +109,8 @@ class DCQLAuthorisationResponseBuilder {
                     jwk = jwk,
                     inputDescriptors =
                         presentationRequest.dcqlQuery?.credentials?.getOrNull(index) ,
-                    isScaFlow = isScaFlow
+                    isScaFlow = isScaFlow,
+                    jwkList = jwkList?.getOrNull(index)
                 )
                 val gson = Gson()
                 val version = presentationRequest.clientMetaDetails?.let { meta ->
@@ -187,41 +189,35 @@ class DCQLAuthorisationResponseBuilder {
         type: String?,
         jwk: JWK?,
         inputDescriptors: Any?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<JWK?>? = null
     ): List<String?>? {
         return if (type == "mso_mdoc") {
-            val vpTokenList: MutableList<String?> = mutableListOf()
-            for (i in credential) {
-                vpTokenList.add(
-                    MDocVpTokenBuilder().build(
-                        credentialList = listOf(i),
-                        presentationRequest = presentationRequest,
-                        did = did,
-                        jwk = jwk,
-                    )
-                )
-            }
-            return vpTokenList
+            MDocVpTokenBuilder().buildV2(
+                credentialList = credential,
+                presentationRequest = presentationRequest,
+                did = did,
+                jwk = jwk,
+                jwkList = jwkList
+            )
         } else if (type == "sdjwt") {
             SDJWTVpTokenBuilder().buildV2(
                 credentialList = credential,
                 presentationRequest = presentationRequest,
                 did = did,
-                jwk = jwk ,
+                jwk = jwk,
                 inputDescriptors = inputDescriptors,
-                isScaFlow = isScaFlow
+                isScaFlow = isScaFlow,
+                jwkList = jwkList
             )
-        }else if(type == "jwt"){
-            val vpTokenList: MutableList<String?> = mutableListOf()
-            for (i in credential){
-                vpTokenList.add(JWTVpTokenBuilder().build(
-                    credentialList = listOf(i),
-                    presentationRequest = presentationRequest,
-                    did = did,
-                    jwk = jwk
-                ))
-            }
-            return vpTokenList
+        } else if (type == "jwt") {
+            JWTVpTokenBuilder().buildV2(
+                credentialList = credential,
+                presentationRequest = presentationRequest,
+                did = did,
+                jwk = jwk,
+                jwkList = jwkList
+            )
         }
         else{
             null

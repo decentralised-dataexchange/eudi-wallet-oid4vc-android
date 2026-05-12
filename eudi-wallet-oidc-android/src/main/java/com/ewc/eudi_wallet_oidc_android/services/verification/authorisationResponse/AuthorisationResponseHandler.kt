@@ -144,13 +144,15 @@ class AuthorisationResponseHandler {
         credentialList: List<List<String>>?,
         did: String?,
         jwk: JWK?,
-        isScaFlow: Boolean = false
+        isScaFlow: Boolean = false,
+        jwkList: List<List<JWK?>>? = null
     ): Map<String, String> {
         Log.d(TAG, "Preparing authorisation response...")
         Log.d(TAG, "Response mode: ${presentationRequest.responseMode}")
         Log.d(TAG, "DID: $did")
         Log.d(TAG, "JWK: $jwk")
         Log.d(TAG, "Credential List: $credentialList")
+        Log.d(TAG, "JWK List: $jwkList")
 
         when (ResponseModes.fromString(presentationRequest.responseMode ?: "direct_post")) {
             ResponseModes.DIRECT_POST -> {
@@ -160,7 +162,8 @@ class AuthorisationResponseHandler {
                     credentialList = credentialList,
                     did = did,
                     jwk = jwk,
-                    isScaFlow = isScaFlow
+                    isScaFlow = isScaFlow,
+                    jwkList = jwkList
                 ).also {
                     Log.d(TAG, "DIRECT_POST response built: $it")
                 }
@@ -182,7 +185,8 @@ class AuthorisationResponseHandler {
                     credentialList = credentialList,
                     did = did,
                     jwk = jwk,
-                    isScaFlow = isScaFlow
+                    isScaFlow = isScaFlow,
+                    jwkList = jwkList
                 )
                 Log.d(TAG, "DIRECT_POST_JWT payload: $authorisationResponsePayload")
 
@@ -201,7 +205,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    jwkList = jwkList
                 ).also {
                     Log.d(TAG, "DIRECT_POST response built: $it")
                 }
@@ -223,7 +228,8 @@ class AuthorisationResponseHandler {
                     presentationRequest = presentationRequest,
                     credentialList = credentialList,
                     did = did,
-                    jwk = jwk
+                    jwk = jwk,
+                    jwkList = jwkList
                 )
                 Log.d(TAG, "DIRECT_POST_JWT payload: $authorisationResponsePayload")
 
@@ -241,7 +247,8 @@ class AuthorisationResponseHandler {
                     credentialList = credentialList,
                     did = did,
                     jwk = jwk,
-                    isScaFlow = isScaFlow
+                    isScaFlow = isScaFlow,
+                    jwkList = jwkList
                 ).also {
                     Log.d(TAG, "IAR_POST response built: $it")
                 }
@@ -271,7 +278,8 @@ class AuthorisationResponseHandler {
                     credentialList = credentialList,
                     did = did,
                     jwk = jwk,
-                    isScaFlow = isScaFlow
+                    isScaFlow = isScaFlow,
+                    jwkList = jwkList
                 )
                 Log.d(TAG, "IAR_POST_JWT payload: $authorisationResponsePayload")
 
