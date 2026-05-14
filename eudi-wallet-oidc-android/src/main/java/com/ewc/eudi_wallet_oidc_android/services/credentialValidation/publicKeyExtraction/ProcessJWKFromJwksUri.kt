@@ -44,16 +44,15 @@ class ProcessJWKFromJwksUri {
                 // Parse JSON into JwksResponse object
                 val jwksResponse =  Gson().fromJson(json, JwksResponse::class.java)
 
-                // Find the JWK with "use" = "sig"
-                var jwkKey = jwksResponse.keys.firstOrNull { it.use == keyUse }
+                val jwkKey = when {
+                    // kid provided — try to find exact match
+                    kid != null -> jwksResponse.keys.firstOrNull { it.kid == kid && it.use == keyUse }
+                        ?: jwksResponse.keys.firstOrNull { it.kid == kid } // use might be absent in JWKS
+                        ?: null // kid given but not found — don't guess wrong key
 
-                // If no "sig" key is found, find by kid
-                if (jwkKey == null) {
-                    jwkKey = if (kid != null) {
-                        jwksResponse.keys.firstOrNull { it.kid == kid }
-                    } else {
-                        jwksResponse.keys.firstOrNull()
-                    }
+                    // No kid — fall back to use=sig, then first key
+                    else -> jwksResponse.keys.firstOrNull { it.use == keyUse }
+                        ?: jwksResponse.keys.firstOrNull()
                 }
                 // After obtaining jwkKey
                 if (jwkKey != null && jwkKey.kty == "OKP" && jwkKey.x.isNullOrEmpty()) {
