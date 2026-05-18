@@ -9,7 +9,12 @@ class ProcessJWKFromKID {
             // Ensure the kid starts with "did:jwk"
             if (kid.startsWith("did:jwk:")) {
                 // Extract the Base64URL-encoded JWK
-                val jwkString = kid.removePrefix("did:jwk:")
+                var jwkString = kid.removePrefix("did:jwk:")
+
+                // Strip out any fragment identifier (#) if present
+                if (jwkString.contains("#")) {
+                    jwkString = jwkString.substringBefore("#")
+                }
 
                 // Decode the JWK JSON
                 val decodedJwkJson = String(Base64URL(jwkString).decode())
