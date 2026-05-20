@@ -1,10 +1,13 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
+import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 
 object ErrorHandler {
+    @Suppress("TooGenericExceptionCaught")
     fun processError(err: String?): ErrorResponse? {
         // Known possibilities for error:
         // 1. "Validation is failed"
@@ -17,6 +20,7 @@ object ErrorHandler {
         } catch (e: Exception) {
             null
         }
+    return try {
         val errorResponse = when {
             err?.contains(
                 "Invalid Proof JWT: iss doesn't match the expected client_id",
@@ -33,10 +37,22 @@ object ErrorHandler {
             }
 
             jsonObject?.has("errors") == true -> {
-                val errorList = JSONArray(jsonObject.getString("errors"))
+                    val errorsValue = jsonObject.get("errors")
+                    val errorDescription = when (errorsValue) {
+                        is JSONArray -> errorsValue.getJSONObject(0).getString("message")
+                        is JSONObject -> {
+                            val firstKey = errorsValue.keys().next()
+                            val firstValue = errorsValue.get(firstKey)
+                            when (firstValue) {
+                                is JSONArray -> "$firstKey: ${firstValue.optString(0)}"
+                                else -> "$firstKey: $firstValue"
+                            }
+                        }
+                        else -> errorsValue.toString()
+                    }
                 ErrorResponse(
                     error = -1,
-                    errorDescription = errorList.getJSONObject(0).getString("message")
+                    errorDescription = errorDescription
                 )
             }
 
@@ -89,6 +105,16 @@ object ErrorHandler {
                 )
             }
 
+            jsonObject != null -> {
+                val firstKey = jsonObject.keys().next()
+                val firstValue = jsonObject.get(firstKey)
+                val description = when (firstValue) {
+                    is JSONArray -> "$firstKey: ${firstValue.optString(0)}"
+                    else -> "$firstKey: $firstValue"
+                }
+                ErrorResponse(error = -1, errorDescription = description)
+            }
+
             else -> {
                 ErrorResponse(
                     error = -1,
@@ -96,7 +122,17 @@ object ErrorHandler {
                 )
             }
         }
-        return errorResponse
-
+            errorResponse
+    } catch (e: JSONException) {
+            Log.e("ErrorHandler", "Failed to parse error body: $err", e)
+            ErrorResponse(error = -1, errorDescription = err)
+    } catch (e: NoSuchElementException) {
+            Log.e("ErrorHandler", "Failed to parse error body: $err", e)
+            ErrorResponse(error = -1, errorDescription = err)
+    } catch (e: Exception) {
+            Log.e("ErrorHandler", "Error processing error response: ${e.message}")
+            // Fallback: if any parsing step throws unexpectedly, return raw string
+            ErrorResponse(error = -1, errorDescription = err)
+        }
     }
 }
