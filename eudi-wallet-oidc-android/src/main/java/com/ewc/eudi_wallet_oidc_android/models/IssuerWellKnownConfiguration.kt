@@ -85,7 +85,7 @@ data class Display(
     @SerializedName("name") var name: String? = null,
     @SerializedName("location") var location: String? = null,
     @SerializedName("locale") var locale: String? = null,
-    @SerializedName("cover") var cover: Image? = Image(),
+    @SerializedName(value = "cover", alternate = ["background_image"]) var cover: Image? = Image(),
     @SerializedName("logo") var logo: Image? = Image(),
     @SerializedName("description") var description: String? = null
 )
