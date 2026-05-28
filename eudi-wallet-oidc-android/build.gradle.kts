@@ -65,7 +65,7 @@ dependencies {
 
     implementation("com.google.crypto.tink:tink-android:1.7.0")
     implementation("co.nstant.in:cbor:0.9")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.79")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
     implementation ("com.google.android.play:integrity:1.4.0")
     implementation ("com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.15.+")
     implementation ("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.+")
