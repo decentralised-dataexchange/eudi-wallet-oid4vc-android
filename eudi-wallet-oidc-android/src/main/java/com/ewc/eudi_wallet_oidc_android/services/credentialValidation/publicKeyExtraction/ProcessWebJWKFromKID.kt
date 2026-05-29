@@ -10,6 +10,7 @@ import com.nimbusds.jose.util.Base64URL
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.nimbusds.jose.jwk.RSAKey
 
 class ProcessWebJWKFromKID {
 
@@ -64,10 +65,12 @@ data class JwkKey(
 
 data class PublicKeyJwk(
     val kty: String,
-    val use: String,
-    val crv: String,
-    val x: String,
-    val y: String
+    val use: String? = null,
+    val crv: String? = null,
+    val x: String? = null,
+    val y: String? = null,
+    val n: String? = null,
+    val e: String? = null
 )
 
 suspend fun fetchJwks(jwksUri: String, kid: String?): JwkKey? {
@@ -114,7 +117,18 @@ fun convertToJWK(jwkKey: JwkKey?): JWK? {
                 .build()
         }
 
-        // Case 2: Ed25519 from Base58
+        // Case 2: RSA keys
+        if (isRsaKey(publicKeyJwk)) {
+            publicKeyJwk?.let { jwk ->
+                if (jwk.n != null && jwk.e != null) {
+                    return RSAKey.Builder(Base64URL.from(jwk.n), Base64URL.from(jwk.e))
+                        .keyID(it.id)
+                        .build()
+                }
+            }
+        }
+
+        // Case 3: Ed25519 from Base58
         jwkKey.publicKeyBase58?.let { base58 ->
             val pubBytes = Base58.decode(base58)
             val x = Base64URL.encode(pubBytes)
@@ -124,4 +138,8 @@ fun convertToJWK(jwkKey: JwkKey?): JWK? {
         }
         null
     }
+}
+private fun isRsaKey(publicKeyJwk: PublicKeyJwk?): Boolean {
+    return publicKeyJwk != null && publicKeyJwk.kty == "RSA"
+            && publicKeyJwk.n != null && publicKeyJwk.e != null
 }
