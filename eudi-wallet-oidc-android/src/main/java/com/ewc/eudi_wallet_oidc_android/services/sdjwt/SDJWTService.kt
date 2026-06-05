@@ -621,9 +621,54 @@ class SDJWTService : SDJWTServiceInterface {
                     }
                 }
             }
-            jsonObject.entrySet().forEach { (_, value) ->
-                addDisclosuresToCredential(value, disclosures, hashList)
+
+            // Handle array fields with {"...": hash} digest elements — NEW
+            val keysToUpdate = mutableMapOf<String, JsonArray>()
+            jsonObject.entrySet().forEach { (key, value) ->
+                if (value.isJsonArray) {
+                    val originalArray = value.asJsonArray
+                    val hasDigestElements = originalArray.any {
+                        it.isJsonObject && it.asJsonObject.has("...")
+                    }
+                    if (hasDigestElements) {
+                        val resolvedArray = JsonArray()
+                        originalArray.forEach { arrayElement ->
+                            if (arrayElement.isJsonObject && arrayElement.asJsonObject.has("...")) {
+                                val digestValue = arrayElement.asJsonObject.get("...").asString
+                                val matchIndex = hashList.indexOfFirst { it == digestValue }
+                                if (matchIndex != -1) {
+                                    try {
+                                        val disclosure = String(
+                                            Base64.decode(disclosures[matchIndex], Base64.URL_SAFE),
+                                            charset("UTF-8")
+                                        )
+                                        // Array element disclosure format: [salt, value]
+                                        val disclosureArray = JsonParser.parseString(disclosure).asJsonArray
+                                        resolvedArray.add(disclosureArray[1])
+                                    } catch (e: Exception) {
+                                        resolvedArray.add(arrayElement)
+                                    }
+                                }
+                                // If no match, omit (not disclosed)
+                            } else {
+                                // Plain element (string, number, object without "...") — keep as-is
+                                addDisclosuresToCredential(arrayElement, disclosures, hashList)
+                                resolvedArray.add(arrayElement)
+                            }
+                        }
+                        keysToUpdate[key] = resolvedArray
+                    } else {
+                        addDisclosuresToCredential(value, disclosures, hashList) // existing behavior
+                    }
+                } else {
+                    addDisclosuresToCredential(value, disclosures, hashList) // existing behavior
+                }
             }
+            // Apply resolved arrays back to the object
+            keysToUpdate.forEach { (key, resolvedArray) ->
+                jsonObject.add(key, resolvedArray)
+            }
+
         } else if (jsonElement.isJsonArray) {
             jsonElement.asJsonArray.forEach { arrayElement ->
                 addDisclosuresToCredential(arrayElement, disclosures, hashList)
