@@ -46,12 +46,12 @@ class VerificationService : VerificationServiceInterface {
         val uri = Uri.parse(data)
         val presentationDefinition = uri.getQueryParameter("presentation_definition")
         val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
+        val dcqlQuery = uri.getQueryParameter("dcql_query")
         val iarOpenid4VPRequest = uri.getQueryParameter("openid4vp_request")
 
         val requestUri = uri.getQueryParameter("request_uri")
-        val request: String? = uri.getQueryParameter("request")
-
-        if (presentationDefinition != null || presentationDefinitionUri != null) {
+        val request = uri.getQueryParameter("request")
+        if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
             return AuthorisationRequestByValue().processAuthorisationRequest(data)
         } else if (!requestUri.isNullOrBlank()) {
             return AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
