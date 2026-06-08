@@ -369,6 +369,10 @@ class SDJWTService : SDJWTServiceInterface {
                             if (sdList.contains(response)) {
                                 disclosureList.add(disclosure)
                             }
+                            // Handle array element disclosures [salt, value] — no key at index 1
+                            if (list.length() == 2) {
+                                disclosureList.add(disclosure)
+                            }
                         } catch (e: Exception) {
                             println(e.message.toString())
                         }
@@ -496,6 +500,10 @@ class SDJWTService : SDJWTServiceInterface {
 
                             val response = calculateSHA256Hash(disclosure)
                             if (sdList.contains(response)) {
+                                disclosureList.add(disclosure)
+                            }
+                            // Handle array element disclosures [salt, value] — no key at index 1
+                            if (list.length() == 2) {
                                 disclosureList.add(disclosure)
                             }
                         } catch (e: Exception) {
