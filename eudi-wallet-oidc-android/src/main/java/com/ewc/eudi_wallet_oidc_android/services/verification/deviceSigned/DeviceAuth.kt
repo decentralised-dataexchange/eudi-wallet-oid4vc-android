@@ -104,6 +104,69 @@ private fun encodeCbor(dataItem: co.nstant.`in`.cbor.model.DataItem): ByteArray 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ISO/IEC TS 18013-7 §B.4.4 — SessionTranscript (Annex B: OID4VP retrieval)
+//
+//   SessionTranscript = [null, null, OID4VPHandover]
+//   OID4VPHandover    = [clientIdHash, responseUriHash, nonce]   ; NO string label
+//   clientIdHash      = SHA-256( CBOR([clientId,    mdocGeneratedNonce]) )
+//   responseUriHash   = SHA-256( CBOR([responseUri, mdocGeneratedNonce]) )
+//
+// This is DISTINCT from buildSessionTranscriptForOpenID4VP() above, which builds
+// the newer OpenID4VP-draft handover (["OpenID4VPHandover", SHA-256(info)]).
+// Both functions are kept; the caller picks which profile to use.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Builds the SessionTranscript per ISO/IEC TS 18013-7 §B.4.4 (Annex B).
+ *
+ * NOTE on [mdocGeneratedNonce]: §B.4.4 / §B.5.3 require a cryptographically
+ * random value. It must also be echoed to the verifier as the JWE `apu` header
+ * (§B.4.3.3) so the mdoc reader can recompute clientIdHash / responseUriHash.
+ * The current response encryption (JWEEncrypter) sets apu = base64url(clientId),
+ * so this defaults to clientId to stay consistent end-to-end. To move to a true
+ * random nonce, generate it, set the JWE apu header to it, and pass it in here.
+ *
+ * @return Pair of (SessionTranscript as CborArray DataItem, CBOR-encoded bytes)
+ */
+fun buildSessionTranscriptForAnnexB18013_7(
+    clientId: String,
+    nonce: String,
+    responseUri: String,
+    mdocGeneratedNonce: String = clientId
+): Pair<CborArray, ByteArray> {
+    fun cborArrayBytes(vararg values: String): ByteArray {
+        val baos = ByteArrayOutputStream()
+        val arr = CborArray()
+        values.forEach { arr.add(UnicodeString(it)) }
+        CborEncoder(baos).encode(arr)
+        return baos.toByteArray()
+    }
+
+    val sha256 = { data: ByteArray -> MessageDigest.getInstance("SHA-256").digest(data) }
+
+    // clientIdHash = SHA-256(CBOR([clientId, mdocGeneratedNonce]))
+    val clientIdHash = sha256(cborArrayBytes(clientId, mdocGeneratedNonce))
+    // responseUriHash = SHA-256(CBOR([responseUri, mdocGeneratedNonce]))
+    val responseUriHash = sha256(cborArrayBytes(responseUri, mdocGeneratedNonce))
+
+    // OID4VPHandover = [clientIdHash, responseUriHash, nonce]
+    val handover = CborArray().apply {
+        add(ByteString(clientIdHash))     // bstr
+        add(ByteString(responseUriHash))  // bstr
+        add(UnicodeString(nonce))         // tstr
+    }
+
+    // SessionTranscript = [null, null, OID4VPHandover]
+    val stArray = CborArray().apply {
+        add(SimpleValue.NULL) // DeviceEngagementBytes
+        add(SimpleValue.NULL) // EReaderKeyBytes
+        add(handover)
+    }
+
+    return Pair(stArray, encodeCbor(stArray))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ISO 18013-5 §9.1.3.4 + §9.1.3.6 — DeviceAuthentication + COSE_Sign1
 //
 // Spec (§9.1.3.4):

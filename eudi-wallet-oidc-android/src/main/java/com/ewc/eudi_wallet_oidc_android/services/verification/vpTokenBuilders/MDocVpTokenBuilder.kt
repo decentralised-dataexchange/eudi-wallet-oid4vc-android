@@ -23,6 +23,7 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.JWKTh
 import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildDeviceAuthenticationBytes
 import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildDeviceSignatureCoseSign1
 import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildProtectedHeader
+import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildSessionTranscriptForAnnexB18013_7
 import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.buildSessionTranscriptForOpenID4VP
 import com.ewc.eudi_wallet_oidc_android.services.verification.deviceSigned.encodeEmptyDeviceNameSpaces
 import com.ewc.eudi_wallet_oidc_android.services.verification.mdoc.toHex
@@ -66,15 +67,28 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         val handoverClientId = (presentationRequest.clientId ?: "").let {
             if (isDcApi) it.removePrefix("origin:") else it
         }
-        val sessionTranscript = buildSessionTranscriptForOpenID4VP(
-            clientId = handoverClientId,
-            nonce = presentationRequest.nonce ?: "",
-            jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
-            responseUri = if (isDcApi)
-                null
-            else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-            responseMode = presentationRequest.responseMode
-        )
+        // Select session transcript by request type: presentation_definition /
+        // presentation_definition_uri → ISO/IEC TS 18013-7 §B.4.4 (Annex B);
+        // otherwise (e.g. DCQL) → the existing OpenID4VP handover.
+        val usesPresentationDefinition = presentationRequest.presentationDefinition != null ||
+                presentationRequest.presentationDefinitionUri != null
+        val sessionTranscript = if (usesPresentationDefinition) {
+            buildSessionTranscriptForAnnexB18013_7(
+                clientId = handoverClientId,
+                nonce = presentationRequest.nonce ?: "",
+                responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri ?: ""
+            )
+        } else {
+            buildSessionTranscriptForOpenID4VP(
+                clientId = handoverClientId,
+                nonce = presentationRequest.nonce ?: "",
+                jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
+                responseUri = if (isDcApi)
+                    null
+                else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+                responseMode = presentationRequest.responseMode
+            )
+        }
 
         val emptyNameSpace = encodeEmptyDeviceNameSpaces()
 
@@ -204,15 +218,28 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         val handoverClientId = (presentationRequest.clientId ?: "").let {
             if (isDcApi) it.removePrefix("origin:") else it
         }
-        val sessionTranscript = buildSessionTranscriptForOpenID4VP(
-            clientId = handoverClientId,
-            nonce = presentationRequest.nonce ?: "",
-            responseUri = if (isDcApi)
-                null
-            else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-            jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
-            responseMode = presentationRequest.responseMode
-        )
+        // Select session transcript by request type: presentation_definition /
+        // presentation_definition_uri → ISO/IEC TS 18013-7 §B.4.4 (Annex B);
+        // otherwise (e.g. DCQL) → the existing OpenID4VP handover.
+        val usesPresentationDefinition = presentationRequest.presentationDefinition != null ||
+                presentationRequest.presentationDefinitionUri != null
+        val sessionTranscript = if (usesPresentationDefinition) {
+            buildSessionTranscriptForAnnexB18013_7(
+                clientId = handoverClientId,
+                nonce = presentationRequest.nonce ?: "",
+                responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri ?: ""
+            )
+        } else {
+            buildSessionTranscriptForOpenID4VP(
+                clientId = handoverClientId,
+                nonce = presentationRequest.nonce ?: "",
+                responseUri = if (isDcApi)
+                    null
+                else presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
+                jwkThumbprint = clientJWK?.let { JWKThumbprint.computeJwkThumbprintBytes(it) },
+                responseMode = presentationRequest.responseMode
+            )
+        }
 
         val emptyNameSpace = encodeEmptyDeviceNameSpaces()
         val protectedArray = buildProtectedHeader()
