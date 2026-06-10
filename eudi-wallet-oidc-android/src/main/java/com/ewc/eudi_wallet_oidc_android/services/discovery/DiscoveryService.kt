@@ -13,47 +13,86 @@ import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
 import com.google.gson.Gson
+import java.net.URI
 
 class DiscoveryService : DiscoveryServiceInterface {
 
     /**
+     * Helper to construct RFC 8414 Section 3 compatible URLs when paths are present.
+     * Inserts the wellKnownSuffix immediately after the host/port.
+     */
+    private fun buildRfc8414Url(inputUri: String?, wellKnownSuffix: String): String? {
+        if (inputUri == null) return null
+        return try {
+            val uri = URI(inputUri)
+            val scheme = uri.scheme ?: "https"
+            val authority = uri.authority // includes host and port if present
+            var path = uri.path ?: ""
+
+            if (path.startsWith("/")) {
+                path = path.substring(1)
+            }
+
+            if (path.isEmpty()) {
+                "$scheme://$authority/$wellKnownSuffix"
+            } else {
+                "$scheme://$authority/$wellKnownSuffix/$path"
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * To fetch the Issue configuration
-     *
-     * @param credentialIssuerWellKnownURI
-     * @return WrappedIssuerConfigResponse
      */
     override suspend fun getIssuerConfig(credentialIssuerWellKnownURI: String?): WrappedIssuerConfigResponse? {
-        var credentialIssuer = credentialIssuerWellKnownURI?.replace("/.well-known/openid-credential-issuer","")
-        credentialIssuer = removeTrailingSlash(credentialIssuer)
-        credentialIssuer = "$credentialIssuer/.well-known/openid-credential-issuer"
+        val baseIssuer = credentialIssuerWellKnownURI?.replace("/.well-known/openid-credential-issuer", "")
+            ?.let { removeTrailingSlash(it) } ?: return null
 
+        // Primary strategy: Current suffix-style URL
+        val primaryUrl = "$baseIssuer/.well-known/openid-credential-issuer"
+
+        // Execute primary strategy
+        val primaryResult = executeIssuerFetch(primaryUrl)
+        if (primaryResult?.issuerConfig != null) {
+            return primaryResult
+        }
+
+        // Fallback strategy: RFC 8414 Section 3 transformation
+        val fallbackUrl = buildRfc8414Url(baseIssuer, ".well-known/openid-credential-issuer")
+        if (!fallbackUrl.isNullOrEmpty() && fallbackUrl != primaryUrl) {
+            val fallbackResult = executeIssuerFetch(fallbackUrl)
+            if (fallbackResult?.issuerConfig != null) {
+                return fallbackResult
+            }
+        }
+
+        // Return the original primary result (with errors) if both failed
+        return primaryResult
+    }
+
+    private suspend fun executeIssuerFetch(url: String): WrappedIssuerConfigResponse? {
         try {
-            UrlUtils.validateUri(credentialIssuer)
-
+            UrlUtils.validateUri(url)
             var finalResponse: WrappedIssuerConfigResponse? = null
 
             val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.fetchIssuerConfig("$credentialIssuer")
+                ApiManager.api.getService()?.fetchIssuerConfig(url)
             }
 
             result.onSuccess { response ->
                 finalResponse = if (response.isSuccessful) {
-                    parseIssuerConfigurationResponse(
-                        issuerConfigResponseJson = response.body()?.string()
-                    )
+                    parseIssuerConfigurationResponse(issuerConfigResponseJson = response.body()?.string())
                 } else {
                     WrappedIssuerConfigResponse(
                         issuerConfig = null,
-                        errorResponse = ErrorResponse(
-                            error = response.code(),
-                            errorDescription = response.message()
-                        )
+                        errorResponse = ErrorResponse(error = response.code(), errorDescription = response.message())
                     )
                 }
             }.onFailure { e ->
                 val message = when (e) {
-                    is javax.net.ssl.SSLHandshakeException ->
-                        "Unable to establish a secure connection."
+                    is javax.net.ssl.SSLHandshakeException -> "Unable to establish a secure connection."
                     else -> e.message.toString()
                 }
                 finalResponse = WrappedIssuerConfigResponse(
@@ -61,28 +100,19 @@ class DiscoveryService : DiscoveryServiceInterface {
                     errorResponse = ErrorResponse(errorDescription = message)
                 )
             }
-
             return finalResponse
-
         } catch (exc: UriValidationFailed) {
             return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
         }
     }
+
     private fun removeTrailingSlash(input: String?): String? {
-        return if (input?.endsWith("/")==true) {
-            input?.dropLast(1) // Removes the last character
-        } else {
-            input
-        }
+        return if (input?.endsWith("/") == true) input.dropLast(1) else input
     }
-    private fun parseIssuerConfigurationResponse(issuerConfigResponseJson:String?): WrappedIssuerConfigResponse?{
+
+    private fun parseIssuerConfigurationResponse(issuerConfigResponseJson: String?): WrappedIssuerConfigResponse? {
         val jsonToParse = if (JwtUtils.isValidJWT(issuerConfigResponseJson)) {
-            try {
-                JwtUtils.parseJWTForPayload(issuerConfigResponseJson)
-            }
-            catch (e: Exception) {
-                issuerConfigResponseJson
-            }
+            try { JwtUtils.parseJWTForPayload(issuerConfigResponseJson) } catch (e: Exception) { issuerConfigResponseJson }
         } else {
             issuerConfigResponseJson
         }
@@ -90,104 +120,93 @@ class DiscoveryService : DiscoveryServiceInterface {
         val issuerWellKnownConfigurationV2Response = try {
             gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV2::class.java)
         } catch (e: Exception) { null }
-        return if (issuerWellKnownConfigurationV2Response?.credentialConfigurationsSupported == null){
+
+        return if (issuerWellKnownConfigurationV2Response?.credentialConfigurationsSupported == null) {
             val issuerWellKnownConfigurationV1Response = try {
                 gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV1::class.java)
             } catch (e: Exception) { null }
-            if(issuerWellKnownConfigurationV1Response?.credentialsSupported==null){
+            if (issuerWellKnownConfigurationV1Response?.credentialsSupported == null) {
                 null
-            } else{
+            } else {
                 WrappedIssuerConfigResponse(
-                    issuerConfig = IssuerWellKnownConfiguration(issuerWellKnownConfigurationV1 = issuerWellKnownConfigurationV1Response) ,
-                    errorResponse = null )
+                    issuerConfig = IssuerWellKnownConfiguration(issuerWellKnownConfigurationV1 = issuerWellKnownConfigurationV1Response),
+                    errorResponse = null
+                )
             }
-        } else{
+        } else {
             WrappedIssuerConfigResponse(
-                issuerConfig =IssuerWellKnownConfiguration(issuerWellKnownConfigurationV2 = issuerWellKnownConfigurationV2Response) ,
-                errorResponse = null )
+                issuerConfig = IssuerWellKnownConfiguration(issuerWellKnownConfigurationV2 = issuerWellKnownConfigurationV2Response),
+                errorResponse = null
+            )
         }
     }
-
 
     /**
      * To fetch the authorization server configuration
-     *
-     * @param authorisationServerWellKnownURI
-     * @return WrappedAuthConfigResponse
      */
     override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): WrappedAuthConfigResponse {
-        var authorizationServer = authorisationServerWellKnownURI?.replace("/.well-known/oauth-authorization-server","")
-        authorizationServer = removeTrailingSlash(authorizationServer)
-        authorizationServer = "$authorizationServer/.well-known/oauth-authorization-server"
+        val baseAuthServer = authorisationServerWellKnownURI?.replace("/.well-known/oauth-authorization-server", "")
+            ?.replace("/.well-known/openid-configuration", "")
+            ?.let { removeTrailingSlash(it) }
 
-        try {
-            UrlUtils.validateUri(authorizationServer)
+        // Core array of URLs we want to try step-by-step
+        val urlsToTry = mutableListOf<String>()
 
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.fetchAuthConfig("$authorizationServer")
+        baseAuthServer?.let { base ->
+            // 1. Current default
+            urlsToTry.add("$base/.well-known/oauth-authorization-server")
+            // 2. OpenID Connect alternative default
+            urlsToTry.add("$base/.well-known/openid-configuration")
+
+            // 3. RFC 8414 variations (if there is a path component)
+            buildRfc8414Url(base, ".well-known/oauth-authorization-server")?.let {
+                if (!urlsToTry.contains(it)) urlsToTry.add(it)
             }
+            buildRfc8414Url(base, ".well-known/openid-configuration")?.let {
+                if (!urlsToTry.contains(it)) urlsToTry.add(it)
+            }
+        }
 
-            result.onSuccess { response ->
-                // First call succeeded
-                if (response.isSuccessful) {
-                    val bodyString = response.body()?.string()
-                    return WrappedAuthConfigResponse(
-                        authConfig = parseAuthConfigJson(bodyString),
-                        errorResponse = null
-                    )
-                }
-                // If not successful, treat as failure → fallback
-            }.onFailure { e ->
-                // Fallback attempt if first call failed (404 or other API error)
-                val fallbackUrl = authorizationServer.replace(
-                    "/.well-known/oauth-authorization-server",
-                    "/.well-known/openid-configuration"
-                )
+        var lastErrorResponse: ErrorResponse? = null
 
-                val fallbackResult = SafeApiCall.safeApiCallResponse {
-                    ApiManager.api.getService()?.fetchAuthConfig(fallbackUrl)
+        for (url in urlsToTry) {
+            try {
+                UrlUtils.validateUri(url)
+                val result = SafeApiCall.safeApiCallResponse {
+                    ApiManager.api.getService()?.fetchAuthConfig(url)
                 }
 
-                fallbackResult.onSuccess { fallbackResponse ->
-                    return if (fallbackResponse.isSuccessful) {
-                        val bodyString = fallbackResponse.body()?.string()
-                        WrappedAuthConfigResponse(
-                            authConfig = parseAuthConfigJson(bodyString),
+                var successResponse: WrappedAuthConfigResponse? = null
+
+                result.onSuccess { response ->
+                    if (response.isSuccessful) {
+                        successResponse = WrappedAuthConfigResponse(
+                            authConfig = parseAuthConfigJson(response.body()?.string()),
                             errorResponse = null
                         )
                     } else {
-                        WrappedAuthConfigResponse(
-                            authConfig = null,
-                            errorResponse = ErrorResponse(
-                                error = fallbackResponse.code(),
-                                errorDescription = fallbackResponse.message()
-                            )
-                        )
+                        lastErrorResponse = ErrorResponse(error = response.code(), errorDescription = response.message())
                     }
-                }.onFailure { fe ->
-                    return WrappedAuthConfigResponse(
-                        authConfig = null,
-                        errorResponse = ErrorResponse(errorDescription = fe.message)
-                    )
+                }.onFailure { e ->
+                    lastErrorResponse = ErrorResponse(errorDescription = e.message)
                 }
+
+                // If this specific URL attempt resolved successfully, return it early!
+                if (successResponse?.authConfig != null) {
+                    return successResponse!!
+                }
+
+            } catch (exc: UriValidationFailed) {
+                lastErrorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed for $url")
             }
-
-            // If nothing matched above
-            return WrappedAuthConfigResponse(
-                authConfig = null,
-                errorResponse = ErrorResponse(errorDescription = "Unexpected error")
-            )
-
-        } catch (exc: UriValidationFailed) {
-            return WrappedAuthConfigResponse(
-                authConfig = null,
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "URI validation failed"
-                )
-            )
         }
+
+        return WrappedAuthConfigResponse(
+            authConfig = null,
+            errorResponse = lastErrorResponse ?: ErrorResponse(errorDescription = "Unexpected error during discovery processes")
+        )
     }
+
     private fun parseAuthConfigJson(jsonOrJwt: String?): AuthorisationServerWellKnownConfiguration? {
         val jsonToParse = if (JwtUtils.isValidJWT(jsonOrJwt)) {
             try { JwtUtils.parseJWTForPayload(jsonOrJwt) } catch (e: Exception) { jsonOrJwt }
