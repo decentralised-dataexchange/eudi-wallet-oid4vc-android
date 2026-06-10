@@ -21,8 +21,22 @@ class TrustMechanismService : TrustMechanismInterface {
         .create()
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
-        x5c: String?
+        x5c: String?,
+        trustProvidersList: List<TrustServiceProvider>?
     ): Boolean {
+        // 1. First preference: Check the cached providers if available
+        if (!trustProvidersList.isNullOrEmpty()) {
+            Log.d(TAG, "Using cached providers for validation.")
+
+            // Inlined cache logic here:
+            val matchedTsp = findMatchedTrustServiceProvider(trustProvidersList, x5c)
+            val hasGranted = hasGrantedServiceStatus(matchedTsp?.tspServices, gson)
+            Log.d(TAG, "Cache check - Has granted status: $hasGranted")
+
+            return hasGranted
+        }
+
+        // 2. Fallback: Existing network fetch logic
         return try {
             val service = ApiManager.api.getService()
             if (service == null) {
@@ -71,8 +85,16 @@ class TrustMechanismService : TrustMechanismInterface {
 
     override suspend fun fetchTrustDetails(
         url: String?,
-        x5c: String?
+        x5c: String?,
+        trustProvidersList: List<TrustServiceProvider>?
     ): TrustServiceProvider? {
+        // 1. First preference: Check the cached providers if available
+        if (!trustProvidersList.isNullOrEmpty()) {
+            Log.d(TAG, "Using cached providers to find trust details.")
+            return findMatchedTrustServiceProvider(trustProvidersList, x5c)
+        }
+
+        // 2. Fallback: Existing network fetch logic
         return try {
             val service = ApiManager.api.getService()
             if (service == null) {
@@ -239,5 +261,42 @@ class TrustMechanismService : TrustMechanismInterface {
 
         // Return fallback match if found, else null
         return null
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    suspend fun fetchAllTrustProviders(trustListUrls: List<String>)
+    : List<TrustServiceProvider> {
+
+        val merged = mutableMapOf<String, TrustServiceProvider>()
+
+        for (url in trustListUrls) {
+            try {
+                val service = ApiManager.api.getService() ?: continue
+                val result = safeApiCallResponse { service.getTrustServiceProviders(url) }
+
+                result.fold(
+                    onSuccess = { response ->
+                        val responseBody = response.body() ?: return@fold
+                        val xmlString = responseBody.string()
+                        val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
+                        val rootObj = gson.fromJson(jsonString, Root::class.java)
+                        val entries = rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
+                        for (entry in entries) {
+                            // ← same structure as the model: tspInformation.tspName
+                            val key = entry.tspInformation?.tspName?.toString() ?: entry.hashCode().toString()
+                            merged[key] = entry
+                        }
+                        Log.d(TAG, "Fetched ${entries.size} entries from $url")
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "Failed from $url: ${error.message}")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error from $url: ${e.message}", e)
+            }
+        }
+
+        return merged.values.toList()
     }
 }
