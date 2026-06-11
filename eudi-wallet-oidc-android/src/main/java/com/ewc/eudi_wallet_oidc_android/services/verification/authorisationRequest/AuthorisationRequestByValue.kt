@@ -7,6 +7,8 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.ProcessPresentationRequestWithUris.processPresentationRequest
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 
 /**
  * Handles the processing of authorization requests by value, as described in
@@ -39,8 +41,8 @@ class AuthorisationRequestByValue : AuthorisationRequestHandler {
         val clientMetadataUri = uri.getQueryParameter("client_metadata_uri")
         val clientMetadataJson = uri.getQueryParameter("client_metadata")
         val clientIdScheme = uri.getQueryParameter("client_id_scheme")
-        val clientMetadetails: ClientMetaDetails? = if (!clientMetadataJson.isNullOrBlank()) {
-            gson.fromJson(clientMetadataJson, ClientMetaDetails::class.java)
+        val clientMetadetails: JsonObject? = if (!clientMetadataJson.isNullOrBlank()) {
+            JsonParser.parseString(clientMetadataJson).asJsonObject
         } else {
             null
         }
