@@ -50,20 +50,27 @@ class DiscoveryService : DiscoveryServiceInterface {
         val baseIssuer = credentialIssuerWellKnownURI?.replace("/.well-known/openid-credential-issuer", "")
             ?.let { removeTrailingSlash(it) } ?: return null
 
-        // Primary strategy: Current suffix-style URL
-        val primaryUrl = "$baseIssuer/.well-known/openid-credential-issuer"
+        // Primary strategy: RFC 8414 Section 3 transformation
+        // (.well-known inserted between the host and the path)
+        val primaryUrl = buildRfc8414Url(baseIssuer, ".well-known/openid-credential-issuer")
+
+        // Fallback strategy: suffix-style URL (.well-known appended to the end)
+        val fallbackUrl = "$baseIssuer/.well-known/openid-credential-issuer"
 
         // Execute primary strategy
-        val primaryResult = executeIssuerFetch(primaryUrl)
+        val primaryResult = if (!primaryUrl.isNullOrEmpty()) executeIssuerFetch(primaryUrl) else null
         if (primaryResult?.issuerConfig != null) {
             return primaryResult
         }
 
-        // Fallback strategy: RFC 8414 Section 3 transformation
-        val fallbackUrl = buildRfc8414Url(baseIssuer, ".well-known/openid-credential-issuer")
-        if (!fallbackUrl.isNullOrEmpty() && fallbackUrl != primaryUrl) {
+        // Execute fallback strategy
+        if (fallbackUrl != primaryUrl) {
             val fallbackResult = executeIssuerFetch(fallbackUrl)
             if (fallbackResult?.issuerConfig != null) {
+                return fallbackResult
+            }
+            // Return the fallback result (with errors) if the primary produced none
+            if (primaryResult == null) {
                 return fallbackResult
             }
         }
@@ -153,18 +160,20 @@ class DiscoveryService : DiscoveryServiceInterface {
         val urlsToTry = mutableListOf<String>()
 
         baseAuthServer?.let { base ->
-            // 1. Current default
-            urlsToTry.add("$base/.well-known/oauth-authorization-server")
-            // 2. OpenID Connect alternative default
-            urlsToTry.add("$base/.well-known/openid-configuration")
-
-            // 3. RFC 8414 variations (if there is a path component)
+            // 1. RFC 8414 variations (.well-known inserted between the host and the path)
             buildRfc8414Url(base, ".well-known/oauth-authorization-server")?.let {
                 if (!urlsToTry.contains(it)) urlsToTry.add(it)
             }
             buildRfc8414Url(base, ".well-known/openid-configuration")?.let {
                 if (!urlsToTry.contains(it)) urlsToTry.add(it)
             }
+
+            // 2. Suffix-style default (.well-known appended to the end)
+            if (!urlsToTry.contains("$base/.well-known/oauth-authorization-server"))
+                urlsToTry.add("$base/.well-known/oauth-authorization-server")
+            // 3. OpenID Connect alternative suffix-style default
+            if (!urlsToTry.contains("$base/.well-known/openid-configuration"))
+                urlsToTry.add("$base/.well-known/openid-configuration")
         }
 
         var lastErrorResponse: ErrorResponse? = null
