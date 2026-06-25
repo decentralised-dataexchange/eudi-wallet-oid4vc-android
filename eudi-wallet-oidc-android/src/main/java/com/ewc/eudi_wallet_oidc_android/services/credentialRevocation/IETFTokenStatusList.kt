@@ -37,7 +37,7 @@ class IETFTokenStatusList: StatusListInterface {
     }
     override fun extractStatusDetails(credential: String): Pair<Int?, String?>? {
         return try {
-            if (JwtUtils.isValidJWT(credential)) {
+            if (JwtUtils.isValidJwtStructure(credential)) {
                 val jwtParts = credential.split(".")
                 val payloadBase64 = jwtParts[1]
                 val decodedPayload = try {
