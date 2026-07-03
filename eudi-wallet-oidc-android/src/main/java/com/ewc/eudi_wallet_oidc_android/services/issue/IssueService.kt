@@ -688,7 +688,6 @@ class IssueService : IssueServiceInterface {
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
         version: Int?,
-        clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String?,
@@ -739,12 +738,7 @@ class IssueService : IssueServiceInterface {
                         "client_id" to (did ?: ""),
                         "code_verifier" to (codeVerifier ?: ""),
                         "redirect_uri" to (redirectURI)
-                    ).apply {
-                        if (clientAssertion != null) {
-                            this["client_assertion"] = clientAssertion
-                            this["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-                        }
-                    }
+                    )
                 },
                 headers
             )
