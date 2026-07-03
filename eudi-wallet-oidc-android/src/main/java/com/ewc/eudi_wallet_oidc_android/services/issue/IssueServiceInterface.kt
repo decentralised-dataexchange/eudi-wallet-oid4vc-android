@@ -74,7 +74,6 @@ interface IssueServiceInterface {
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
         version: Int?,
-        clientAssertion: String?,
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String? = null,
