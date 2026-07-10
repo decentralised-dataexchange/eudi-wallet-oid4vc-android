@@ -267,7 +267,7 @@ class TrustMechanismService : TrustMechanismInterface {
     suspend fun fetchAllTrustProviders(trustListUrls: List<String>)
     : List<TrustServiceProvider> {
 
-        val merged = mutableMapOf<String, TrustServiceProvider>()
+        val providers = mutableListOf<TrustServiceProvider>()
 
         for (url in trustListUrls) {
             try {
@@ -280,12 +280,12 @@ class TrustMechanismService : TrustMechanismInterface {
                         val xmlString = responseBody.string()
                         val jsonString = XmlFetchParserUtil.parseXmlToJsonString(xmlString)
                         val rootObj = gson.fromJson(jsonString, Root::class.java)
-                        val entries = rootObj.trustServiceProviderList?.trustServiceProvider ?: emptyList()
-                        for (entry in entries) {
-                            // ← same structure as the model: tspInformation.tspName
-                            val key = entry.tspInformation?.tspName?.toString() ?: entry.hashCode().toString()
-                            merged[key] = entry
-                        }
+
+                        val entries =
+                            rootObj.trustServiceProviderList?.trustServiceProvider.orEmpty()
+
+                        providers.addAll(entries)
+
                         Log.d(TAG, "Fetched ${entries.size} entries from $url")
                     },
                     onFailure = { error ->
@@ -297,6 +297,6 @@ class TrustMechanismService : TrustMechanismInterface {
             }
         }
 
-        return merged.values.toList()
+        return providers
     }
 }
