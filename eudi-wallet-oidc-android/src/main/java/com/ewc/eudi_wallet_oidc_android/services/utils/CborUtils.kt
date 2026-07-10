@@ -1047,6 +1047,9 @@ class CborUtils {
             val x5chainKey = UnsignedInteger(33)
             val x5chainValue = unprotectedMap[x5chainKey]
             Log.d("CBOR", "x5chain (33) value type: ${x5chainValue?.javaClass}, value: $x5chainValue")
+            if (x5chainValue == null) {
+                return emptyList()
+            }
             val certList = when (x5chainValue) {
                 is CborArray -> x5chainValue
                 is CborByteString -> CborArray().apply { add(x5chainValue) }
@@ -1067,6 +1070,74 @@ class CborUtils {
             }
         }
 
+        @OptIn(ExperimentalEncodingApi::class)
+        fun extractKidOrDidFromCoseBase64(coseBase64: String?): KidDidResult {
+            var kid: String? = null
+            var did: String? = null
+
+            if (coseBase64.isNullOrBlank()) return KidDidResult(null, null)
+
+            try {
+                val paddedCbor = padBase64Url(coseBase64)
+                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
+                val cbors = CborDecoder(ByteArrayInputStream(cborInBytes)).decode()
+                val issuerAuth = cbors[0]["issuerAuth"]
+
+                val coseArray = issuerAuth as? CborArray ?: return KidDidResult(null, null)
+                if (coseArray.dataItems.size < 2) return KidDidResult(null, null)
+
+                val unprotectedMap = coseArray.dataItems[1] as? CborMap ?: return KidDidResult(null, null)
+
+                // 1. Check for kid (key 4 in COSE)
+                val kidKey = UnsignedInteger(4)
+                val kidItem = unprotectedMap[kidKey]
+                if (kidItem != null) {
+                    kid = when (kidItem) {
+                        is CborUnicodeString -> kidItem.string
+                        is CborByteString -> String(kidItem.bytes, Charsets.UTF_8)
+                        else -> {
+                            Log.d("CBOR", "kid is in unexpected format")
+                            null
+                        }
+                    }
+                }
+
+                // 2. Check for did string key
+                val didStrKey = CborUnicodeString("did")
+                val didItem = unprotectedMap[didStrKey]
+                if (didItem != null) {
+                    did = when (didItem) {
+                        is CborUnicodeString -> didItem.string
+                        is CborByteString -> String(didItem.bytes, Charsets.UTF_8)
+                        else -> {
+                            Log.d("CBOR", "did string is in unexpected format")
+                            null
+                        }
+                    }
+                }
+
+                // 3. Alternative check for did in custom integer key 100
+                if (did == null) {
+                    val didIntKey = UnsignedInteger(100)
+                    val didIntItem = unprotectedMap[didIntKey]
+                    if (didIntItem != null) {
+                        did = when (didIntItem) {
+                            is CborUnicodeString -> didIntItem.string
+                            is CborByteString -> String(didIntItem.bytes, Charsets.UTF_8)
+                            else -> {
+                                Log.d("CBOR", "did integer is in unexpected format")
+                                null
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("TrustListUtils", "Error parsing KID/DID from COSE: ${e.message}")
+            }
+
+            return KidDidResult(kid, did)
+        }
+
     }
 }
 operator fun DataItem.get(name: String): DataItem? {
@@ -1080,3 +1151,4 @@ operator fun DataItem.get(index: Int): DataItem? {
     this as CborArray
     return this.dataItems.getOrNull(index)
 }
+data class KidDidResult(val kid: String?, val did: String?)

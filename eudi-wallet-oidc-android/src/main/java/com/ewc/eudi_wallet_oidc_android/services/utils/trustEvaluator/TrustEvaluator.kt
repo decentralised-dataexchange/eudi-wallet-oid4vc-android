@@ -67,16 +67,31 @@ object TrustEvaluator {
              emptyList()
          }
 
-         coseList.forEach { x5c ->
-             // Preference 1: trustProvidersList
-             if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList)) {
-                 return x5c
-             }
-             // Preference 2: Network URLs
-             for (url in urls) {
-                 if (isTrusted(x5c, url = url)) return x5c
-             }
-         }
+        if (coseList.isNotEmpty()) {
+            coseList.forEach { x5c ->
+                // Preference 1: trustProvidersList
+                if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList)) {
+                    return x5c
+                }
+                // Preference 2: Network URLs
+                for (url in urls) {
+                    if (isTrusted(x5c, url = url)) return x5c
+                }
+            }
+        }else{
+            val (kid, did) = CborUtils.extractKidOrDidFromCoseBase64(jwt ?: "")
+
+            val identifier = did ?: kid
+
+            if (identifier != null) {
+                if (hasProvidersList && isTrusted(identifier, trustProvidersList = trustProvidersList)) {
+                    return identifier
+                }
+                for (url in urls) {
+                    if (isTrusted(identifier, url = url)) return identifier
+                }
+            }
+        }
 
         return null
     }
