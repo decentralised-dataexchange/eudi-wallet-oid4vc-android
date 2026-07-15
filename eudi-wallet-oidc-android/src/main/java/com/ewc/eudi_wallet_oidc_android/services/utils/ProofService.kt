@@ -33,12 +33,12 @@ class ProofService {
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
                 val map = credentialsSupported as? Map<String, Any>
-                getCryptographicBindingMethodSupported(map, credentials)
+                getCryptographicBindingMethodSupported(map, credentials,index)
             }
             is List<*> -> {
                 @Suppress("UNCHECKED_CAST")
                 val list = credentialsSupported as? List<Map<String, Any>>
-                getCryptographicBindingMethodSupported(list, credentials)
+                getCryptographicBindingMethodSupported(list, credentials,index)
             }
             else -> emptyList()
         }
@@ -145,7 +145,8 @@ class ProofService {
 
     fun getCryptographicBindingMethodSupported(
         credentialsSupported: Any?,
-        credentials: ArrayList<Credentials>?
+        credentials: ArrayList<Credentials>?,
+        index: Int = 0
     ): List<String>? {
         if (credentialsSupported == null || credentials.isNullOrEmpty()) {
             return null
@@ -158,7 +159,7 @@ class ProofService {
         }
 
         // Extract the first credential type from the credentials list
-        val credentialType = credentials.getOrNull(0)?.types?.firstOrNull() as? String ?: return null
+        val credentialType = credentials.getOrNull(index)?.types?.firstOrNull() as? String ?: return null
 
         // Find the matching credential map based on id or map key
         val matchingCredentialMap: Map<String, Any>? = when (credentialsSupported) {
