@@ -11,6 +11,8 @@ import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
 import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
 import com.ewc.eudi_wallet_oidc_android.models.ParResponse
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.models.TrustListLookupRequest
+import com.ewc.eudi_wallet_oidc_android.models.TrustListLookupResponse
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
@@ -186,4 +188,11 @@ interface ApiService {
     suspend fun getTrustServiceProviders(
         @Url url: String // Dynamically set the URL
     ): Response<ResponseBody>
+
+    // Trust-list lookup (OWS Trust List backend, open endpoint).
+    @POST
+    suspend fun trustListLookup(
+        @Url url: String,
+        @Body body: TrustListLookupRequest
+    ): Response<TrustListLookupResponse>
 }

@@ -2,7 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.utils
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.TrustedAuthority
-import com.ewc.eudi_wallet_oidc_android.services.utils.trustEvaluator.TrustEvaluator
+import com.ewc.eudi_wallet_oidc_android.services.trust.TrustEvaluator
 
 
 suspend fun filterByTrustedAuthorities(

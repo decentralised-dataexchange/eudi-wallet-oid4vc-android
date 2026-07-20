@@ -1,8 +1,7 @@
-package com.ewc.eudi_wallet_oidc_android.services.utils.trustEvaluator
+package com.ewc.eudi_wallet_oidc_android.services.trust
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.TrustServiceProvider
-import com.ewc.eudi_wallet_oidc_android.services.rfc012TrustMechanism.TrustMechanismService
 import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
 import com.ewc.eudi_wallet_oidc_android.services.utils.X509SkiGeneratorHelper
 import com.nimbusds.jose.JWSObject
@@ -97,38 +96,34 @@ object TrustEvaluator {
     }
 
 
+    /**
+     * The trust mechanism used to decide whether an issuer/verifier is trusted.
+     *
+     * The SDK ships two interchangeable implementations of [TrustMechanismInterface]; swap the one
+     * returned here to change the trust source everywhere trust is evaluated:
+     *
+     *  - [ServerTrustMechanismService] (default) — queries the OWS Trust List backend
+     *    (POST {baseUrl}/trust-list/lookup). Open endpoint, no device auth. Set the base URL via
+     *    [ServerTrustMechanismService.init].
+     *  - [TrustMechanismService] — matches the identifier against the local/static EU TSL XML trust
+     *    list (the cached [TrustServiceProvider] list first, then the configured trust-list URLs).
+     *
+     * To use the local trust list instead of the server, change the body to:
+     *      TrustMechanismService()
+     *
+     * To plug in a custom trust source, implement [TrustMechanismInterface] and return it here — the
+     * rest of the trust flow ([isTrusted] / [findTrustedX5c]) is implementation-agnostic. Both bundled
+     * implementations are no-arg constructable, so swapping is a one-line change.
+     */
+    private fun trustMechanism(): TrustMechanismInterface = ServerTrustMechanismService()
+
      suspend fun isTrusted(
          x5cCert: String?,
          url: String? = null,
          trustProvidersList: List<TrustServiceProvider>? = null
      ): Boolean {
-        val trustMechanismService = TrustMechanismService()
         x5cCert ?: return false
-
-        if (trustMechanismService.isIssuerOrVerifierTrusted(
-                url,
-                x5cCert,
-                trustProvidersList))
-            return true
-
-        val publicKey = extractBase64PublicKeyFromX5C(x5cCert)
-        if (publicKey != null && trustMechanismService.isIssuerOrVerifierTrusted(
-                url,
-                publicKey,
-                trustProvidersList
-            )
-        ) return true
-
-        val cert = X509SkiGeneratorHelper.parseCertificateFromBase64(x5cCert)
-        val ski = cert?.let { X509SkiGeneratorHelper.generateSkiString(it) }
-        if (ski != null && trustMechanismService.isIssuerOrVerifierTrusted(
-                url,
-                ski,
-                trustProvidersList
-        )
-            ) return true
-
-        return false
+        return trustMechanism().isIssuerOrVerifierTrusted(url, x5cCert, trustProvidersList)
     }
 
      fun extractBase64PublicKeyFromX5C(x5cBase64: String): String? {
