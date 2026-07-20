@@ -1,4 +1,4 @@
-package com.ewc.eudi_wallet_oidc_android.services.rfc012TrustMechanism
+package com.ewc.eudi_wallet_oidc_android.services.trust
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.DigitalId
