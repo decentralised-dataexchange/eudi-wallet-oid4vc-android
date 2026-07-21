@@ -59,7 +59,7 @@ class DCQLCredentialFilter {
             }
             val trustedAuthorities  = dcqlCredential.trustedAuthorities
             val finalFilteredList = if (!trustedAuthorities.isNullOrEmpty()) {
-                filterByTrustedAuthorities(filteredCredentialList, trustedAuthorities)
+                filterByTrustedAuthorities(filteredCredentialList, trustedAuthorities, isDCQLVerificationFlow = true)
             } else {
                 filteredCredentialList
             }

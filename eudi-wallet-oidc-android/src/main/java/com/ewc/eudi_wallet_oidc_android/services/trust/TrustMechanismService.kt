@@ -22,7 +22,8 @@ class TrustMechanismService : TrustMechanismInterface {
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
         x5c: String?,
-        trustProvidersList: List<TrustServiceProvider>?
+        trustProvidersList: List<TrustServiceProvider>?,
+        isDCQLVerificationFlow: Boolean
     ): Boolean {
         // 1. First preference: Check the cached providers if available
         if (!trustProvidersList.isNullOrEmpty()) {

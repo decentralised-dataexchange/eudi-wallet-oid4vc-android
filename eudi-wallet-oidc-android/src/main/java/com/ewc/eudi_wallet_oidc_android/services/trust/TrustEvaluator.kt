@@ -15,7 +15,8 @@ object TrustEvaluator {
         jwt: String?,
         jwksUri: String?,
         trustedAuthoritiesUrls: List<String>? = null,
-        trustProvidersList: List<TrustServiceProvider>? = null
+        trustProvidersList: List<TrustServiceProvider>? = null,
+        isDCQLVerificationFlow: Boolean = false
     ): String? {
         val separator = "##SEP##"
          val hasProvidersList = !trustProvidersList.isNullOrEmpty()
@@ -25,12 +26,12 @@ object TrustEvaluator {
          val x5cList = extractX5cFromJwt(jwt)
          x5cList?.forEach { x5c ->
              // Preference 1: Cache list
-             if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList)) {
+             if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                  return x5c
              }
              // Preference 2: Network URLs
              for (url in urls) {
-                 if (isTrusted(x5c, url = url)) return x5c
+                 if (isTrusted(x5c, url = url, isDCQLVerificationFlow = isDCQLVerificationFlow)) return x5c
              }
          }
 
@@ -41,20 +42,20 @@ object TrustEvaluator {
 
              // Preference 1: trustProvidersList
              if (hasProvidersList) {
-                 if (!jwksUri.isNullOrBlank() && isTrusted(combinedKey, trustProvidersList = trustProvidersList)) {
+                 if (!jwksUri.isNullOrBlank() && isTrusted(combinedKey, trustProvidersList = trustProvidersList, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                      return combinedKey
                  }
-                 if (isTrusted(kid, trustProvidersList = trustProvidersList)) {
+                 if (isTrusted(kid, trustProvidersList = trustProvidersList, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                      return kid
                  }
              }
 
              // Preference 2: Network URLs
              for (url in urls) {
-                 if (!jwksUri.isNullOrBlank() && isTrusted(combinedKey, url = url)) {
+                 if (!jwksUri.isNullOrBlank() && isTrusted(combinedKey, url = url, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                      return combinedKey
                  }
-                 if (isTrusted(kid, url = url)) return kid
+                 if (isTrusted(kid, url = url, isDCQLVerificationFlow = isDCQLVerificationFlow)) return kid
              }
          }
 
@@ -69,12 +70,12 @@ object TrustEvaluator {
         if (coseList.isNotEmpty()) {
             coseList.forEach { x5c ->
                 // Preference 1: trustProvidersList
-                if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList)) {
+                if (hasProvidersList && isTrusted(x5c, trustProvidersList = trustProvidersList, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                     return x5c
                 }
                 // Preference 2: Network URLs
                 for (url in urls) {
-                    if (isTrusted(x5c, url = url)) return x5c
+                    if (isTrusted(x5c, url = url, isDCQLVerificationFlow = isDCQLVerificationFlow)) return x5c
                 }
             }
         }else{
@@ -83,11 +84,11 @@ object TrustEvaluator {
             val identifier = did ?: kid
 
             if (identifier != null) {
-                if (hasProvidersList && isTrusted(identifier, trustProvidersList = trustProvidersList)) {
+                if (hasProvidersList && isTrusted(identifier, trustProvidersList = trustProvidersList, isDCQLVerificationFlow = isDCQLVerificationFlow)) {
                     return identifier
                 }
                 for (url in urls) {
-                    if (isTrusted(identifier, url = url)) return identifier
+                    if (isTrusted(identifier, url = url, isDCQLVerificationFlow = isDCQLVerificationFlow)) return identifier
                 }
             }
         }
@@ -120,10 +121,11 @@ object TrustEvaluator {
      suspend fun isTrusted(
          x5cCert: String?,
          url: String? = null,
-         trustProvidersList: List<TrustServiceProvider>? = null
+         trustProvidersList: List<TrustServiceProvider>? = null,
+         isDCQLVerificationFlow: Boolean = false
      ): Boolean {
         x5cCert ?: return false
-        return trustMechanism().isIssuerOrVerifierTrusted(url, x5cCert, trustProvidersList)
+        return trustMechanism().isIssuerOrVerifierTrusted(url, x5cCert, trustProvidersList, isDCQLVerificationFlow)
     }
 
      fun extractBase64PublicKeyFromX5C(x5cBase64: String): String? {

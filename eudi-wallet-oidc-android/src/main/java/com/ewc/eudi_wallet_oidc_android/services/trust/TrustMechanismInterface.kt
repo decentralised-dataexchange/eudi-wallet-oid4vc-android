@@ -6,7 +6,8 @@ interface TrustMechanismInterface {
     suspend fun isIssuerOrVerifierTrusted(
         url: String? = null,
         x5c: String? = null,
-        trustProvidersList: List<TrustServiceProvider>? = null
+        trustProvidersList: List<TrustServiceProvider>? = null,
+        isDCQLVerificationFlow: Boolean = false
     ): Boolean
 
     suspend fun fetchTrustDetails(
