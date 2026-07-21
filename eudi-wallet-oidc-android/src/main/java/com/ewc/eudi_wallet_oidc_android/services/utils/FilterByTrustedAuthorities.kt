@@ -7,7 +7,8 @@ import com.ewc.eudi_wallet_oidc_android.services.trust.TrustEvaluator
 
 suspend fun filterByTrustedAuthorities(
     credentials: List<String>,
-    trustedAuthorities: List<TrustedAuthority>
+    trustedAuthorities: List<TrustedAuthority>,
+    isDCQLVerificationFlow: Boolean = false
 ): List<String> {
     val finalFiltered = mutableListOf<String>()
 
@@ -19,7 +20,7 @@ suspend fun filterByTrustedAuthorities(
         for (authority in trustedAuthorities) {
             authority.values?.forEach { url ->
                 try {
-                    val trustedX5c = TrustEvaluator.findTrustedX5c(credential, null, listOf(url))
+                    val trustedX5c = TrustEvaluator.findTrustedX5c(credential, null, listOf(url),isDCQLVerificationFlow = isDCQLVerificationFlow)
                     if (trustedX5c != null) {
                         isTrusted = true
                         return@forEach // found trust, no need to check further for this credential

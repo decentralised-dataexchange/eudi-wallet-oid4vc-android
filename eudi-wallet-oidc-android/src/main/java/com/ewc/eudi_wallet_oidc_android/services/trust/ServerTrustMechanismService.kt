@@ -57,9 +57,17 @@ class ServerTrustMechanismService(
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
         x5c: String?,
-        trustProvidersList: List<TrustServiceProvider>?
+        trustProvidersList: List<TrustServiceProvider>?,
+        isDCQLVerificationFlow: Boolean
     ): Boolean {
-        return lookup(x5c)?.match == true
+        val response = lookup(x5c) ?: return false
+
+        return if (isDCQLVerificationFlow) {
+            val responseUrl = response.entry?.trustList?.url
+            !url.isNullOrEmpty() && url == responseUrl
+        } else {
+            response.match == true
+        }
     }
 
     override suspend fun fetchTrustDetails(

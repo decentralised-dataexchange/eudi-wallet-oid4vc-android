@@ -49,7 +49,21 @@ data class TrustListEntry(
     val certificateDetails: List<TrustListCertDetail>? = null,
 
     @SerializedName("matchedCertIndex")
-    val matchedCertIndex: Int? = null
+    val matchedCertIndex: Int? = null,
+
+    @SerializedName("trustList")
+    val trustList: TrustListInfo? = null
+)
+
+data class TrustListInfo(
+    @SerializedName("name")
+    val name: String? = null,
+
+    @SerializedName("url")
+    val url: String? = null,
+
+    @SerializedName("schemeName")
+    val schemeName: String? = null
 )
 
 data class TrustListCertDetail(
