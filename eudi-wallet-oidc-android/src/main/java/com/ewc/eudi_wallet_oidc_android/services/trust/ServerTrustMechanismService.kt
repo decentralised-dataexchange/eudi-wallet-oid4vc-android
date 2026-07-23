@@ -17,6 +17,7 @@ import com.ewc.eudi_wallet_oidc_android.models.TSPServices
 import com.ewc.eudi_wallet_oidc_android.models.TrustListEntry
 import com.ewc.eudi_wallet_oidc_android.models.TrustListLookupRequest
 import com.ewc.eudi_wallet_oidc_android.models.TrustListLookupResponse
+import com.ewc.eudi_wallet_oidc_android.models.TrustServiceStatus
 import com.ewc.eudi_wallet_oidc_android.models.TrustServiceProvider
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 
@@ -62,14 +63,16 @@ class ServerTrustMechanismService(
     ): Boolean {
         val response = lookup(x5c) ?: return false
 
+        logDroppedEntries(response)
+
         return if (isDCQLVerificationFlow) {
-            val responseUrl = response.entry?.trustList?.url
-            !url.isNullOrEmpty() && url == responseUrl
+            // Only granted services count — an identifier withdrawn in the requested list is not trusted.
+            val responseUrls = response.grantedEntries.mapNotNull { it.trustList?.url }
+            !url.isNullOrEmpty() && responseUrls.contains(url)
         } else {
-            response.match == true
+            response.match == true && response.grantedEntries.isNotEmpty()
         }
     }
-
     override suspend fun fetchTrustDetails(
         url: String?,
         x5c: String?,
@@ -77,7 +80,30 @@ class ServerTrustMechanismService(
     ): TrustServiceProvider? {
         val response = lookup(x5c) ?: return null
         if (!response.match) return null
-        return response.entry?.let { mapToTrustServiceProvider(it) }
+        logDroppedEntries(response)
+        val entries = response.grantedEntries
+        if (entries.isEmpty()) {
+            Log.e(TAG, "match=true but no granted entries in response; failing closed")
+            return null
+        }
+        return mapToTrustServiceProvider(entries)
+    }
+
+    /**
+     * Logs entries refused because their service status is not granted, so a "not trusted" result is
+     * traceable to a withdrawn (or unparseable) status rather than looking like a failed lookup.
+     */
+    private fun logDroppedEntries(response: TrustListLookupResponse) {
+        response.matchedEntries
+            .filter { !it.serviceStatusValue.isTrusted }
+            .forEach { entry ->
+                Log.e(
+                    TAG,
+                    "Dropped entry '${entry.service?.serviceTypeIdentifier}' from " +
+                            "'${entry.trustList?.url}' — status=${entry.serviceStatusValue} " +
+                            "(raw=${entry.service?.serviceStatus ?: entry.status})"
+                )
+            }
     }
 
     /** POST /trust-list/lookup (open endpoint). Fail-closed to null. */
@@ -129,6 +155,17 @@ class ServerTrustMechanismService(
     }
 
     /**
+     * Maps the matched OWS Trust List [entries] onto the nested TSL [TrustServiceProvider] the
+     * detail UI reads. Provider identity/address come from the first entry; every entry contributes
+     * one service, so callers see all service types (and roles) the identifier matched.
+     */
+    private fun mapToTrustServiceProvider(entries: List<TrustListEntry>): TrustServiceProvider {
+        val first = entries.first()
+        val base = mapToTrustServiceProvider(first)
+        return base.copy(tspServices = entries.map { TSPServices(tspService = mapToTspService(it)) })
+    }
+
+    /**
      * Maps the flat OWS Trust List [entry] onto the nested TSL [TrustServiceProvider] structure the
      * trust-provider detail UI reads (name, address, email, service info, digital identity).
      */
@@ -153,6 +190,13 @@ class ServerTrustMechanismService(
             tspInformationURI = provider?.tSPInformationURI
         )
 
+        val tspServices = listOf(TSPServices(tspService = mapToTspService(entry)))
+
+        return TrustServiceProvider(tspInformation = tspInformation, tspServices = tspServices)
+    }
+
+    /** Maps one entry's `service` section (plus its accreditation) onto a [TSPService]. */
+    private fun mapToTspService(entry: TrustListEntry): TSPService {
         val service = entry.service
         val cert = service?.digitalIdentity?.firstOrNull()
             ?.replace(Regex("\\s"), "")
@@ -160,9 +204,23 @@ class ServerTrustMechanismService(
         val matchedIndex = entry.matchedCertIndex ?: 0
         val subjectKeyIdentifier = entry.certificateDetails?.getOrNull(matchedIndex)?.subjectKeyIdentifier
             ?: entry.certificateDetails?.firstOrNull()?.subjectKeyIdentifier
-        val serviceDigitalIdentity = if (cert != null || subjectKeyIdentifier != null) {
+
+        val did = service?.did?.takeIf { it.isNotBlank() }
+        val kid = service?.kid?.takeIf { it.isNotBlank() }
+        val jwksURI = service?.jwksURI?.takeIf { it.isNotBlank() }
+
+        val hasIdentity =
+            cert != null || subjectKeyIdentifier != null || did != null || kid != null || jwksURI != null
+
+        val serviceDigitalIdentity = if (hasIdentity) {
             ServiceDigitalIdentity(
-                digitalId = DigitalId(x509Certificate = cert, x509SKI = subjectKeyIdentifier)
+                digitalId = DigitalId(
+                    x509Certificate = cert,
+                    x509SKI = subjectKeyIdentifier,
+                    did = did,
+                    kid = kid,
+                    jwksURI = jwksURI
+                )
             )
         } else {
             null
@@ -172,12 +230,10 @@ class ServerTrustMechanismService(
             serviceName = service?.serviceName?.let { SchemeOperatorName(name = LangValue(value = it)) },
             serviceStatus = service?.serviceStatus,
             statusStartingTime = service?.statusStartingTime,
-            serviceDigitalIdentity = serviceDigitalIdentity
+            serviceDigitalIdentity = serviceDigitalIdentity,
+            permittedCredentials = entry.permittedCredentials,
+            prohibitedCredentials = entry.prohibitedCredentials
         )
-        val tspServices = listOf(
-            TSPServices(tspService = TSPService(serviceInformation = serviceInformation))
-        )
-
-        return TrustServiceProvider(tspInformation = tspInformation, tspServices = tspServices)
+        return TSPService(serviceInformation = serviceInformation)
     }
 }

@@ -177,7 +177,18 @@ data class ServiceInformation(
     var serviceStatus: String? = null,
 
     @SerializedName("StatusStartingTime")
-    var statusStartingTime: String? = null
+    var statusStartingTime: String? = null,
+
+    /**
+     * Allow-list: when non-empty, ONLY these credential types may be issued/requested by this
+     * service. Only populated by the server-backed trust list; empty for TSL XML services.
+     */
+    @SerializedName("PermittedCredentials")
+    var permittedCredentials: List<TrustCredentialType> = emptyList(),
+
+    /** Deny-list: a credential matching any of these is refused even when role and status pass. */
+    @SerializedName("ProhibitedCredentials")
+    var prohibitedCredentials: List<TrustCredentialType> = emptyList()
 )
 
 data class ServiceDigitalIdentity(
