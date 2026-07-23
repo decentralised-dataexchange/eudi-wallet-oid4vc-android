@@ -44,16 +44,29 @@ class ServerTrustMechanismService(
         // TrustEvaluator.findTrustedX5c combines a kid with its jwksUri as "kid##SEP##jwksUri".
         private const val KID_JWKS_SEPARATOR = "##SEP##"
 
-        @Volatile private var configuredBaseUrl: String = DEFAULT_BASE_URL
+        /** Path of the lookup endpoint, appended to the base URL. */
+        const val DEFAULT_LOOKUP_PATH = "/trust-list/lookup"
 
-        /** Optionally override the trust-list base URL (e.g. test vs prod). */
-        fun init(baseUrl: String) {
+        @Volatile private var configuredBaseUrl: String = DEFAULT_BASE_URL
+        @Volatile private var configuredLookupPath: String = DEFAULT_LOOKUP_PATH
+
+        /**
+         * Optionally override the trust-list endpoint (e.g. test vs prod). [lookupPath] is left
+         * unchanged when null, so existing callers keep the default path.
+         */
+        fun init(baseUrl: String, lookupPath: String? = null) {
             configuredBaseUrl = baseUrl
+            if (!lookupPath.isNullOrBlank()) {
+                configuredLookupPath = lookupPath
+            }
         }
     }
 
     private val resolvedBaseUrl: String get() = baseUrl ?: configuredBaseUrl
-    private val lookupUrl get() = "$resolvedBaseUrl/trust-list/lookup"
+
+    /** Joins base and path tolerantly — either side may or may not carry the separating slash. */
+    private val lookupUrl: String
+        get() = resolvedBaseUrl.trimEnd('/') + "/" + configuredLookupPath.trimStart('/')
 
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
