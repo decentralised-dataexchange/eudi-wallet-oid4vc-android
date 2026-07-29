@@ -108,6 +108,12 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
                 "transaction data not added to claims"
             )
         }
+        // SCA (EWC/TS12): response_mode + amr belong in the KB-JWT ONLY for TS12 SCA transaction_data
+        // types (payment / login_risk / account_access / emandate — URN or iGrant transaction-data-type
+        // URL). They must NOT be added for EWC `payment_data` (PWA) or QES/QESAC flows. The DC API path
+        // forwards isScaFlow=false, so we also detect SCA from the transaction_data type itself.
+        val scaFlow = isScaFlow ||
+            isTs12ScaTransactionData(presentationRequest?.transactionDdata?.getOrNull(0))
         val results = mutableListOf<String?>()
 if (!credentialList.isNullOrEmpty()) {
     credentialList.forEachIndexed  { index, cred ->
@@ -119,8 +125,8 @@ if (!credentialList.isNullOrEmpty()) {
             subJwk = credentialJwk,
             claims = if (claims.isNotEmpty()) claims else null,
             nonce = presentationRequest?.nonce,
-            responseMode = if (isScaFlow) presentationRequest?.responseMode else null,
-            amr = if (isScaFlow) {
+            responseMode = if (scaFlow) presentationRequest?.responseMode else null,
+            amr = if (scaFlow) {
                 listOf(
                     mapOf("possession" to "key_in_local_native_wscd"),
                     mapOf("inherence" to "fingerprint_device")
@@ -159,6 +165,26 @@ return results
             }
         } catch (e: Exception) {
             Log.e("VerificationService", "Error processing transaction data: ${e.message}")
+            false
+        }
+    }
+
+    // True only for TS12 SCA transaction_data types (payment / login_risk / account_access / emandate),
+    // in either URN form (urn:eudi:sca:*) or the iGrant transaction-data-type URL form. Deliberately
+    // returns false for EWC RFC-008 `payment_data` (PWA) and QES/QESAC — those are NOT SCA and must not
+    // carry response_mode/amr in the KB-JWT.
+    private fun isTs12ScaTransactionData(transactionDataItem: String?): Boolean {
+        return try {
+            if (transactionDataItem.isNullOrEmpty()) return false
+            val decoded =
+                String(Base64.decode(transactionDataItem, Base64.URL_SAFE), StandardCharsets.UTF_8)
+            val type = JSONObject(decoded).optString("type", "")
+            type.contains("urn:eudi:sca:") ||
+                type.contains("transaction-data-type/payment") ||
+                type.contains("transaction-data-type/login_risk") ||
+                type.contains("transaction-data-type/account_access") ||
+                type.contains("transaction-data-type/emandate")
+        } catch (e: Exception) {
             false
         }
     }
