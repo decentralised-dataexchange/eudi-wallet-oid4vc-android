@@ -118,14 +118,23 @@ object TrustEvaluator {
      */
     private fun trustMechanism(): TrustMechanismInterface = ServerTrustMechanismService()
 
+    /**
+     * @param x5cChain full certificate chain from the request, leaf first. Pass it whenever the
+     * request carries more than the signing certificate — a trust list may register the CA or an
+     * intermediate rather than the leaf, and only a lookup that sees the whole chain matches those.
+     * [x5cCert] alone still works and is treated as a one-certificate chain.
+     */
      suspend fun isTrusted(
          x5cCert: String?,
          url: String? = null,
          trustProvidersList: List<TrustServiceProvider>? = null,
-         isDCQLVerificationFlow: Boolean = false
+         isDCQLVerificationFlow: Boolean = false,
+         x5cChain: List<String>? = null
      ): Boolean {
-        x5cCert ?: return false
-        return trustMechanism().isIssuerOrVerifierTrusted(url, x5cCert, trustProvidersList, isDCQLVerificationFlow)
+        if (x5cCert == null && x5cChain.isNullOrEmpty()) return false
+        return trustMechanism().isIssuerOrVerifierTrusted(
+            url, x5cCert, trustProvidersList, isDCQLVerificationFlow, x5cChain
+        )
     }
 
      fun extractBase64PublicKeyFromX5C(x5cBase64: String): String? {

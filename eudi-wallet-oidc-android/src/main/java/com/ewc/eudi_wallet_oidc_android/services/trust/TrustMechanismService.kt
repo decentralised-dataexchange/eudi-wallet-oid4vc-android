@@ -19,12 +19,19 @@ class TrustMechanismService : TrustMechanismInterface {
     val gson = GsonBuilder()
         .registerTypeAdapter(TrustServiceProvider::class.java, TrustServiceProviderDeserializer())
         .create()
+    /**
+     * [x5cChain] is accepted for interface parity with [ServerTrustMechanismService] but only its
+     * leaf is used: local TSL matching compares one certificate against the list, it has no notion of
+     * matching further up the chain.
+     */
     override suspend fun isIssuerOrVerifierTrusted(
         url: String?,
         x5c: String?,
         trustProvidersList: List<TrustServiceProvider>?,
-        isDCQLVerificationFlow: Boolean
+        isDCQLVerificationFlow: Boolean,
+        x5cChain: List<String>?
     ): Boolean {
+        @Suppress("NAME_SHADOWING") val x5c = x5c ?: x5cChain?.firstOrNull()
         // 1. First preference: Check the cached providers if available
         if (!trustProvidersList.isNullOrEmpty()) {
             Log.d(TAG, "Using cached providers for validation.")
@@ -84,11 +91,14 @@ class TrustMechanismService : TrustMechanismInterface {
     }
 
 
+    /** [x5cChain] — see [isIssuerOrVerifierTrusted]; the local list matches on the leaf only. */
     override suspend fun fetchTrustDetails(
         url: String?,
         x5c: String?,
-        trustProvidersList: List<TrustServiceProvider>?
+        trustProvidersList: List<TrustServiceProvider>?,
+        x5cChain: List<String>?
     ): TrustServiceProvider? {
+        @Suppress("NAME_SHADOWING") val x5c = x5c ?: x5cChain?.firstOrNull()
         // 1. First preference: Check the cached providers if available
         if (!trustProvidersList.isNullOrEmpty()) {
             Log.d(TAG, "Using cached providers to find trust details.")

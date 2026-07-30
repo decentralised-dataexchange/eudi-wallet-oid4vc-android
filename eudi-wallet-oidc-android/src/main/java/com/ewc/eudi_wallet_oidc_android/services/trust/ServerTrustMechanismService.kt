@@ -72,9 +72,10 @@ class ServerTrustMechanismService(
         url: String?,
         x5c: String?,
         trustProvidersList: List<TrustServiceProvider>?,
-        isDCQLVerificationFlow: Boolean
+        isDCQLVerificationFlow: Boolean,
+        x5cChain: List<String>?
     ): Boolean {
-        val response = lookup(x5c) ?: return false
+        val response = lookup(x5c, x5cChain) ?: return false
 
         logDroppedEntries(response)
 
@@ -89,9 +90,10 @@ class ServerTrustMechanismService(
     override suspend fun fetchTrustDetails(
         url: String?,
         x5c: String?,
-        trustProvidersList: List<TrustServiceProvider>?
+        trustProvidersList: List<TrustServiceProvider>?,
+        x5cChain: List<String>?
     ): TrustServiceProvider? {
-        val response = lookup(x5c) ?: return null
+        val response = lookup(x5c, x5cChain) ?: return null
         if (!response.match) return null
         logDroppedEntries(response)
         val entries = response.grantedEntries
@@ -119,14 +121,29 @@ class ServerTrustMechanismService(
             }
     }
 
-    /** POST /trust-list/lookup (open endpoint). Fail-closed to null. */
-    private suspend fun lookup(x5c: String?): TrustListLookupResponse? {
-        if (x5c.isNullOrBlank()) {
+    /**
+     * POST /trust-list/lookup (open endpoint). Fail-closed to null.
+     *
+     * [chain] is the request's full certificate chain, leaf first. When present it is posted whole,
+     * so the backend can match an entry registered against the CA or an intermediate rather than the
+     * leaf, and report which one hit via `matchedCertIndex`. Otherwise the single [x5c] identifier is
+     * routed to the field its shape implies (x5c / did / kid).
+     */
+    private suspend fun lookup(x5c: String?, chain: List<String>? = null): TrustListLookupResponse? {
+        val certChain = chain?.filter { it.isNotBlank() }.orEmpty()
+        if (certChain.isEmpty() && x5c.isNullOrBlank()) {
             Log.e(TAG, "No identifier supplied; failing closed")
             return null
         }
-        val body = buildLookupRequest(x5c)
-        Log.d(TAG, "Trust lookup by ${if (body.x5c != null) "x5c" else if (body.did != null) "did" else "kid"}")
+        val body = if (certChain.isNotEmpty()) {
+            Log.d(TAG, "Trust lookup by x5c chain of ${certChain.size} certificate(s), leaf first")
+            TrustListLookupRequest(x5c = certChain)
+        } else {
+            buildLookupRequest(x5c!!)
+        }
+        if (certChain.isEmpty()) {
+            Log.d(TAG, "Trust lookup by ${if (body.x5c != null) "x5c" else if (body.did != null) "did" else "kid"}")
+        }
 
         val response = try {
             ApiManager.api.getService()?.trustListLookup(lookupUrl, body)
