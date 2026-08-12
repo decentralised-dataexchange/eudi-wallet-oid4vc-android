@@ -2,7 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.network
 
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.security.SecureRandom
@@ -24,27 +24,6 @@ object ApiManager {
 
     private var apiManager: ApiManager? = null
 
-    /** Kept so [setNetworkLoggingEnabled] works whether it is called before or after first use. */
-    private val httpLoggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.NONE
-    }
-
-    /**
-     * Full request/response logging. **Off by default** — the traffic on this client carries
-     * credentials, access and refresh tokens and PID attributes, and `Level.BODY` writes all of it
-     * to logcat, readable by anything with `READ_LOGS` or adb. It also buffers every response body
-     * into memory and copies it to a String, which on large issuer metadata is megabytes of heap
-     * per request.
-     *
-     * A library's own `BuildConfig.DEBUG` is false in a published AAR regardless of the host's
-     * build type, so this is an explicit opt-in rather than an automatic debug check. Host apps
-     * should enable it only in debug builds.
-     */
-    fun setNetworkLoggingEnabled(enabled: Boolean) {
-        httpLoggingInterceptor.level =
-            if (enabled) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
-    }
-
     fun getService(): ApiService? {
         return service
     }
@@ -55,7 +34,9 @@ object ApiManager {
                 apiManager = ApiManager
                 httpClient = OkHttpClient.Builder()
                 httpClient?.followRedirects(false)
-                httpClient!!.addInterceptor(httpLoggingInterceptor)
+                // Silent unless the host called Logger.configure(...). Owned by Logger so the
+                // level can change after this client is built.
+                httpClient!!.addInterceptor(Logger.networkInterceptor)
                 okClient = httpClient!!.readTimeout(120, TimeUnit.SECONDS)
                     .connectTimeout(120, TimeUnit.SECONDS).build()
                 val gson = GsonBuilder()
