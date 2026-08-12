@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.notification
 
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
@@ -33,10 +34,11 @@ class NotificationService : NotificationServiceInterface {
             Log.e("sendNotificationRequest", "Invalid input parameters, request aborted.")
             return // Exit early if any input is missing
         }
-        Log.d("sendNotificationRequest", "Endpoint: $notificationEndPoint")
-        Log.d("sendNotificationRequest", "Authorization: Bearer $accessToken")
-        Log.d("sendNotificationRequest", "Event: ${event.value}")
-        Log.d("sendNotificationRequest", "NotificationId: $notificationId")
+        Logger.d("sendNotificationRequest", "Endpoint: $notificationEndPoint")
+        // The token itself is never logged; Logger.networkInterceptor redacts the header too.
+        Logger.d("sendNotificationRequest", "Authorization: Bearer <redacted>")
+        Logger.d("sendNotificationRequest", "Event: ${event.value}")
+        Logger.d("sendNotificationRequest", "NotificationId: $notificationId")
 
         // Use safeApiCallResponse wrapper
         val result = SafeApiCall.safeApiCallResponse {

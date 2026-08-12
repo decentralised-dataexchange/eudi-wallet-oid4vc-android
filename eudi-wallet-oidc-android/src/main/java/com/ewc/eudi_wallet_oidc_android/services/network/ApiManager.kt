@@ -2,7 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.network
 
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.security.SecureRandom
@@ -34,9 +34,9 @@ object ApiManager {
                 apiManager = ApiManager
                 httpClient = OkHttpClient.Builder()
                 httpClient?.followRedirects(false)
-                val httpLoggingInterceptor = HttpLoggingInterceptor()
-                httpLoggingInterceptor.level = HttpLoggingInterceptor.Level.BODY
-                httpClient!!.addInterceptor(httpLoggingInterceptor)
+                // Silent unless the host called Logger.configure(...). Owned by Logger so the
+                // level can change after this client is built.
+                httpClient!!.addInterceptor(Logger.networkInterceptor)
                 okClient = httpClient!!.readTimeout(120, TimeUnit.SECONDS)
                     .connectTimeout(120, TimeUnit.SECONDS).build()
                 val gson = GsonBuilder()
