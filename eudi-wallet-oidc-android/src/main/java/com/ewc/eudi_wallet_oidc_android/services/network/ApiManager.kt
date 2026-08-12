@@ -24,6 +24,27 @@ object ApiManager {
 
     private var apiManager: ApiManager? = null
 
+    /** Kept so [setNetworkLoggingEnabled] works whether it is called before or after first use. */
+    private val httpLoggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.NONE
+    }
+
+    /**
+     * Full request/response logging. **Off by default** — the traffic on this client carries
+     * credentials, access and refresh tokens and PID attributes, and `Level.BODY` writes all of it
+     * to logcat, readable by anything with `READ_LOGS` or adb. It also buffers every response body
+     * into memory and copies it to a String, which on large issuer metadata is megabytes of heap
+     * per request.
+     *
+     * A library's own `BuildConfig.DEBUG` is false in a published AAR regardless of the host's
+     * build type, so this is an explicit opt-in rather than an automatic debug check. Host apps
+     * should enable it only in debug builds.
+     */
+    fun setNetworkLoggingEnabled(enabled: Boolean) {
+        httpLoggingInterceptor.level =
+            if (enabled) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+    }
+
     fun getService(): ApiService? {
         return service
     }
@@ -34,8 +55,6 @@ object ApiManager {
                 apiManager = ApiManager
                 httpClient = OkHttpClient.Builder()
                 httpClient?.followRedirects(false)
-                val httpLoggingInterceptor = HttpLoggingInterceptor()
-                httpLoggingInterceptor.level = HttpLoggingInterceptor.Level.BODY
                 httpClient!!.addInterceptor(httpLoggingInterceptor)
                 okClient = httpClient!!.readTimeout(120, TimeUnit.SECONDS)
                     .connectTimeout(120, TimeUnit.SECONDS).build()
