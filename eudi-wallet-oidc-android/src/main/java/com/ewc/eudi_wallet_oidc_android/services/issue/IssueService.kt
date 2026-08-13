@@ -63,12 +63,16 @@ import java.util.UUID
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.KeyAttestationService
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
+import com.ewc.eudi_wallet_oidc_android.services.issue.draftFormatRequestBuilder.DraftFormatRequestBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.draftFormatRequestBuilder.DraftFormatRequestInterface
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import java.io.IOException
 import kotlin.collections.get
 
 class IssueService : IssueServiceInterface {
+
+    private val draftFormatRequestBuilder: DraftFormatRequestInterface = DraftFormatRequestBuilder()
 
     /**
      * To process the credential offer request
@@ -149,28 +153,10 @@ class IssueService : IssueServiceInterface {
         } catch (e: Exception) {
             null
         }
-        if (credentialOfferV2Response?.credentialConfigurationIds == null) {
-            val credentialOfferEbsiV1Response = try {
-                gson.fromJson(credentialOfferJson, CredentialOfferEbsiV1::class.java)
-            } catch (e: Exception) {
-                null
-            }
-            return if (credentialOfferEbsiV1Response?.credentials == null) {
-                val credentialOfferEwcV1Response = try {
-                    gson.fromJson(credentialOfferJson, CredentialOfferEwcV1::class.java)
-                } catch (e: Exception) {
-                    null
-                }
-                if (credentialOfferEwcV1Response == null) {
-                    null
-                } else {
-                    CredentialOffer(ewcV1 = credentialOfferEwcV1Response)
-                }
-            } else {
-                credentialOfferEbsiV1Response?.let { CredentialOffer(ebsiV1 = it) }
-            }
+        return if (credentialOfferV2Response?.credentialConfigurationIds == null) {
+            draftFormatRequestBuilder.parseDraftCredentialOffer(credentialOfferJson)
         } else {
-            return CredentialOffer(ewcV2 = credentialOfferV2Response)
+            CredentialOffer(ewcV2 = credentialOfferV2Response)
         }
     }
     /**
@@ -214,7 +200,7 @@ class IssueService : IssueServiceInterface {
         val state = UUID.randomUUID().toString()
         //val clientId = did
         val clientId = WalletUnitAttestationHeaders.clientId(walletUnitAttestationJWT, did)
-        val authorisationDetails = buildAuthorizationRequest(
+        val authorisationDetails = draftFormatRequestBuilder.buildAuthorizationRequest(
             credentialOffer = credentialOffer,
             format = format,
             doctype = docType,
@@ -545,122 +531,6 @@ class IssueService : IssueServiceInterface {
         )
     }
 
-    private fun buildAuthorizationRequest(
-        credentialOffer: CredentialOffer?,
-        format: String?,
-        doctype: String?
-    ): String {
-        val gson = Gson()
-        var credentialDefinitionNeeded = false
-        try {
-            if (credentialOffer?.credentials?.get(0)?.trustFramework == null)
-                credentialDefinitionNeeded = true
-
-        } catch (e: Exception) {
-            credentialDefinitionNeeded = true
-        }
-        if (format == "mso_mdoc" && doctype != null) {
-            return gson.toJson(
-                arrayListOf(
-                    AuthorizationDetails(
-                        format = format,
-                        doctype = doctype,
-                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                    )
-                )
-            )
-        } else {
-            if (credentialDefinitionNeeded) {
-                return gson.toJson(
-                    arrayListOf(
-                        AuthorizationDetails(
-                            format = format,
-                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
-                            credentialDefinition = CredentialTypeDefinition(
-                                type = getTypesFromCredentialOffer(credentialOffer)
-                            )
-                        )
-                    )
-                )
-
-            } else {
-                return gson.toJson(
-                    arrayListOf(
-                        AuthorizationDetails(
-                            format = format,
-                            types = getTypesFromCredentialOffer(credentialOffer),
-                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                        )
-                    )
-                )
-            }
-        }
-
-    }
-
-
-    private fun buildAuthorizationRequest(
-        credentialOffer: CredentialOffer?,
-        format: String?,
-        doctype: String?,
-        version: Int? = 2,
-        issuerConfig: IssuerWellKnownConfiguration?
-    ): String {
-        val gson = Gson()
-
-        when (version) {
-            1 -> {
-                return buildAuthorizationRequest(
-                    credentialOffer = credentialOffer,
-                    format = format,
-                    doctype = doctype
-                )
-            }
-            else -> {
-                val authorizationDetailList: ArrayList<AuthorizationDetails> = ArrayList()
-                for (credential in credentialOffer?.credentials ?: arrayListOf()) {
-                    authorizationDetailList.add(AuthorizationDetails(
-                        credentialConfigurationId = credential.types?.firstOrNull(),
-                    ))
-                }
-                return gson.toJson(authorizationDetailList)
-            }
-        }
-//        if (format == "mso_mdoc" && doctype != null) {
-//            return gson.toJson(
-//                arrayListOf(
-//                    AuthorizationDetails(
-//                        type = "openid_credential",
-//                        doctype = doctype,
-//                        credentialConfigurationId = credentialConfigurationId,
-//                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-//                    )
-//                )
-//            )
-//        } else {
-//            when (version) {
-//                1 -> {
-//                    return buildAuthorizationRequest(
-//                        credentialOffer = credentialOffer,
-//                        format = format,
-//                        doctype = doctype
-//                    )
-//                }
-//
-//                else -> {
-//                    return gson.toJson(
-//                        arrayListOf(
-//                            AuthorizationDetails(
-//                                format = null ,
-//                                credentialConfigurationId = credentialConfigurationId,
-//                            )
-//                        )
-//                    )
-//                }
-//            }
-//        }
-    }
-
     /**
      * To process the token,
      *
@@ -736,11 +606,9 @@ class IssueService : IssueServiceInterface {
                         "pre-authorized_code" to (code ?: "")
                     ).apply {
                         if (userPin != null) {
-                            if (version == 1) {
-                                this["user_pin"] = userPin ?: ""
-                            } else {
-                                this["tx_code"] = userPin ?: ""
-                            }
+                            val paramKey =
+                                draftFormatRequestBuilder.getTxCodeParamKey(version) ?: "tx_code"
+                            this[paramKey] = userPin
                         }
                     }
                 } else {
@@ -866,7 +734,7 @@ class IssueService : IssueServiceInterface {
         }
 
         // Construct credential request
-        val body = buildCredentialRequest(
+        val body = draftFormatRequestBuilder.buildCredentialRequest(
             credentialOffer = credentialOffer,
             issuerConfig = issuerConfig,
             format = format,
@@ -1029,7 +897,7 @@ class IssueService : IssueServiceInterface {
                 )
             } catch (e: Exception) {
             }
-            buildCredentialRequest(
+            draftFormatRequestBuilder.buildCredentialRequest(
                 credentialOffer = credentialOffer,
                 issuerConfig = issuerConfig,
                 format = format,
@@ -1282,87 +1150,6 @@ class IssueService : IssueServiceInterface {
         }
     }
 
-     fun buildCredentialRequest(
-        credentialOffer: CredentialOffer?,
-        issuerConfig: IssuerWellKnownConfiguration?,
-        format: String?,
-        jwt: String,
-        doctype: String?,
-        index: Int
-    ): CredentialRequest {
-
-        val gson = Gson()
-        var credentialDefinitionNeeded = false
-        try {
-            if (issuerConfig?.credentialsSupported is Map<*, *>)
-                credentialDefinitionNeeded = true
-
-        } catch (e: Exception) {
-            credentialDefinitionNeeded = true
-        }
-        if (format == "mso_mdoc") {
-            return CredentialRequest(
-                format = format,
-                doctype = doctype,
-                proof = ProofV3(
-                    proofType = "jwt",
-                    jwt = jwt
-                )
-            )
-        } else {
-            if (credentialDefinitionNeeded) {
-                var types: ArrayList<String>? = getTypesFromCredentialOffer(credentialOffer)
-                when (val data = getTypesFromIssuerConfig(
-                    issuerConfig,
-                    type = if (types?.isNotEmpty() == true) types.last() else "",
-                    version = credentialOffer?.version,
-                )) {
-                    is ArrayList<*> -> {
-                        return CredentialRequest(
-                            credentialDefinition = CredentialDefinition(type = data as ArrayList<String>),
-                            format = format,
-                            proof = ProofV3(
-                                proofType = "jwt",
-                                jwt = jwt
-                            )
-                        )
-                    }
-
-                    is String -> {
-                        return CredentialRequest(
-                            vct = data as String,
-                            format = format,
-                            proof = ProofV3(
-                                proofType = "jwt",
-                                jwt = jwt
-                            )
-                        )
-                    }
-                }
-
-                return CredentialRequest(
-                    credentialDefinition = CredentialDefinition(type = types),
-                    format = format,
-                    proof = ProofV3(
-                        proofType = "jwt",
-                        jwt = jwt
-                    )
-                )
-            } else {
-                return CredentialRequest(
-                    types = getTypesFromCredentialOffer(credentialOffer),
-                    format = format,
-                    proof = ProofV3(
-                        proofType = "jwt",
-                        jwt = jwt
-                    )
-                )
-            }
-        }
-
-
-    }
-
 
     /**
      * For issuance of the deferred credential.
@@ -1378,32 +1165,12 @@ class IssueService : IssueServiceInterface {
         ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse? {
-        val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        return try {
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.getDifferedCredential(
-                    deferredCredentialEndPoint ?: "",
-                    "Bearer $acceptanceToken",
-                    CredentialRequest() // empty object
-                )
-            }
-
-            result.fold(
-                onSuccess = { response ->
-                    parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
-                },
-                onFailure = { error ->
-                    println("Error while fetching deferred credential: ${error.message}")
-                    null
-                }
-            )
-        } catch (e: IOException) {
-            println("IOException while fetching deferred credential: ${e.message}")
-            null
-        } catch (e: Exception) {
-            println("Unexpected error while fetching deferred credential: ${e.message}")
-            null
-        }
+        return draftFormatRequestBuilder.processDeferredCredentialRequest(
+            acceptanceToken,
+            deferredCredentialEndPoint,
+            ecKeyWithAlgEnc,
+            credentialRequestEncryptionInfo
+        )
     }
 
     override suspend fun processDeferredCredentialRequestV2(
@@ -1556,91 +1323,7 @@ class IssueService : IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         type: String?
     ): Any? {
-        var types: ArrayList<String> = ArrayList()
-        // Check if issuerConfig is null
-        if (issuerConfig == null) {
-            return null
-        }
-        try {
-            val credentialOfferJsonString = Gson().toJson(issuerConfig)
-            // Check if credentialOfferJsonString is null or empty
-            if (credentialOfferJsonString.isNullOrEmpty()) {
-                return null
-            }
-            val jsonObject = JSONObject(credentialOfferJsonString)
-
-            val credentialsSupported: Any = jsonObject.opt("credentials_supported") ?: return null
-            when (credentialsSupported) {
-                is JSONObject -> {
-                    try {
-                        val credentialSupported = credentialsSupported.getJSONObject(type ?: "")
-                        val format =
-                            if (credentialSupported.has("format")) credentialSupported.getString("format") else ""
-
-                        if (format == "vc+sd-jwt" || format == "dc+sd-jwt") {
-                            return credentialSupported.getJSONObject("credential_definition")
-                                .getString("vct")
-                        } else {
-                            val typeFromCredentialIssuer: JSONArray =
-                                credentialSupported.getJSONObject("credential_definition")
-                                    .getJSONArray("type")
-                            for (i in 0 until typeFromCredentialIssuer.length()) {
-                                // Get each JSONObject from the JSONArray
-                                val type: String = typeFromCredentialIssuer.getString(i)
-                                types.add(type)
-                            }
-                            return types
-                        }
-                    } catch (e: Exception) {
-                    }
-                }
-
-                is JSONArray -> {
-                    try {
-                        for (i in 0 until credentialsSupported.length()) {
-                            val jsonObject: JSONObject = credentialsSupported.getJSONObject(i)
-
-                            // Get the "types" JSONArray
-                            val typesArray = jsonObject.getJSONArray("types")
-
-                            // Check if the string is present in the "types" array
-                            for (j in 0 until typesArray.length()) {
-                                if (typesArray.getString(j) == type) {
-                                    val format =
-                                        if (jsonObject.has("format")) jsonObject.getString("format") else ""
-
-                                    if (format == "vc+sd-jwt" || format == "dc+sd-jwt") {
-                                        return jsonObject.getJSONObject("credential_definition")
-                                            .getString("vct")
-                                    } else {
-                                        val typeFromCredentialIssuer: JSONArray =
-                                            jsonObject.getJSONObject("credential_definition")
-                                                .getJSONArray("type")
-                                        for (i in 0 until typeFromCredentialIssuer.length()) {
-                                            // Get each JSONObject from the JSONArray
-                                            val type: String = typeFromCredentialIssuer.getString(i)
-                                            types.add(type)
-                                        }
-                                        return types
-                                    }
-                                    break
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                    }
-                }
-
-                else -> {
-                    // Neither JSONObject nor JSONArray
-                    println("Child is neither JSONObject nor JSONArray")
-                }
-            }
-        } catch (e: JSONException) {
-            Log.e("getTypesFromIssuerConfig", "Error parsing JSON", e)
-        }
-
-        return types
+        return draftFormatRequestBuilder.getTypesFromIssuerConfig(issuerConfig, type)
     }
 
     override fun getTypesFromIssuerConfig(

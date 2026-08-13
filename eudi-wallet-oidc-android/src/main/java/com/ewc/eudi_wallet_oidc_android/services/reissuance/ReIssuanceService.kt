@@ -14,6 +14,8 @@ import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.draftFormatRequestBuilder.DraftFormatRequestBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.draftFormatRequestBuilder.DraftFormatRequestInterface
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
@@ -29,6 +31,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class ReIssuanceService : ReIssuanceServiceInterface {
+
+    private val draftFormatRequestBuilder: DraftFormatRequestInterface = DraftFormatRequestBuilder()
+
     override suspend fun reIssueCredential(
         did: String?,
         subJwk: JWK?,
@@ -117,7 +122,7 @@ class ReIssuanceService : ReIssuanceServiceInterface {
                     )
                 } catch (e: Exception) {
                 }
-                IssueService().buildCredentialRequest(
+                draftFormatRequestBuilder.buildCredentialRequest(
                     credentialOffer = credentialOffer,
                     issuerConfig = issuerConfig,
                     format = format,
