@@ -10,10 +10,12 @@ class NonceService : NonceServiceInterface {
     override suspend fun fetchNonce(accessToken: String?, nonceEndPoint: String?): String? {
         if (nonceEndPoint.isNullOrBlank()) return null
 
-        val authorizationHeader = accessToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
-
+        // OpenID4VCI 1.0 (§ Nonce Endpoint): the nonce request is
+        // UNAUTHENTICATED. Sending an Authorization header (a Bearer copy of a
+        // DPoP-bound token, at that) makes strict issuers answer 401 with an
+        // empty body, and the whole flow loses its c_nonce.
         val result = SafeApiCall.safeApiCallResponse {
-            ApiManager.api.getService()?.fetchNonce(nonceEndPoint, authorizationHeader)
+            ApiManager.api.getService()?.fetchNonce(nonceEndPoint, null)
         }
 
         var nonce: String? = null
