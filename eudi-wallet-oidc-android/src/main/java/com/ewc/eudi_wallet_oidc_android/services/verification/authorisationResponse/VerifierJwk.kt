@@ -34,18 +34,27 @@ object VerifierJwk {
             Log.d(TAG, "Extracting key from embedded JWKS...")
             val jwksJson = clientMetadataJson.getAsJsonObject("jwks")
             val keysArray = jwksJson.getAsJsonArray("keys")
-            val matchedKey = keysArray.find {
-                it.asJsonObject.get("crv").asString == "P-256"
-            }?.asJsonObject
+            val p256Keys = keysArray
+                .map { it.asJsonObject }
+                .filter { k -> k.get("crv")?.takeIf { !it.isJsonNull }?.asString == "P-256" }
+            // The response is ENCRYPTED to this key, so the encryption key must
+            // be chosen: 'use: enc' first, then a key that declares no use.
+            // A 'sig' key is never acceptable — verifiers (e.g. BankID) publish
+            // both in one set, and the first P-256 key may be the signing key.
+            val matchedKey = p256Keys.firstOrNull { k ->
+                k.get("use")?.takeIf { !it.isJsonNull }?.asString == "enc"
+            } ?: p256Keys.firstOrNull { k ->
+                k.get("use") == null || k.get("use").isJsonNull
+            }
 
             if (matchedKey == null) {
-                Log.e(TAG, "No P-256 curve key found in client metadata.")
+                Log.e(TAG, "No P-256 encryption key (use=enc) found in client metadata.")
             } else {
-                Log.d(TAG, "Found P-256 key: $matchedKey")
+                Log.d(TAG, "Found P-256 encryption key: $matchedKey")
             }
 
             matchedKey
-                ?: throw IllegalArgumentException("No P-256 curve key found in client metadata")
+                ?: throw IllegalArgumentException("No P-256 encryption key found in client metadata")
         }
 
         val publicECJWK = ECKey.Builder(
