@@ -298,22 +298,27 @@ class IssueService : IssueServiceInterface {
 
         // ---------- PAR Request ----------
         else if (authConfig?.requirePushedAuthorizationRequests == true) {
+            val parParams = mapOf(
+                "response_type" to responseType,
+                "scope" to scope.trim(),
+                "state" to state,
+                "client_id" to (clientId ?: ""),
+                "authorization_details" to authorisationDetails,
+                "redirect_uri" to redirectURI,
+                "nonce" to nonce,
+                "code_challenge" to (codeChallenge ?: ""),
+                "code_challenge_method" to codeChallengeMethod,
+                "client_metadata" to clientMetadata,
+                "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
+            )
+            headers.forEach { (k, v) ->
+                v.chunked(3000).forEachIndexed { i, chunk ->
+                }
+            }
             val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.processParAuthorisationRequest(
                     authConfig.pushedAuthorizationRequestEndpoint ?: "",
-                    mapOf(
-                        "response_type" to responseType,
-                        "scope" to scope.trim(),
-                        "state" to state,
-                        "client_id" to (clientId ?: ""),
-                        "authorization_details" to authorisationDetails,
-                        "redirect_uri" to redirectURI,
-                        "nonce" to nonce,
-                        "code_challenge" to (codeChallenge ?: ""),
-                        "code_challenge_method" to codeChallengeMethod,
-                        "client_metadata" to clientMetadata,
-                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-                    ),
+                    parParams,
                     headers
                 )
             }
@@ -941,7 +946,12 @@ class IssueService : IssueServiceInterface {
                 credentialConfigurationId = authorizationDetail.credentialConfigurationId,
                 proof = ProofV3(jwt =  jwt, proofType = "jwt"),
             )
-        } else if (accessToken?.cNonce==null && issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
+        } else if (issuerConfig?.nonceEndpoint!=null && accessToken?.authorizationDetails.isNullOrEmpty()){
+            // OpenID4VCI 1.0 (issuer publishes a nonce endpoint): the request
+            // carries credential_configuration_id, never format+vct. The old
+            // extra gate on cNonce==null dropped issuers that return a c_nonce
+            // in the token response AS WELL (BankID), and they rejected the
+            // legacy format+vct body with "Invalid request format".
             Log.d(TAG,"entered third condition")
             CredentialRequest(
                 credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
@@ -979,6 +989,9 @@ class IssueService : IssueServiceInterface {
         }
 
         request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
+
+        Gson().toJson(request).chunked(3000).forEachIndexed { i, chunk ->
+        }
 
         // Safely perform network call using SafeApiCall
         val result = SafeApiCall.safeApiCallResponse {
