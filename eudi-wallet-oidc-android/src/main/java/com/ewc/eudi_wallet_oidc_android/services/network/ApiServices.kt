@@ -163,6 +163,12 @@ interface ApiService {
     @GET
     suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
 
+    @GET
+    suspend fun fetchUrlWithHeaders(
+        @Url url: String,
+        @HeaderMap headers: Map<String, String>
+    ): Response<ResponseBody>
+
     @POST
     suspend fun sendKeyAttestationRequest(
         @Url url: String,

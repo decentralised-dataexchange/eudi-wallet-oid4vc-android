@@ -334,6 +334,23 @@ class IssueService : IssueServiceInterface {
                                 onSuccess = { response ->
                                     val location = response.headers()["Location"]
                                     if (response.code() == 302 && !location.isNullOrEmpty()) {
+                                        // A 302 to a plain web page (no code/error, http scheme)
+                                        // means the AS wants a BROWSER session (login page).
+                                        // The session cookie of this API call stays in OkHttp,
+                                        // so opening the bare Location would lose the saved
+                                        // authorization request. Re-enter through the
+                                        // authorization endpoint in the browser instead.
+                                        val locationUri = Uri.parse(location)
+                                        val isWebInteraction =
+                                            (locationUri.scheme == "https" || locationUri.scheme == "http") &&
+                                                    locationUri.getQueryParameter("code") == null &&
+                                                    locationUri.getQueryParameter("error") == null
+                                        if (isWebInteraction) {
+                                            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
+                                            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
+                                            urlBuilder.appendQueryParameter("request_uri", requestUri)
+                                            return urlBuilder.build().toString()
+                                        }
                                         return location
                                     } else if (response.isSuccessful && response.headers()["Content-Type"]?.contains("text/html") == true) {
                                         return response.raw().request.url.toString()

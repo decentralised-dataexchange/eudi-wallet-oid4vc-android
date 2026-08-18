@@ -2,7 +2,11 @@ package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import android.net.Uri
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.CredentialList
+import com.ewc.eudi_wallet_oidc_android.models.CredentialSet
 import com.ewc.eudi_wallet_oidc_android.models.DCQL
+import com.ewc.eudi_wallet_oidc_android.models.DcqlClaim
+import com.ewc.eudi_wallet_oidc_android.models.Meta
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
@@ -52,18 +56,18 @@ class VerificationService : VerificationServiceInterface {
 
         val requestUri = uri.getQueryParameter("request_uri")
         val request = uri.getQueryParameter("request")
-        if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
-            return AuthorisationRequestByValue().processAuthorisationRequest(data)
+        val wrapped = if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
+            AuthorisationRequestByValue().processAuthorisationRequest(data)
         } else if (!requestUri.isNullOrBlank()) {
-            return AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
+            AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
         } else if (request != null) {
-            return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
+            AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
         } else if (isValidJWT(data)) {
-            return AuthorisationRequestByJWT().processAuthorisationRequest(data)
+            AuthorisationRequestByJWT().processAuthorisationRequest(data)
         } else if (iarOpenid4VPRequest != null){
-            return AuthorisationRequestForIAR().processAuthorisationRequest(data)
+            AuthorisationRequestForIAR().processAuthorisationRequest(data)
         } else {
-            return WrappedPresentationRequest(
+            WrappedPresentationRequest(
                 presentationRequest = null,
                 errorResponse = ErrorResponse(
                     error = null,
@@ -71,6 +75,108 @@ class VerificationService : VerificationServiceInterface {
                 )
             )
         }
+        return applySuaEmptyDcqlFallback(wrapped)
+    }
+
+    /**
+     * Wallet-mediated authorization continuation: after the direct_post, the
+     * authorization server 302s to a session-bound web URL. The session lives
+     * in the Set-Cookie headers of THAT response, so the URL must be followed
+     * here, with those cookies, until a wallet-handleable redirect appears
+     * (custom scheme, or a code/error parameter). Returns the final location,
+     * or null when the chain does not resolve (caller keeps the original).
+     */
+    private suspend fun followWalletMediatedContinuation(
+        setCookies: List<String>,
+        location: String?
+    ): String? {
+        var url = location ?: return null
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" && uri.scheme != "http") return null
+        if (uri.getQueryParameter("code") != null || uri.getQueryParameter("error") != null) return null
+        val cookies = setCookies.map { it.substringBefore(";") }.toMutableList()
+        try {
+            repeat(4) {
+                val headers = mutableMapOf("Accept" to "application/json")
+                if (cookies.isNotEmpty()) headers["Cookie"] = cookies.joinToString("; ")
+                val result = safeApiCallResponse {
+                    ApiManager.api.getService()?.fetchUrlWithHeaders(url, headers)
+                }
+                val response = result.getOrNull() ?: return null
+                response.headers().values("Set-Cookie").forEach { cookies.add(it.substringBefore(";")) }
+                val next = response.headers()["Location"]
+                Log.d("VerificationService", "Continuation ${response.code()} $url -> $next")
+                when {
+                    response.code() in 300..399 && !next.isNullOrEmpty() -> {
+                        val nextUri = Uri.parse(next)
+                        if (nextUri.scheme != "https" && nextUri.scheme != "http") return next
+                        if (nextUri.getQueryParameter("code") != null ||
+                            nextUri.getQueryParameter("error") != null
+                        ) return next
+                        if (next == url) return null
+                        url = next
+                    }
+                    response.isSuccessful -> {
+                        val body = response.body()?.string()
+                        Log.d("VerificationService", "Continuation body: ${body?.take(500)}")
+                        val redirect = try {
+                            body?.let { com.google.gson.JsonParser.parseString(it).asJsonObject.get("redirect_uri")?.asString }
+                        } catch (e: Exception) { null }
+                        return redirect
+                    }
+                    else -> return null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("VerificationService", "Continuation failed: ${e.message}")
+        }
+        return null
+    }
+
+    /**
+     * SUA fallback (e.g. Czech BankID): an authorization request whose DCQL
+     * query has NO credential queries asks only for user authentication.
+     * The wallet answers it by presenting the PID, so the empty query is
+     * replaced with a PID query (SD-JWT or mdoc). Requests with a normal
+     * DCQL query or a presentation definition are untouched.
+     */
+    private fun applySuaEmptyDcqlFallback(wrapped: WrappedPresentationRequest?): WrappedPresentationRequest? {
+        val presentationRequest = wrapped?.presentationRequest ?: return wrapped
+        val dcql = presentationRequest.dcqlQuery ?: return wrapped
+        if (!dcql.credentials.isNullOrEmpty()) return wrapped
+        Log.d("VerificationService", "Empty DCQL query (SUA) — falling back to a PID presentation")
+        presentationRequest.dcqlQuery = DCQL(
+            credentials = listOf(
+                // One query, id "pid": with an empty DCQL (SUA), verifiers such
+                // as Czech BankID expect the presentation under the DEFAULT
+                // query id "pid". No claims list: the PID discloses the claims
+                // it holds (a claims list rejects a PID that misses one claim).
+                CredentialList(
+                    id = "pid",
+                    format = "dc+sd-jwt",
+                    meta = Meta(
+                        vctValues = arrayListOf(
+                            "urn:eudi:pid:1",
+                            "eu.europa.ec.eudi.pid.1",
+                            "urn:eu.europa.ec.eudi:pid:1"
+                        )
+                    )
+                ),
+                CredentialList(
+                    id = "pid_mdoc",
+                    format = "mso_mdoc",
+                    meta = Meta(doctypeValue = "eu.europa.ec.eudi.pid.1")
+                )
+            ),
+            credential_sets = listOf(
+                CredentialSet(
+                    purpose = "User authentication",
+                    required = true,
+                    options = listOf(listOf("pid"), listOf("pid_mdoc"))
+                )
+            )
+        )
+        return wrapped
     }
 
     override suspend fun processAndSendAuthorisationResponse(
@@ -175,9 +281,17 @@ class VerificationService : VerificationServiceInterface {
                                     )
                                 )
                             } else {
+                                // Wallet-mediated authorization (e.g. Czech BankID):
+                                // the direct_post answer 302s to a session-bound web
+                                // URL that must be followed WITH the response cookies
+                                // to complete the authorization and obtain the code.
+                                val followed = followWalletMediatedContinuation(
+                                    setCookies = response.headers().values("Set-Cookie"),
+                                    location = locationHeader
+                                )
                                 WrappedVpTokenResponse(
                                     vpTokenResponse = VPTokenResponse(
-                                        location = locationHeader ?: "https://www.example.com?code=1"
+                                        location = followed ?: locationHeader ?: "https://www.example.com?code=1"
                                     )
                                 )
                             }
@@ -327,9 +441,17 @@ class VerificationService : VerificationServiceInterface {
                                     )
                                 )
                             } else {
+                                // Wallet-mediated authorization (e.g. Czech BankID):
+                                // the direct_post answer 302s to a session-bound web
+                                // URL that must be followed WITH the response cookies
+                                // to complete the authorization and obtain the code.
+                                val followed = followWalletMediatedContinuation(
+                                    setCookies = response.headers().values("Set-Cookie"),
+                                    location = locationHeader
+                                )
                                 WrappedVpTokenResponse(
                                     vpTokenResponse = VPTokenResponse(
-                                        location = locationHeader ?: "https://www.example.com?code=1"
+                                        location = followed ?: locationHeader ?: "https://www.example.com?code=1"
                                     )
                                 )
                             }
