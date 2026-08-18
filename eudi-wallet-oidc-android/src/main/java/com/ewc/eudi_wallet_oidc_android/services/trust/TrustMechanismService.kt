@@ -9,7 +9,7 @@ import com.ewc.eudi_wallet_oidc_android.models.TSPServices
 import com.ewc.eudi_wallet_oidc_android.models.TrustServiceProvider
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
-import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletAttestationUtil.TAG
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationService.TAG
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray

@@ -54,7 +54,7 @@ class IETFTokenStatusList: StatusListInterface {
                     return null
                 }
 
-                val status = jsonPayload.getAsJsonObject("status") ?: run {
+                val status = StatusClaims.of(jsonPayload) ?: run {
                     Log.e("Error", "'status' field not found in JWT payload.")
                     return null
                 }

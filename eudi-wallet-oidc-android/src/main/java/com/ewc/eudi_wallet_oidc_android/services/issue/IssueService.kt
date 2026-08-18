@@ -38,7 +38,6 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRespo
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.nimbusds.jose.JOSEObjectType
@@ -60,7 +59,8 @@ import org.json.JSONObject
 import retrofit2.Response
 import java.util.Date
 import java.util.UUID
-import android.util.Base64
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.KeyAttestationService
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
@@ -197,14 +197,10 @@ class IssueService : IssueServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
     ): String? {
-        val headers = mutableMapOf<String, String>().apply {
-            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
-            }
-            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
-            }
-        }
+        val headers = WalletUnitAttestationHeaders.build(
+            walletUnitAttestationJWT,
+            walletUnitProofOfPossession
+        )
         val TAG = "iar"
         val authorisationEndPoint =authConfig?.authorizationEndpoint
         val responseType = "code"
@@ -216,7 +212,7 @@ class IssueService : IssueServiceInterface {
         }
         val state = UUID.randomUUID().toString()
         //val clientId = did
-        val clientId = extractSubFromJwt(walletUnitAttestationJWT) ?: did
+        val clientId = WalletUnitAttestationHeaders.clientId(walletUnitAttestationJWT, did)
         val authorisationDetails = buildAuthorizationRequest(
             credentialOffer = credentialOffer,
             format = format,
@@ -469,27 +465,6 @@ class IssueService : IssueServiceInterface {
         return null
     }
 
-    private fun extractSubFromJwt(jwt: String?): String? {
-        try {
-            if (jwt.isNullOrEmpty()) return null
-
-            val parts = jwt.split(".")
-            if (parts.size < 2) return null
-
-            val payload = parts[1]
-            // Base64 decode payload (URL-safe, no padding)
-            val decodedBytes = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            val payloadJson = String(decodedBytes, Charsets.UTF_8)
-
-            // Parse JSON
-            val jsonObject = Gson().fromJson(payloadJson, JsonObject::class.java)
-            return jsonObject.get("sub")?.asString
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
-
     suspend fun processAuthorisationRequestUsingIdToken(
         did: String?,
         authorisationEndPoint: String?,
@@ -701,13 +676,10 @@ class IssueService : IssueServiceInterface {
                 dpopKey = dpopKey
             )
         } else null
-        val headers = mutableMapOf<String, String>().apply {
-            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
-            }
-            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
-            }
+        val headers = WalletUnitAttestationHeaders.build(
+            walletUnitAttestationJWT,
+            walletUnitProofOfPossession
+        ).apply {
             if (!dpop.isNullOrEmpty()) {
                 this["DPoP"] = dpop
             }
@@ -914,9 +886,11 @@ class IssueService : IssueServiceInterface {
         ecKeyWithAlgEnc:ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         authConfig: AuthorisationServerWellKnownConfiguration?,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        attachKeyAttestation: Boolean,
+        keyAttestationJwt: String?
     ): WrappedCredentialResponse? {
-        val TAG = "processCredentialRequestLijoTest"
+        val TAG = "processCredentialRequestKeyAttestation"
 
         val dpopHeaderValue =
             if (!issuerConfig?.credentialEndpoint.isNullOrEmpty()
@@ -944,7 +918,12 @@ class IssueService : IssueServiceInterface {
         }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index)
+        // ARF TS3 v1.5: the KA travels in the proof's key_attestation header,
+        // bound to the same c_nonce as the proof.
+        val keyAttestation = KeyAttestationService.forProof(
+            keyAttestationJwt, attachKeyAttestation, subJwk, nonce
+        )
+        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null

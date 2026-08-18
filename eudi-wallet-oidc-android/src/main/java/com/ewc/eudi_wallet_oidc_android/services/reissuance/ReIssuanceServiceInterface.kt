@@ -23,7 +23,8 @@ interface ReIssuanceServiceInterface {
         ecKeyWithAlgEnc:ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         interactiveAuthorizationEndpoint: String?,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        attachKeyAttestation: Boolean = false
     ): WrappedCredentialResponse?
 
 }
