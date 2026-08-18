@@ -142,7 +142,8 @@ interface IssueServiceInterface {
         accessToken: String?,
         deferredCredentialEndPoint: String?,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null,
-        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
+        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
+        dpopKey: ECKey? = null
     ): WrappedCredentialResponse?
 
     /**
