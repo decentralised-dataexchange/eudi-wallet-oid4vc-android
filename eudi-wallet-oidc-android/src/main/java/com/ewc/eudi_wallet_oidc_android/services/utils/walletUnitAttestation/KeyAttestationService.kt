@@ -169,6 +169,32 @@ object KeyAttestationService {
     }
 
     /**
+     * Single-use server nonce for the wallet-provider key-attestation
+     * endpoint (GET .../wallet-provider/nonce). The Keystore key must be
+     * generated with THIS nonce as the attestation challenge, and the
+     * key PoPs must sign it.
+     */
+    suspend fun fetchKeyAttestationNonce(baseUrl: String): String? = withContext(Dispatchers.IO) {
+        val result = SafeApiCall.safeApiCallResponse {
+            ApiManager.api.getService()?.fetchNonce(url = "$baseUrl/wallet-provider/nonce")
+        }
+        result.onSuccess { response ->
+            if (response.isSuccessful) {
+                response.body()?.string()?.let {
+                    return@withContext com.google.gson.Gson()
+                        .fromJson(it, com.ewc.eudi_wallet_oidc_android.NonceResponse::class.java)
+                        .nonce
+                }
+            } else {
+                Log.e(TAG, "Failed to fetch key attestation nonce: ${response.errorBody()?.string()}")
+            }
+        }.onFailure { e ->
+            Log.e(TAG, "Error fetching key attestation nonce: ${e.message}")
+        }
+        return@withContext null
+    }
+
+    /**
      * Optional: request a wallet-provider-signed KA. Only usable when the
      * credential issuer is the wallet-provider organisation (see class KDoc).
      * The wallet unit must be authorised on the wallet provider.
