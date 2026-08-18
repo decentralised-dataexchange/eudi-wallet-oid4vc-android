@@ -40,8 +40,9 @@ class CredentialRevocationService : CredentialRevocationServiceInterface{
                         statusList2021.add(credential)
                     }
 
-                    // ✅ Safe check for status.status_list
-                    val status = jsonPayload.getAsJsonObject("status")
+                    // ✅ Safe check for status.status_list (or the TS3 WIA
+                    // location, see StatusClaims)
+                    val status = StatusClaims.of(jsonPayload)
                     val statusList = status?.getAsJsonObject("status_list")
                     if (statusList != null) {
                         ietfStatusList.add(credential)

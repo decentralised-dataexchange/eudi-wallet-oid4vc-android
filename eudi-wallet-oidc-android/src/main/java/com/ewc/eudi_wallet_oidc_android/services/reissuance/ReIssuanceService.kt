@@ -19,6 +19,7 @@ import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.KeyAttestationService
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -40,7 +41,8 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         interactiveAuthorizationEndpoint: String?,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        attachKeyAttestation: Boolean
     ): WrappedCredentialResponse? {
         val dpopHeaderValue =
             if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
@@ -68,7 +70,12 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index)
+        // ARF TS3 v1.5: the KA travels in the proof's key_attestation header,
+        // bound to the same c_nonce as the proof.
+        val keyAttestation = KeyAttestationService.forProof(
+            null, attachKeyAttestation, subJwk, nonce
+        )
+        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index, keyAttestation)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null

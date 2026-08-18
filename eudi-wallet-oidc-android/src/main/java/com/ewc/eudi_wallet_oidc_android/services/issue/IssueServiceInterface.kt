@@ -119,7 +119,9 @@ interface IssueServiceInterface {
         ecKeyWithAlgEnc:ECKeyWithAlgEnc? =null,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         authConfig: AuthorisationServerWellKnownConfiguration?,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        attachKeyAttestation: Boolean = false,
+        keyAttestationJwt: String? = null
     ): WrappedCredentialResponse?
 
     /**

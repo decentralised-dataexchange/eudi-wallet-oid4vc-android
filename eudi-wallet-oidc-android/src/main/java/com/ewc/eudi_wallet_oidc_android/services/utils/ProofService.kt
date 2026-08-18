@@ -25,7 +25,8 @@ class ProofService {
         nonce: String?,
         issuerConfig: IssuerWellKnownConfiguration?,
         credentialOffer: CredentialOffer?,
-        index: Int = 0
+        index: Int = 0,
+        keyAttestation: String? = null
     ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
         val credentials = credentialOffer?.credentials
@@ -66,6 +67,12 @@ class ProofService {
         }
         else {
             jwsHeaderBuilder.jwk(subJwk?.toPublicJWK())
+        }
+
+        // ARF TS3 v1.5: the Key Attestation travels in the key_attestation
+        // JOSE header of the jwt proof.
+        if (!keyAttestation.isNullOrEmpty()) {
+            jwsHeaderBuilder.customParam("key_attestation", keyAttestation)
         }
 
         val jwsHeader = jwsHeaderBuilder.build()

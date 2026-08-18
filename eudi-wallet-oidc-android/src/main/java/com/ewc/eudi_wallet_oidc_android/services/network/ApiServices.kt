@@ -5,6 +5,8 @@ import com.ewc.eudi_wallet_oidc_android.InteractiveAuthResponse
 import com.ewc.eudi_wallet_oidc_android.models.RefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
+import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationRequest
+import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationResponse
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.DIDDocument
@@ -160,6 +162,13 @@ interface ApiService {
 
     @GET
     suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
+
+    @POST
+    suspend fun sendKeyAttestationRequest(
+        @Url url: String,
+        @HeaderMap headers: Map<String, String>,
+        @Body body: KeyAttestationRequest
+    ): Response<KeyAttestationResponse>
 
     @FormUrlEncoded
     @POST("")

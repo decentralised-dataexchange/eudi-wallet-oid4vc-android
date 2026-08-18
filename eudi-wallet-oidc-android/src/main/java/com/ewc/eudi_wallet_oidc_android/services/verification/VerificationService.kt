@@ -10,6 +10,7 @@ import com.ewc.eudi_wallet_oidc_android.models.VPTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
@@ -91,14 +92,10 @@ class VerificationService : VerificationServiceInterface {
             )
         }
 
-        val headers = mutableMapOf<String, String>().apply {
-            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
-            }
-            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
-            }
-        }
+        val headers = WalletUnitAttestationHeaders.build(
+            walletUnitAttestationJWT,
+            walletUnitProofOfPossession
+        )
 
         return try {
             val params = AuthorisationResponseHandler().prepareAuthorisationResponse(
@@ -246,14 +243,10 @@ class VerificationService : VerificationServiceInterface {
             )
         }
 
-        val headers = mutableMapOf<String, String>().apply {
-            if (!walletUnitAttestationJWT.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation"] = walletUnitAttestationJWT.removeSuffix("~")
-            }
-            if (!walletUnitProofOfPossession.isNullOrEmpty()) {
-                this["OAuth-Client-Attestation-PoP"] = walletUnitProofOfPossession
-            }
-        }
+        val headers = WalletUnitAttestationHeaders.build(
+            walletUnitAttestationJWT,
+            walletUnitProofOfPossession
+        )
 
         return try {
             val params = AuthorisationResponseHandler().prepareAuthorisationResponseV2(
