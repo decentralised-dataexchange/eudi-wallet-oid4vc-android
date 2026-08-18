@@ -1354,9 +1354,28 @@ class IssueService : IssueServiceInterface {
         accessToken: String?,
         deferredCredentialEndPoint: String?,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc?,
-        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
+        credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
+        dpopKey: ECKey?
     ): WrappedCredentialResponse? {
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
+        // A DPoP-bound access token must stay DPoP-bound on the deferred
+        // endpoint too: same key as the token request, fresh jti, ath.
+        val dpopHeaderValue =
+            if (dpopKey != null && !deferredCredentialEndPoint.isNullOrEmpty() && accessToken != null) {
+                DPoPProofService().generateDPoP(
+                    httpMethod = "POST",
+                    targetUri = deferredCredentialEndPoint,
+                    dpopKey = dpopKey,
+                    claims = mapOf(
+                        "ath" to DPoPProofService().computeAccessTokenHash(accessToken)
+                    )
+                )
+            } else null
+        val authHeaderValue = if (dpopHeaderValue != null) {
+            "DPoP $accessToken"
+        } else {
+            "Bearer $accessToken"
+        }
         return try {
             val result = SafeApiCall.safeApiCallResponse {
                 if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
@@ -1375,8 +1394,9 @@ class IssueService : IssueServiceInterface {
                         ApiManager.api.getService()?.getDifferedCredentialV2Encrypted(
                             deferredCredentialEndPoint ?: "",
                             "application/jwt",
-                            "Bearer $accessToken",
-                            requestBody
+                            authHeaderValue,
+                            requestBody,
+                            dpop = dpopHeaderValue
                         )
                     } else {
                         null
@@ -1384,8 +1404,9 @@ class IssueService : IssueServiceInterface {
                 } else {
                     ApiManager.api.getService()?.getDifferedCredentialV2(
                         deferredCredentialEndPoint ?: "",
-                        "Bearer $accessToken",
-                        DeferredCredentialRequestV2(transactionId)
+                        authHeaderValue,
+                        DeferredCredentialRequestV2(transactionId),
+                        dpop = dpopHeaderValue
                     )
                 }
             }

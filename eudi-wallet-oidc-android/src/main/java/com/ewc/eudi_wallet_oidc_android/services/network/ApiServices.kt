@@ -118,7 +118,8 @@ interface ApiService {
     suspend fun getDifferedCredentialV2(
         @Url url: String,
         @Header("Authorization") authorization: String,
-        @Body body: DeferredCredentialRequestV2
+        @Body body: DeferredCredentialRequestV2,
+        @Header("DPoP") dpop: String? = null
     ): Response<ResponseBody>
 
     @POST("")
@@ -126,7 +127,8 @@ interface ApiService {
         @Url url: String,
         @Header("content-type") contentType: String,
         @Header("Authorization") authorization: String,
-        @Body body: RequestBody
+        @Body body: RequestBody,
+        @Header("DPoP") dpop: String? = null
     ): Response<ResponseBody>
 
     @GET
