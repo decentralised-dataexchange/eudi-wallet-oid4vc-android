@@ -15,7 +15,10 @@ class DCQLCredentialFilter {
     ): List<List<String>> {
         val response: MutableList<MutableList<String>> = mutableListOf()
 
+        android.util.Log.d("BankIdWatch", "DCQL filter: queries=${dcqlQuery?.credentials?.size} walletCredentials=${allCredentialList.size} credentialSets=${dcqlQuery?.credential_sets?.size}")
+
         dcqlQuery?.credentials?.forEach { dcqlCredential ->
+            android.util.Log.d("BankIdWatch", "DCQL filter query id=${dcqlCredential.id} format=${dcqlCredential.format} meta=${com.google.gson.Gson().toJson(dcqlCredential.meta)} claims=${com.google.gson.Gson().toJson(dcqlCredential.claims)}")
             var processedCredentials: MutableList<String> = mutableListOf()
             var credentialList: ArrayList<String?> = arrayListOf()
             var credentialFormat: String? = null
@@ -67,6 +70,7 @@ class DCQLCredentialFilter {
             response.add(finalFilteredList.toMutableList())
         }
 
+        android.util.Log.d("BankIdWatch", "DCQL filter result: matchesPerQuery=${response.map { it.size }}")
         return response
     }
 }
