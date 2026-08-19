@@ -42,7 +42,8 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         interactiveAuthorizationEndpoint: String?,
         dpopKey: ECKey?,
-        attachKeyAttestation: Boolean
+        attachKeyAttestation: Boolean,
+        keyAttestationJwt: String?
     ): WrappedCredentialResponse? {
         val dpopHeaderValue =
             if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
@@ -70,10 +71,10 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        // ARF TS3 v1.5: the KA travels in the proof's key_attestation header,
-        // bound to the same c_nonce as the proof.
+        // ARF TS3 v1.5: the wallet-provider-issued KA travels in the proof's
+        // key_attestation header, bound to the same c_nonce as the proof.
         val keyAttestation = KeyAttestationService.forProof(
-            null, attachKeyAttestation, subJwk, nonce
+            keyAttestationJwt, attachKeyAttestation
         )
         val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index, keyAttestation)
         if (jwt == null) {

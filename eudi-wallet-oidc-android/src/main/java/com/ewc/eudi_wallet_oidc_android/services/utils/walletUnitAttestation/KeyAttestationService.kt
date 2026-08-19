@@ -21,17 +21,21 @@ import java.util.Date
 /**
  * ARF TS3 v1.5 Key Attestation (KA).
  *
- * The main flow mints the KA on-device: the KA carries the same c_nonce as the
- * credential-request proof, so it works with any issuer and needs no
- * wallet-provider round-trip. The wallet-provider endpoint is exposed as a thin
- * optional API — its KA is only usable when the credential issuer IS the
- * wallet-provider organisation, because the KA nonce must match the proof
- * nonce and the provider validates the nonce against its own 60-second store.
+ * TS3 §2.2.2.1: the KA SHALL be generated and signed by the Wallet Provider —
+ * the wallet never mints a KA itself. [requestKeyAttestation] sends the key
+ * evidence (Android Keystore chain for the hardware tier, key PoPs for the
+ * software tier) to the wallet-provider backend, which verifies it and signs
+ * the KA. The nonce is the ISSUER's c_nonce for the credential request
+ * (TS3 §2.2.2): the wallet passes it to the wallet provider, the evidence is
+ * bound to it, and the issuer — not the wallet provider — validates its
+ * freshness against its own nonce endpoint.
  */
 object KeyAttestationService {
     const val TAG = "KeyAttestation"
 
-    private const val KA_TYP = "key-attestation+jwt"
+    /** Shared watch tag for the KA path. Filter with: adb logcat -s KaWatch */
+    private const val KA_WATCH = "KaWatch"
+
     private const val KEY_POP_TYP = "key-pop+jwt"
 
     /**
@@ -68,87 +72,34 @@ object KeyAttestationService {
     ): Boolean = getRequirement(issuerConfig, type) != null
 
     /**
-     * The KA that goes on a credential-request proof: a pre-minted (hardware)
-     * KA wins; otherwise the software tier is minted here with the SAME
-     * c_nonce as the proof. Null when no KA is wanted or possible.
+     * The KA that goes on a credential-request proof. Only a wallet-provider
+     * issued KA is accepted (TS3 §2.2.2.1) — there is no on-device fallback.
+     * Null when no KA is wanted, or when one was wanted but the wallet
+     * provider did not deliver it (the issuer then rejects or warns).
      */
     fun forProof(
-        preMinted: String?,
-        attach: Boolean,
-        bindingKey: JWK?,
-        cNonce: String?
+        walletProviderKa: String?,
+        attach: Boolean
     ): String? {
-        return preMinted
-            ?: if (attach && bindingKey is ECKey) {
-                mintSoftwareKeyAttestation(bindingKey, cNonce)
-            } else null
-    }
-
-    /**
-     * Software tier ("software_self_attested"): the KA is self-signed by the
-     * binding key. The server forces the software assurance labels; this tier
-     * does not satisfy an iso_18045_high (enforceWUA) requirement.
-     */
-    fun mintSoftwareKeyAttestation(
-        bindingKey: ECKey,
-        cNonce: String?
-    ): String? {
-        return try {
-            val now = Date()
-            val header = JWSHeader.Builder(JWSAlgorithm.ES256)
-                .type(JOSEObjectType(KA_TYP))
-                .build()
-            val claims = JWTClaimsSet.Builder()
-                .issueTime(now)
-                .expirationTime(Date(now.time + 12 * 60 * 60 * 1000))
-                .claim("attested_keys", listOf(bindingKey.toPublicJWK().toJSONObject()))
-                .apply { if (!cNonce.isNullOrEmpty()) claim("nonce", cNonce) }
-                .build()
-            val jwt = SignedJWT(header, claims)
-            jwt.sign(ECDSASigner(bindingKey))
-            jwt.serialize()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to mint software key attestation: ${e.message}")
-            null
+        if (walletProviderKa != null) {
+            Log.d(KA_WATCH, "proof KA source: wallet-provider issued")
+            return walletProviderKa
         }
-    }
-
-    /**
-     * Hardware tier ("android_keystore"): the KA is signed by the Android
-     * Keystore binding key and carries the Google-rooted attestation chain in
-     * x5c. The KeyDescription challenge in the leaf certificate must be the
-     * c_nonce, so the key must be generated with that challenge.
-     */
-    fun mintHardwareKeyAttestation(
-        signableKey: ECKey,
-        x5cBase64: List<String>,
-        cNonce: String?
-    ): String? {
-        return try {
-            val now = Date()
-            val header = JWSHeader.Builder(JWSAlgorithm.ES256)
-                .type(JOSEObjectType(KA_TYP))
-                .x509CertChain(x5cBase64.map { com.nimbusds.jose.util.Base64(it) })
-                .build()
-            val claims = JWTClaimsSet.Builder()
-                .issueTime(now)
-                .expirationTime(Date(now.time + 12 * 60 * 60 * 1000))
-                .claim("attested_keys", listOf(signableKey.toPublicJWK().toJSONObject()))
-                .apply { if (!cNonce.isNullOrEmpty()) claim("nonce", cNonce) }
-                .build()
-            val jwt = SignedJWT(header, claims)
-            jwt.sign(ECDSASigner(signableKey))
-            jwt.serialize()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to mint hardware key attestation: ${e.message}")
-            null
+        if (attach) {
+            Log.e(
+                KA_WATCH,
+                "KA wanted but the wallet provider did not deliver one — " +
+                    "proof goes WITHOUT a KA (TS3: the wallet never self-mints)"
+            )
         }
+        return null
     }
 
     /**
-     * Proof of possession over the wallet-provider nonce, for the optional
-     * wallet-provider endpoint. The key_pops array is positionally aligned
-     * with attested_keys; the WIA cnf key's slot needs a placeholder.
+     * Proof of possession over the issuer c_nonce, for the wallet-provider
+     * key-attestation endpoint (software tier). The key_pops array is
+     * positionally aligned with attested_keys; the WIA cnf key's slot needs
+     * a placeholder.
      */
     fun generateKeyProofOfPossession(key: ECKey, nonce: String): String? {
         return try {
@@ -169,35 +120,11 @@ object KeyAttestationService {
     }
 
     /**
-     * Single-use server nonce for the wallet-provider key-attestation
-     * endpoint (GET .../wallet-provider/nonce). The Keystore key must be
-     * generated with THIS nonce as the attestation challenge, and the
-     * key PoPs must sign it.
-     */
-    suspend fun fetchKeyAttestationNonce(baseUrl: String): String? = withContext(Dispatchers.IO) {
-        val result = SafeApiCall.safeApiCallResponse {
-            ApiManager.api.getService()?.fetchNonce(url = "$baseUrl/wallet-provider/nonce")
-        }
-        result.onSuccess { response ->
-            if (response.isSuccessful) {
-                response.body()?.string()?.let {
-                    return@withContext com.google.gson.Gson()
-                        .fromJson(it, com.ewc.eudi_wallet_oidc_android.NonceResponse::class.java)
-                        .nonce
-                }
-            } else {
-                Log.e(TAG, "Failed to fetch key attestation nonce: ${response.errorBody()?.string()}")
-            }
-        }.onFailure { e ->
-            Log.e(TAG, "Error fetching key attestation nonce: ${e.message}")
-        }
-        return@withContext null
-    }
-
-    /**
-     * Optional: request a wallet-provider-signed KA. Only usable when the
-     * credential issuer is the wallet-provider organisation (see class KDoc).
-     * The wallet unit must be authorised on the wallet provider.
+     * Request the KA from the wallet provider (TS3 §2.2.2.1). The nonce is
+     * the ISSUER's c_nonce for the credential request: the Keystore key must
+     * be generated with it as the attestation challenge (hardware tier), or
+     * the key PoPs must sign it (software tier). The wallet unit must be
+     * registered and authorised on the wallet provider.
      */
     suspend fun requestKeyAttestation(
         baseUrl: String,
@@ -220,6 +147,16 @@ object KeyAttestationService {
             androidKeyAttestationX5c = androidKeyAttestationX5c,
             keyPops = keyPops
         )
+        Log.d(
+            KA_WATCH,
+            "POST $baseUrl/wallet-provider/key-attestation " +
+                "keys=${attestedKeys.size} " +
+                "evidence=${
+                    if (androidKeyAttestationX5c != null)
+                        "android_x5c(${androidKeyAttestationX5c.size} certs)"
+                    else "key_pops(${keyPops?.size ?: 0})"
+                } nonce=$nonce"
+        )
         val result = SafeApiCall.safeApiCallResponse {
             ApiManager.api.getService()?.sendKeyAttestationRequest(
                 url = "$baseUrl/wallet-provider/key-attestation",
@@ -229,13 +166,22 @@ object KeyAttestationService {
         }
         result.onSuccess { response ->
             if (response.isSuccessful) {
-                return@withContext response.body()
+                val ka = response.body()
+                Log.d(
+                    KA_WATCH,
+                    "WP KA response ${response.code()}: " +
+                        "attestationType=${ka?.attestationType} keyStorage=${ka?.keyStorage}"
+                )
+                return@withContext ka
             } else {
-                Log.e(TAG, "Key attestation request failed: ${response.errorBody()?.string()}")
+                val error = response.errorBody()?.string()
+                Log.e(TAG, "Key attestation request failed: $error")
+                Log.e(KA_WATCH, "WP KA response ${response.code()}: $error")
                 return@withContext null
             }
         }.onFailure { e ->
             Log.e(TAG, "Error sending key attestation request: ${e.message}")
+            Log.e(KA_WATCH, "WP KA transport error: ${e.message}")
             return@withContext null
         }
         return@withContext null

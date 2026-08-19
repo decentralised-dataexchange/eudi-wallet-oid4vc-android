@@ -24,7 +24,8 @@ interface ReIssuanceServiceInterface {
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?,
         interactiveAuthorizationEndpoint: String?,
         dpopKey: ECKey?,
-        attachKeyAttestation: Boolean = false
+        attachKeyAttestation: Boolean = false,
+        keyAttestationJwt: String? = null
     ): WrappedCredentialResponse?
 
 }

@@ -54,14 +54,19 @@ class VerificationService : VerificationServiceInterface {
         val request = uri.getQueryParameter("request")
         if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
             return AuthorisationRequestByValue().processAuthorisationRequest(data)
+                .also { logDcql("by_value", it) }
         } else if (!requestUri.isNullOrBlank()) {
             return AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
+                .also { logDcql("request_uri", it) }
         } else if (request != null) {
             return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
+                .also { logDcql("request", it) }
         } else if (isValidJWT(data)) {
             return AuthorisationRequestByJWT().processAuthorisationRequest(data)
+                .also { logDcql("jwt", it) }
         } else if (iarOpenid4VPRequest != null){
             return AuthorisationRequestForIAR().processAuthorisationRequest(data)
+                .also { logDcql("iar", it) }
         } else {
             return WrappedPresentationRequest(
                 presentationRequest = null,
@@ -70,6 +75,19 @@ class VerificationService : VerificationServiceInterface {
                     errorDescription = "Invalid Request"
                 )
             )
+        }
+    }
+
+    private fun logDcql(source: String, wrapped: WrappedPresentationRequest?) {
+        val pr = wrapped?.presentationRequest
+        Log.d("BankIdWatch", "DCQL source=$source clientId=${pr?.clientId} responseMode=${pr?.responseMode} nonce=${pr?.nonce} error=${wrapped?.errorResponse?.errorDescription}")
+        val dcql = pr?.dcqlQuery
+        if (dcql == null) {
+            Log.d("BankIdWatch", "DCQL query: NONE (presentationDefinition=${pr?.presentationDefinition != null})")
+        } else {
+            Gson().toJson(dcql).chunked(3000).forEachIndexed { i, chunk ->
+                Log.d("BankIdWatch", "DCQL query[$i]=$chunk")
+            }
         }
     }
 
@@ -160,6 +178,7 @@ class VerificationService : VerificationServiceInterface {
 
                         response.code() == 302 || response.code() == 200 -> {
                             val locationHeader = response.headers()["Location"]
+                            Log.d("BankIdWatch", "direct_post response code=${response.code()} Location=$locationHeader Set-Cookie=${response.headers().values("Set-Cookie")}")
                             if (locationHeader?.contains("error=") == true) {
                                 val errorParams = locationHeader.substringAfter("?").split("&").associate {
                                     val (key, value) = it.split("=")
@@ -312,6 +331,7 @@ class VerificationService : VerificationServiceInterface {
 
                         response.code() == 302 || response.code() == 200 -> {
                             val locationHeader = response.headers()["Location"]
+                            Log.d("BankIdWatch", "direct_post response code=${response.code()} Location=$locationHeader Set-Cookie=${response.headers().values("Set-Cookie")}")
                             if (locationHeader?.contains("error=") == true) {
                                 val errorParams = locationHeader.substringAfter("?").split("&").associate {
                                     val (key, value) = it.split("=")

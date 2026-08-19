@@ -311,10 +311,13 @@ class IssueService : IssueServiceInterface {
                 "client_metadata" to clientMetadata,
                 "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
             )
+            Log.d("BankIdWatch", "PAR POST ${authConfig.pushedAuthorizationRequestEndpoint}")
             headers.forEach { (k, v) ->
                 v.chunked(3000).forEachIndexed { i, chunk ->
+                    Log.d("BankIdWatch", "PAR header $k[$i]=$chunk")
                 }
             }
+            parParams.forEach { (k, v) -> Log.d("BankIdWatch", "PAR param $k=$v") }
             val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.processParAuthorisationRequest(
                     authConfig.pushedAuthorizationRequestEndpoint ?: "",
@@ -327,6 +330,7 @@ class IssueService : IssueServiceInterface {
                 onSuccess = { parResponse ->
                     if (parResponse.isSuccessful) {
                         val requestUri = parResponse.body()?.requestUri ?: ""
+                        Log.d("BankIdWatch", "PAR response code=${parResponse.code()} request_uri=$requestUri Set-Cookie=${parResponse.headers().values("Set-Cookie")}")
                         if (isApiCallRequired) {
                             val nextResult = SafeApiCall.safeApiCallResponse {
                                 ApiManager.api.getService()?.processAuthorisationRequest(
@@ -338,12 +342,18 @@ class IssueService : IssueServiceInterface {
                             nextResult.fold(
                                 onSuccess = { response ->
                                     val location = response.headers()["Location"]
+                                    Log.d("BankIdWatch", "authorize GET $authorisationEndPoint request_uri=$requestUri")
+                                    Log.d("BankIdWatch", "authorize response code=${response.code()} Location=$location")
+                                    Log.d("BankIdWatch", "authorize Set-Cookie=${response.headers().values("Set-Cookie")}")
                                     if (response.code() == 302 && !location.isNullOrEmpty()) {
+                                        Log.d("BankIdWatch", "returning Location AS-IS to caller: $location")
                                         return location
                                     } else if (response.isSuccessful && response.headers()["Content-Type"]?.contains("text/html") == true) {
+                                        Log.d("BankIdWatch", "html branch, returning final request url: ${response.raw().request.url}")
                                         return response.raw().request.url.toString()
                                     } else if ((response.code()) >= 400) {
                                         val errorMessage = response.errorBody()?.string() ?: "Unexpected error."
+                                        Log.d("BankIdWatch", "error branch code=${response.code()} body=$errorMessage")
                                         val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
                                         urlBuilder.appendQueryParameter("error", errorMessage)
                                         return urlBuilder.build().toString()
@@ -351,6 +361,7 @@ class IssueService : IssueServiceInterface {
                                 },
                                 onFailure = { error ->
                                     Log.e(TAG, "PAR follow-up failed: ${error.message}")
+                                    Log.e("BankIdWatch", "authorize call failed: ${error.message}")
                                 }
                             )
                         } else {
@@ -923,11 +934,13 @@ class IssueService : IssueServiceInterface {
         }
 
         val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        // ARF TS3 v1.5: the KA travels in the proof's key_attestation header,
-        // bound to the same c_nonce as the proof.
+        // ARF TS3 v1.5: the wallet-provider-issued KA travels in the proof's
+        // key_attestation header, bound to the same c_nonce as the proof.
         val keyAttestation = KeyAttestationService.forProof(
-            keyAttestationJwt, attachKeyAttestation, subJwk, nonce
+            keyAttestationJwt, attachKeyAttestation
         )
+        Log.d("BankIdWatch", "credential request: attachKA=$attachKeyAttestation preMintedHardwareKA=${keyAttestationJwt != null} kaAttached=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
+        Log.d("KaWatch", "credential request: attachKA=$attachKeyAttestation preMintedKA=${keyAttestationJwt != null} kaOnProof=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
         val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
@@ -991,6 +1004,7 @@ class IssueService : IssueServiceInterface {
         request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
 
         Gson().toJson(request).chunked(3000).forEachIndexed { i, chunk ->
+            Log.d("BankIdWatch", "credential request body[$i]=$chunk")
         }
 
         // Safely perform network call using SafeApiCall
@@ -1030,8 +1044,10 @@ class IssueService : IssueServiceInterface {
                 when {
                     (response.code() >= 400) -> {
                         try {
+                            val errorBody = response.errorBody()?.string()
+                            Log.e("KaWatch", "credential endpoint ${response.code()}: $errorBody")
                             WrappedCredentialResponse(
-                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                                errorResponse = ErrorHandler.processError(errorBody)
                             )
                         } catch (e: Exception) {
                             null
@@ -1039,6 +1055,7 @@ class IssueService : IssueServiceInterface {
                     }
 
                     response.isSuccessful -> {
+                        Log.d("KaWatch", "credential endpoint ${response.code()}: success")
                         parseCredentialResponse(response, ecKeyWithAlgEnc, credentialEncryptionBuilder)
                     }
 
