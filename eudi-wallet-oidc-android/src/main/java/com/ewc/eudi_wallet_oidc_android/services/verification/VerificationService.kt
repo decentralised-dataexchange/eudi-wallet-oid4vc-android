@@ -89,6 +89,34 @@ class VerificationService : VerificationServiceInterface {
                 Log.d("BankIdWatch", "DCQL query[$i]=$chunk")
             }
         }
+        // Transaction data (TS12): each entry is base64url-encoded JSON.
+        val txData = pr?.transactionDdata
+        if (txData.isNullOrEmpty()) {
+            Log.d("TxWatch", "transaction_data: NONE")
+        } else {
+            Log.d("TxWatch", "transaction_data: ${txData.size} entries")
+            txData.forEachIndexed { i, entry ->
+                entry.chunked(3000).forEachIndexed { j, chunk ->
+                    Log.d("TxWatch", "transaction_data[$i] raw[$j]=$chunk")
+                }
+                try {
+                    val decoded = String(
+                        android.util.Base64.decode(
+                            entry,
+                            android.util.Base64.URL_SAFE or
+                                android.util.Base64.NO_WRAP or
+                                android.util.Base64.NO_PADDING
+                        ),
+                        Charsets.UTF_8
+                    )
+                    decoded.chunked(3000).forEachIndexed { j, chunk ->
+                        Log.d("TxWatch", "transaction_data[$i] json[$j]=$chunk")
+                    }
+                } catch (e: Exception) {
+                    Log.e("TxWatch", "transaction_data[$i] decode failed: ${e.message}")
+                }
+            }
+        }
     }
 
     override suspend fun processAndSendAuthorisationResponse(
