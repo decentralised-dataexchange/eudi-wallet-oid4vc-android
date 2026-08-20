@@ -370,6 +370,15 @@ class IssueService : IssueServiceInterface {
                             urlBuilder.appendQueryParameter("request_uri", requestUri)
                             return urlBuilder.build().toString()
                         }
+                    } else {
+                        // A rejected PAR used to be swallowed silently. The Date header is the
+                        // server's own clock — compare it with the PoP iat logged above.
+                        Log.e(
+                            "BankIdWatch",
+                            "PAR REJECTED code=${parResponse.code()} " +
+                                "serverDate=${parResponse.headers()["Date"]} " +
+                                "body=${parResponse.errorBody()?.string()}"
+                        )
                     }
                 },
                 onFailure = { error ->
