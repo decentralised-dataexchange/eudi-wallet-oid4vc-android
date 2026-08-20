@@ -35,8 +35,7 @@ fun createDeviceSigned(jwk: JWK?, sessionTranscriptCbor: Array): DeviceSigned {
 
         // ---- Private Key ----
         val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
-        val privateKeyEncoded = privateKey.encoded
-        Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+        // The device private key is never logged: hex PKCS#8 in logcat is a usable key.
 
         val deviceSignature = createDeviceSignedCose(privateKey, sessionTranscriptCbor, emptyNamespaces)
 

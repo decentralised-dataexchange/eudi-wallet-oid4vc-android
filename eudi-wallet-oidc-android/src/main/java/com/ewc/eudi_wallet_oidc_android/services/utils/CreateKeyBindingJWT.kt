@@ -60,7 +60,7 @@ fun createKeyBindingJWT(
 
         // Create signer with the private key
         if (subJwk is ECKey) {
-            Log.d("processToken:", "subJwk private key = ${subJwk.toPrivateKey()}")
+            Log.d("processToken:", "subJwk is an ECKey (kid=${subJwk.keyID})")
         }
         else{
             Log.d("processToken:", "subJwk type = ${subJwk?.javaClass?.name}")

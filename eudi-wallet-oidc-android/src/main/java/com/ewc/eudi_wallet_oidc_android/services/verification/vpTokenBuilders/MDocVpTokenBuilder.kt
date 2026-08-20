@@ -104,8 +104,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         // ---- Private Key ----
         val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
-        val privateKeyEncoded = privateKey.encoded
-        Log.d("Device signing", "Private Key (PKCS#8 DER, hex): ${privateKeyEncoded.toHex()}")
+        // The device private key is never logged: hex PKCS#8 in logcat is a usable key.
         credentialList?.forEach { credential ->
             val singleList = listOf(credential)
             val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
