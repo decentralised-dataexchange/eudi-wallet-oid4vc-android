@@ -311,13 +311,9 @@ class IssueService : IssueServiceInterface {
                 "client_metadata" to clientMetadata,
                 "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
             )
+            // The attestation headers and PAR params are not logged: they carry the wallet
+            // attestation and its PoP, which are credentials in their own right.
             Log.d("BankIdWatch", "PAR POST ${authConfig.pushedAuthorizationRequestEndpoint}")
-            headers.forEach { (k, v) ->
-                v.chunked(3000).forEachIndexed { i, chunk ->
-                    Log.d("BankIdWatch", "PAR header $k[$i]=$chunk")
-                }
-            }
-            parParams.forEach { (k, v) -> Log.d("BankIdWatch", "PAR param $k=$v") }
             val result = SafeApiCall.safeApiCallResponse {
                 ApiManager.api.getService()?.processParAuthorisationRequest(
                     authConfig.pushedAuthorizationRequestEndpoint ?: "",

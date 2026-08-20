@@ -2,10 +2,10 @@ package com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation
 
 
 import android.content.Context
-import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
 import com.ewc.eudi_wallet_oidc_android.NonceResponse
 import com.ewc.eudi_wallet_oidc_android.WalletAttestationResult
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
@@ -55,33 +55,31 @@ object WalletUnitAttestationService {
                 val keyPair = generateES256Key()
                 val publicKey = keyPair?.public?.let { DIDService().convertToECPublicKey(it) }
                 val privateKey = keyPair?.private?.let { DIDService().convertToECPrivateKey(it) }
-                Log.d(TAG, "Generated privateKey with attestation: $privateKey")
-                Log.d(TAG, "Generated publicKey with attestation: $publicKey")
+                // The private key is never logged, at any level: it is the wallet unit's
+                // identity and a single logcat line would hand it to any reader.
 
                 ECKey.Builder(Curve.P_256, publicKey).privateKey(privateKey).build()
             }
             val did = DIDService().createDID(ecKey)
-            Log.d(TAG, "Generated DID: $did")
+            Logger.d(TAG, "Generated DID: $did")
             // Step 2: Prepare the integrity token provider
             val tokenProvider = prepareIntegrityTokenProvider(context, cloudProjectNumber)
-            Log.d(TAG, "Prepare tokenProvider: $tokenProvider")
+            Logger.d(TAG, "Integrity token provider ready")
 
             // Step 3: Fetch the nonce from the server
             val nonce = fetchNonceForDeviceIntegrityToken("$baseUrl/nonce")
-            Log.d(TAG, "Fetched nonce: $nonce")
 
             // Step 4: Generate a request hash from the nonce
 
             val requestHash = nonce?.let { generateHash(it) }
-            Log.d(TAG, "Generated request hash: $requestHash")
 
             // Step 5: Request an integrity token
             val token = requestIntegrityToken(tokenProvider, requestHash)
-            Log.d(TAG, "integrity token:$token ")
+            Logger.d(TAG, "Integrity token received (${token.length} chars)")
 
             // Step 6: Generate client assertion
             clientAssertion = generateClientAssertion(ecKey, did, audience = baseUrl)
-            Log.d(TAG, "clientAssertion:$clientAssertion ")
+            Logger.d(TAG, "Client assertion generated (${clientAssertion.length} chars)")
 
 
             // Step 7: Process the wallet unit attestation request
@@ -91,7 +89,8 @@ object WalletUnitAttestationService {
 
             // Step 8: Log and return both values
             if (walletUnitAttestationCredential != null) {
-                Log.d("WalletUnitAttestationCredential", walletUnitAttestationCredential.toString())
+                // The response carries the issued attestation itself — presence only.
+                Logger.d(TAG, "Wallet unit attestation received")
             }
 
             WalletAttestationResult(
@@ -104,7 +103,7 @@ object WalletUnitAttestationService {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching integrity token: ${e.message}")
+            Logger.e(TAG, "Error fetching integrity token: ${e.message}")
             null
         }
     }
@@ -177,14 +176,14 @@ object WalletUnitAttestationService {
         result.onSuccess { response ->
             if (response.isSuccessful) {
                 val credentialOfferResponse = response.body()
-                Log.d(TAG, "Request successful: $credentialOfferResponse")
+                Logger.d(TAG, "Wallet unit request succeeded")
                 return@withContext credentialOfferResponse
             } else {
-                Log.e(TAG, "Request failed: ${response.errorBody()?.string()}")
+                Logger.e(TAG, "Wallet unit request failed: ${response.code()}")
                 return@withContext null
             }
         }.onFailure { e ->
-            Log.e(TAG, "Error sending request: ${e.message}")
+            Logger.e(TAG, "Error sending request: ${e.message}")
             return@withContext null
         }
 
@@ -199,7 +198,7 @@ object WalletUnitAttestationService {
     ): String {
         try {
 
-            Log.d(TAG, "Client assertion did:$did")
+            Logger.d(TAG, "Client assertion did:$did")
             val now = Date()
             val expTime = Date(now.time + 3600 * 1000)
 
@@ -208,7 +207,7 @@ object WalletUnitAttestationService {
                 .keyID("$did#${did?.replace("did:key:", "")}")
                 .type(JOSEObjectType.JWT)
                 .build()
-            Log.d(TAG, "Client assertion header:$header")
+            Logger.d(TAG, "Client assertion header:$header")
 
             // Create JWT Payload
             val payload = JWTClaimsSet.Builder()
@@ -221,7 +220,7 @@ object WalletUnitAttestationService {
                 .subject(did)
                 .jwtID("urn:uuid:${UUID.randomUUID().toString()}")
                 .build()
-            Log.d(TAG, "Client assertion payload:$payload")
+            Logger.d(TAG, "Client assertion payload:$payload")
 
             // Create the SignedJWT object
             val signedJWT = SignedJWT(header, payload)
@@ -233,8 +232,7 @@ object WalletUnitAttestationService {
             // Return the serialized token
             return signedJWT.serialize()
         } catch (e: Exception) {
-            Log.d(TAG, "Client assertion error: ${e.message.toString()}")
-            println(e.message)
+            Logger.e(TAG, "Client assertion error: ${e.message}")
             return ""
         }
 
@@ -251,15 +249,15 @@ object WalletUnitAttestationService {
                 val responseBody = response.body()?.string()
                 responseBody?.let {
                     val nonceResponse = Gson().fromJson(it, NonceResponse::class.java)
-                    Log.d(TAG, "Nonce fetched successfully: ${nonceResponse.nonce}")
+                    Logger.d(TAG, "Nonce fetched successfully")
                     return@withContext nonceResponse.nonce
                 }
             } else {
-                Log.e(TAG, "Failed to fetch nonce: ${response.errorBody()?.string()}")
+                Logger.e(TAG, "Failed to fetch nonce: ${response.code()}")
                 return@withContext null
             }
         }.onFailure { e ->
-            Log.e(TAG, "Error fetching nonce: ${e.localizedMessage}")
+            Logger.e(TAG, "Error fetching nonce: ${e.localizedMessage}")
             return@withContext null
         }
 
@@ -303,7 +301,7 @@ object WalletUnitAttestationService {
             // Return the serialized JWT
             return signedJWT.serialize()
         } catch (e: Exception) {
-            Log.d("Error", e.message.toString())
+            Logger.e(TAG, "WUA proof-of-possession failed: ${e.message}")
             return null
         }
 
