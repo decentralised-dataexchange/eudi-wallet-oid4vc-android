@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation
 
 import android.content.Context
 import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
+import com.ewc.eudi_wallet_oidc_android.clock.WalletClock
 import com.ewc.eudi_wallet_oidc_android.NonceResponse
 import com.ewc.eudi_wallet_oidc_android.WalletAttestationResult
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
@@ -271,15 +272,16 @@ object WalletUnitAttestationService {
         aud: String?
     ): String? {
         try {
-            val now = Date()
+            val now = WalletClock.now()
+            val issuedAt = WalletClock.issuedAt()
             val expirationTime = Date(now.time + 6 * 60 * 1000)
 
             // Create the JWT claims
             val claimsSet = JWTClaimsSet.Builder()
                 .issuer(did)
                 .audience(aud)
-                .issueTime(now)
-                .notBeforeTime(now)
+                .issueTime(issuedAt)
+                .notBeforeTime(issuedAt)
                 .expirationTime(expirationTime)
                 .jwtID("urn:uuid:${UUID.randomUUID().toString()}")
                 .build()
