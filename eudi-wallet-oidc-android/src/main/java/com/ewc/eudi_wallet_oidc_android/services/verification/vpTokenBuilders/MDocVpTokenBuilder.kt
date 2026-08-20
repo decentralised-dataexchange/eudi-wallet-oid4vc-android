@@ -203,8 +203,6 @@ class MDocVpTokenBuilder : VpTokenBuilder {
             )
         }
 
-        val documentList = mutableListOf<Document>()
-
         val clientJWK = try {
             val gson = Gson()
             val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
@@ -243,56 +241,62 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
         val emptyNameSpace = encodeEmptyDeviceNameSpaces()
         val protectedArray = buildProtectedHeader()
+        val results = mutableListOf<String?>()
 
-        credentialList?.forEachIndexed { index, credentialJwt ->
-            val credentialJwk = jwkList?.getOrNull(index) ?: jwk
-            val ecJwk = credentialJwk?.toECKey()
-            val privateKey = ecJwk?.toPrivateKey() as? ECPrivateKey ?: return@forEachIndexed
-            // 3. Extract Metadata for this specific credential
-            val singleList = listOf(credentialJwt)
-            val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
-                ?: processPresentationDefinition?.docType ?: ""
+        if (!credentialList.isNullOrEmpty()) {
+            credentialList.forEachIndexed { index, credentialJwt ->
+                val credentialJwk = jwkList?.getOrNull(index) ?: jwk
+                val ecJwk = credentialJwk?.toECKey()
+                val privateKey = ecJwk?.toPrivateKey() as? ECPrivateKey
 
-            val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
-            val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
+                val singleList = listOf(credentialJwt)
+                val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
+                    ?: processPresentationDefinition?.docType ?: ""
 
-            // 4. Generate Device Signature (Binding) using the specific Private Key
-        val deviceAuthentication = buildDeviceAuthenticationBytes(
-            sessionTranscriptArray = sessionTranscript.first,
-            docType = docType,
-            deviceNameSpacesBytes = emptyNameSpace
-        )
+                val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
+                val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
 
-        val sig = buildDeviceSignatureCoseSign1(
-            deviceAuthenticationBytes = deviceAuthentication,
-            protectedHeaderBytes = protectedArray,
-            privateKey = privateKey
-        )
-
-        val deviceAuth = Map().apply {
-            put(UnicodeString("deviceSignature"), sig)
-        }
-        val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
-
-            // 5. Add this uniquely signed document to the list
-            documentList.add(
-                Document(
+                val deviceAuthentication = buildDeviceAuthenticationBytes(
+                    sessionTranscriptArray = sessionTranscript.first,
                     docType = docType,
-                    issuerSigned = IssuerSigned(nameSpaces, issuerAuth),
-                    deviceSigned = deviceSigned
+                    deviceNameSpacesBytes = emptyNameSpace
                 )
-            )
+
+                if (privateKey != null) {
+                    val sig = buildDeviceSignatureCoseSign1(
+                        deviceAuthenticationBytes = deviceAuthentication,
+                        protectedHeaderBytes = protectedArray,
+                        privateKey = privateKey
+                    )
+
+                    val deviceAuth = Map().apply {
+                        put(UnicodeString("deviceSignature"), sig)
+                    }
+                    val deviceSigned = DeviceSigned(emptyNameSpace, deviceAuth)
+
+                    val singleDocument = Document(
+                        docType = docType,
+                        issuerSigned = IssuerSigned(nameSpaces, issuerAuth),
+                        deviceSigned = deviceSigned
+                    )
+
+                    val generatedVpToken = VpToken(
+                        version = "1.0", documents = listOf(singleDocument), status = 0
+                    )
+
+                    val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
+                    val cborToken = Base64.encodeToString(
+                        encoded,
+                        Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                    )
+                    results.add(cborToken)
+                } else {
+                    results.add(credentialJwt)
+                }
+            }
         }
 
-        val generatedVpToken = VpToken(
-            version = "1.0", documents = documentList, status = 0
-        )
-
-        val encoded = CborUtils.encodeMDocToCbor(generatedVpToken)
-        val cborToken =
-            Base64.encodeToString(encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-
-        return listOf(cborToken)
+        return results
     }
 
     fun buildSessionTranscriptFor18013_7(
