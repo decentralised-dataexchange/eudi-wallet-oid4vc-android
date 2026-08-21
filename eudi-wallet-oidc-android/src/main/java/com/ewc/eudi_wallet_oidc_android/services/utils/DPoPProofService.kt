@@ -3,11 +3,11 @@ package com.ewc.eudi_wallet_oidc_android.services.utils
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
-import com.ewc.eudi_wallet_oidc_android.clock.WalletClock
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
+import java.util.Date
 import java.util.UUID
 
 class DPoPProofService {
@@ -36,9 +36,11 @@ class DPoPProofService {
                 .jwtID(UUID.randomUUID().toString())
                 .claim("htm", httpMethod.uppercase())
                 .claim("htu", targetUri)
-                // Backdate iat so a server with zero forward tolerance (BankID's AS
-                // rejects a proof it sees in its own future) accepts the DPoP proof.
-                .issueTime(WalletClock.issuedAt())
+                // DPoP proofs MUST use a fresh iat: RFC 9449 servers reject a proof
+                // whose iat is too far in the PAST (replay window / tight max-age), so
+                // the WalletClock backdate that the client-attestation PoP needs would
+                // make the DPoP proof look stale ("invalid dpop proof"). Real now only.
+                .issueTime(Date())
 
             claims?.forEach { (key, value) ->
                 claimsBuilder.claim(key, value)
