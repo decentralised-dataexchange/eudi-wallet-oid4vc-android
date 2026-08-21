@@ -14,7 +14,6 @@ import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.util.Base64URL
-import com.ewc.eudi_wallet_oidc_android.clock.WalletClock
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.util.Date
@@ -48,11 +47,11 @@ class ProofService {
         // Add claims
         val claimsSet = JWTClaimsSet
             .Builder()
-            // Backdate iat so a server with zero forward tolerance (BankID's AS rejects a
-            // proof it sees in its own future) accepts the openid4vci credential proof;
-            // exp stays on real now so the usable lifetime is unchanged.
-            .issueTime(WalletClock.issuedAt())
-            .expirationTime(Date(WalletClock.now().time + 86400))
+            // Fresh iat: the openid4vci credential proof is replay-bound by the issuer
+            // c_nonce, and (like DPoP) can be rejected for a stale iat, so it is NOT
+            // backdated. Only the client-attestation PoP needs the WalletClock backdate.
+            .issueTime(Date())
+            .expirationTime(Date(Date().time + 86400))
             .issuer(did)
             .audience(issuerConfig?.credentialIssuer ?: "")
             .claim("nonce", nonce).build()
