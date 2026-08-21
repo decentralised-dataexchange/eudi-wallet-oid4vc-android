@@ -3,11 +3,11 @@ package com.ewc.eudi_wallet_oidc_android.services.utils
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
+import com.ewc.eudi_wallet_oidc_android.clock.WalletClock
 import com.nimbusds.jose.crypto.ECDSASigner
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
-import java.util.Date
 import java.util.UUID
 
 class DPoPProofService {
@@ -36,7 +36,9 @@ class DPoPProofService {
                 .jwtID(UUID.randomUUID().toString())
                 .claim("htm", httpMethod.uppercase())
                 .claim("htu", targetUri)
-                .issueTime(Date())
+                // Backdate iat so a server with zero forward tolerance (BankID's AS
+                // rejects a proof it sees in its own future) accepts the DPoP proof.
+                .issueTime(WalletClock.issuedAt())
 
             claims?.forEach { (key, value) ->
                 claimsBuilder.claim(key, value)

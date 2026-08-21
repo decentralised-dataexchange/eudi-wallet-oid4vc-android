@@ -56,6 +56,7 @@ import okhttp3.ResponseBody
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.util.Base64
 import retrofit2.Response
 import java.util.Date
 import java.util.UUID
@@ -706,6 +707,25 @@ class IssueService : IssueServiceInterface {
             }
         }
 
+        // --- invalid_client_attestation diagnostics (filter: adb logcat -s KaWatch) ---
+        // The AS rejects the token request when the client attestation (WIA), its PoP, or
+        // the DPoP binding is wrong. Log the decoded, non-secret fields so a rejection can
+        // be traced to iss/aud/exp/nonce or a DPoP <-> WIA cnf key mismatch (the TS3 rule
+        // that the DPoP key must equal the WIA cnf key).
+        try {
+            val dpopThumb = dpopKey?.computeThumbprint()?.toString()
+            Log.d("KaWatch", "token request: endpoint=$tokenEndPoint clientId=$did grant=${if (isPreAuthorisedCodeFlow == true) "pre-authorized_code" else "authorization_code"} hasWIA=${walletUnitAttestationJWT != null} hasPoP=${walletUnitProofOfPossession != null} dpopKid=${dpopKey?.keyID} dpopThumb=$dpopThumb")
+            val wia = decodeJwtPayloadForLog(walletUnitAttestationJWT)
+            val wiaCnf = wia?.optJSONObject("cnf")?.optJSONObject("jwk")
+            Log.d("KaWatch", "token request WIA: iss=${wia?.opt("iss")} sub=${wia?.opt("sub")} aud=${wia?.opt("aud")} iat=${wia?.opt("iat")} exp=${wia?.opt("exp")} cnf.jwk=$wiaCnf")
+            val pop = decodeJwtPayloadForLog(walletUnitProofOfPossession)
+            Log.d("KaWatch", "token request WIA-PoP: iss=${pop?.opt("iss")} aud=${pop?.opt("aud")} iat=${pop?.opt("iat")} exp=${pop?.opt("exp")} jti=${pop?.opt("jti")} nonce=${pop?.opt("nonce")}")
+            val wiaCnfThumb = wiaCnf?.let { runCatching { ECKey.parse(it.toString()).computeThumbprint().toString() }.getOrNull() }
+            Log.d("KaWatch", "token request key-binding: dpopThumb=$dpopThumb wiaCnfThumb=$wiaCnfThumb match=${dpopThumb != null && dpopThumb == wiaCnfThumb}")
+        } catch (e: Exception) {
+            Log.e("KaWatch", "token request: attestation diagnostics failed: ${e.message}")
+        }
+
         val result = SafeApiCall.safeApiCallResponse {
             ApiManager.api.getService()?.getAccessTokenFromCode(
                 tokenEndPoint ?: "",
@@ -753,8 +773,10 @@ class IssueService : IssueServiceInterface {
 
                     (response.code() >= 400) -> {
                         try {
+                            val errorBodyString = response.errorBody()?.string()
+                            Log.e("KaWatch", "token endpoint ${response.code()} endpoint=$tokenEndPoint error=$errorBodyString")
                             WrappedTokenResponse(
-                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                                errorResponse = ErrorHandler.processError(errorBodyString)
                             )
                         } catch (e: Exception) {
                             null
@@ -765,12 +787,29 @@ class IssueService : IssueServiceInterface {
                 }
             },
             onFailure = { error ->
+                Log.e("KaWatch", "token request FAILED endpoint=$tokenEndPoint error=${error.message}")
                 println("Error while processing token request: ${error.message}")
                 WrappedTokenResponse(
                     errorResponse = ErrorHandler.processError(error.message)
                 )
             }
         )
+    }
+
+    /**
+     * Decodes a JWT / SD-JWT payload to JSON for diagnostic logging only (no signature
+     * check). Tolerates the SD-JWT trailing '~' and base64url without padding.
+     */
+    private fun decodeJwtPayloadForLog(jwt: String?): JSONObject? {
+        if (jwt.isNullOrBlank()) return null
+        return try {
+            val parts = jwt.substringBefore("~").split(".")
+            if (parts.size < 2) return null
+            JSONObject(String(Base64.getUrlDecoder().decode(parts[1])))
+        } catch (e: Exception) {
+            Log.e("KaWatch", "decodeJwtPayloadForLog failed: ${e.message}")
+            null
+        }
     }
 
 
