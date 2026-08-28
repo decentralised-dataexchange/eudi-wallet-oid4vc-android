@@ -31,6 +31,8 @@ import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
@@ -68,7 +70,17 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import java.io.IOException
 import kotlin.collections.get
 
-class IssueService : IssueServiceInterface {
+/**
+ * @param offerPolicy what the SDK accepts when resolving a credential offer. Defaults to the
+ *   permissive [CredentialOfferPolicy.Default]; pass [CredentialOfferPolicy.Strict] to require
+ *   OpenID4VCI 1.0 exactly (https only, JSON enforced, no draft offers).
+ */
+class IssueService(
+    private val offerPolicy: CredentialOfferPolicy = CredentialOfferPolicy.Default,
+) : IssueServiceInterface {
+
+    private val offerResolver = CredentialOfferResolver(policy = offerPolicy)
+
 
     /**
      * To process the credential offer request
@@ -76,114 +88,18 @@ class IssueService : IssueServiceInterface {
      * @param data - will accept the full data which is scanned from the QR
      *     code or deep link The data can contain credential offer or
      *     credential offer uri
-     * @return Credential Offer
-     */
-    override suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer? {
-        if (data.isNullOrBlank()) return null
-        try {
-            val uri = Uri.parse(data)
-            val credentialOfferUri = uri.getQueryParameter("credential_offer_uri")
-            if (!credentialOfferUri.isNullOrBlank()) {
-                UrlUtils.validateUri(credentialOfferUri)
-
-                val result = SafeApiCall.safeApiCallResponse {
-                    ApiManager.api.getService()?.resolveCredentialOffer(credentialOfferUri)
-                }
-
-                return result.fold(
-                    onSuccess = { response ->
-                        if (response.isSuccessful) {
-                            WrappedCredentialOffer(
-                                credentialOffer = parseCredentialOffer(
-                                    credentialOfferJson = response.body()?.string()
-                                )
-                            )
-                        } else {
-                            WrappedCredentialOffer(
-                                errorResponse = ErrorHandler.processError(
-                                    response.errorBody()?.string()
-                                )
-                            )
-                        }
-                    },
-                    onFailure = { error ->
-                        WrappedCredentialOffer(
-                            errorResponse = ErrorHandler.processError(error.message)
-                        )
-                    }
-                )
-            }
-
-            val credentialOfferString = uri.getQueryParameter("credential_offer")
-            if (!credentialOfferString.isNullOrBlank()) {
-                return WrappedCredentialOffer(
-                    credentialOffer = parseCredentialOffer(
-                        credentialOfferJson = credentialOfferString
-                    )
-                )
-            }
-
-            return WrappedCredentialOffer(credentialOffer = null, errorResponse = null)
-
-        } catch (exc: UriValidationFailed) {
-            return null
-        } catch (e: Exception) {
-            Log.d("Exception", e.message.toString())
-            return null
-        }
-    }
-
-
-    private fun parseCredentialOffer(credentialOfferJson: String?): CredentialOffer? {
-        val gson = Gson()
-        val credentialOffer = try {
-            gson.fromJson(credentialOfferJson, CredentialOffer::class.java)
-        } catch (e: Exception) {
-            null
-        }
-        if (credentialOffer?.version != null && credentialOffer.credentials?.isNotEmpty() == true)  {
-            return credentialOffer
-        }
-        val credentialOfferV2Response = try {
-            gson.fromJson(credentialOfferJson, CredentialOfferEwcV2::class.java)
-        } catch (e: Exception) {
-            null
-        }
-        if (credentialOfferV2Response?.credentialConfigurationIds == null) {
-            val credentialOfferEbsiV1Response = try {
-                gson.fromJson(credentialOfferJson, CredentialOfferEbsiV1::class.java)
-            } catch (e: Exception) {
-                null
-            }
-            return if (credentialOfferEbsiV1Response?.credentials == null) {
-                val credentialOfferEwcV1Response = try {
-                    gson.fromJson(credentialOfferJson, CredentialOfferEwcV1::class.java)
-                } catch (e: Exception) {
-                    null
-                }
-                if (credentialOfferEwcV1Response == null) {
-                    null
-                } else {
-                    CredentialOffer(ewcV1 = credentialOfferEwcV1Response)
-                }
-            } else {
-                credentialOfferEbsiV1Response?.let { CredentialOffer(ebsiV1 = it) }
-            }
-        } else {
-            return CredentialOffer(ewcV2 = credentialOfferV2Response)
-        }
-    }
-    /**
-     * To process the authorisation request The authorisation request is to
-     * grant access to the credential endpoint
+     * @return Credential Offer, or a wrapper carrying an errorResponse describing why it could
+     *     not be resolved. Never null.
      *
-     * @param did - DID created for the issuance
-     * @param subJwk - for singing the requests
-     * @param credentialOffer - To build the authorisation request
-     * @param codeVerifier - to build the authorisation request
-     * @param authorisationEndPoint - to build the authorisation request
-     * @return String - short-lived authorisation code
+     * Resolution lives in [CredentialOfferResolver]: transfer mechanisms are pluggable
+     * [com.ewc.eudi_wallet_oidc_android.services.issue.offer.source.CredentialOfferSource]s and
+     * each supported spec revision has its own
+     * [com.ewc.eudi_wallet_oidc_android.services.issue.offer.parser.CredentialOfferParser],
+     * with OpenID4VCI 1.0 tried first.
      */
+    override suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer =
+        offerResolver.resolve(data)
+
     override suspend fun processAuthorisationRequest(
         did: String?,
         subJwk: JWK?,
