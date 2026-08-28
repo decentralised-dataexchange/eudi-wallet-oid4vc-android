@@ -27,6 +27,7 @@ import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.HeaderMap
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
@@ -35,6 +36,15 @@ import retrofit2.http.Url
 interface ApiService {
     @GET
     suspend fun resolveCredentialOffer(@Url url: String): Response<ResponseBody>
+
+    /**
+     * OpenID4VCI 1.0 section 4.1: the credential offer is retrieved with a GET and the response
+     * media type is application/json. Prefer this over [resolveCredentialOffer], which sends no
+     * Accept header.
+     */
+    @GET
+    @Headers("Accept: application/json")
+    suspend fun fetchCredentialOffer(@Url url: String): Response<ResponseBody>
 
     @GET
     suspend fun fetchIssuerConfig(@Url url: String): Response<ResponseBody>
