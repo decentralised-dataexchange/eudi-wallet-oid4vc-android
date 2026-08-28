@@ -25,9 +25,12 @@ data class CredentialOffer(
             preAuthorizationCode = if (ebsiV1.grants?.preAuthorizationCode == null) null else
                 PreAuthorizationCode(
                     preAuthorizedCode = ebsiV1.grants?.preAuthorizationCode?.preAuthorizedCode,
+                    // Draft revisions declare only that a PIN is required, never its length.
+                    // A non-null TxCode is what signals "prompt for a code"; length stays unknown
+                    // so the UI does not constrain the field to a fabricated size.
                     transactionCode = if (ebsiV1.grants?.preAuthorizationCode?.userPinRequired == true)
                         TxCode(
-                            length = 4,
+                            length = null,
                             inputMode = "numeric",
                             description = null
                         )
@@ -55,9 +58,10 @@ data class CredentialOffer(
             preAuthorizationCode = if (ewcV1.grants?.preAuthorizationCode == null) null else
                 PreAuthorizationCode(
                     preAuthorizedCode = ewcV1.grants?.preAuthorizationCode?.preAuthorizedCode,
+                    // See the note in the EBSI constructor: draft PIN length is unknown.
                     transactionCode = if (ewcV1.grants?.preAuthorizationCode?.userPinRequired == true)
                         TxCode(
-                            length = 4,
+                            length = null,
                             inputMode = "numeric",
                             description = null
                         )
