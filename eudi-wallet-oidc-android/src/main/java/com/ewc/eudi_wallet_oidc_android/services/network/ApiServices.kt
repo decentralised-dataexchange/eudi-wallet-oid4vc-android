@@ -46,11 +46,24 @@ interface ApiService {
     @Headers("Accept: application/json")
     suspend fun fetchCredentialOffer(@Url url: String): Response<ResponseBody>
 
+    /**
+     * OpenID4VCI 1.0 section 12.2.2: the wallet MUST use GET, and is RECOMMENDED to send an
+     * `Accept` header -- which also signals whether it supports signed metadata -- and an
+     * `Accept-Language` header for the issuer's `display` strings. Retrofit omits a null header.
+     */
     @GET
-    suspend fun fetchIssuerConfig(@Url url: String): Response<ResponseBody>
+    suspend fun fetchIssuerConfig(
+        @Url url: String,
+        @Header("Accept") accept: String?,
+        @Header("Accept-Language") acceptLanguage: String?,
+    ): Response<ResponseBody>
 
     @GET
-    suspend fun fetchAuthConfig(@Url url: String): Response<ResponseBody>
+    suspend fun fetchAuthConfig(
+        @Url url: String,
+        @Header("Accept") accept: String?,
+        @Header("Accept-Language") acceptLanguage: String?,
+    ): Response<ResponseBody>
 
     @GET
     suspend fun processAuthorisationRequest(

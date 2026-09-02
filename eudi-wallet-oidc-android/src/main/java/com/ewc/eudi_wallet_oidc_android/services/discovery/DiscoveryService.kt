@@ -1,231 +1,101 @@
 package com.ewc.eudi_wallet_oidc_android.services.discovery
 
-import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
-import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
+import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.WrappedAuthConfigResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedIssuerConfigResponse
-import com.ewc.eudi_wallet_oidc_android.models.v1.IssuerWellKnownConfigurationV1
-import com.ewc.eudi_wallet_oidc_android.models.v2.IssuerWellKnownConfigurationV2
-import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
-import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
-import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
-import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
-import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils
-import com.google.gson.Gson
-import java.net.URI
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.AuthServerMetadataResolver
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.AuthorizationServerSelection
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.AuthorizationServerSelector
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveredAuthServerMetadata
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveredIssuerMetadata
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveryPolicy
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.IssuerMetadataResolver
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.SignatureValidatorSignedMetadataVerifier
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.MetadataSignerTrust
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.RejectingSignedMetadataVerifier
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.SignedMetadataVerifier
 
-class DiscoveryService : DiscoveryServiceInterface {
+/**
+ * Credential Issuer and Authorization Server metadata discovery.
+ *
+ * A delegation to `metadata/`, where URL construction, retrieval, trust in signed documents, spec
+ * revision and conformance are each a separate, testable piece. The two interface methods keep
+ * their exact signatures, so hosts need no change.
+ *
+ * @param policy what to accept. [DiscoveryPolicy.Default] preserves this SDK's existing reach;
+ *   [DiscoveryPolicy.Strict] is OpenID4VCI 1.0 as written and will reject pre-1.0 issuers.
+ * @param signedMetadataVerifier establishes trust in signed metadata. The default verifies the
+ *   signature and accepts any signer that produced a valid one; see
+ *   [MetadataSignerTrust.SignatureOnly] for what that does and does not prove, and pass a
+ *   [SignatureValidatorSignedMetadataVerifier] with a real [MetadataSignerTrust] to check the
+ *   signer against a trust list. [RejectingSignedMetadataVerifier] refuses signed metadata
+ *   outright, which is always safe: section 12.2.2 requires every issuer to serve unsigned JSON.
+ */
+class DiscoveryService(
+    private val policy: DiscoveryPolicy = DiscoveryPolicy.Default,
+    private val signedMetadataVerifier: SignedMetadataVerifier = SignatureValidatorSignedMetadataVerifier(),
+) : DiscoveryServiceInterface {
 
-    /**
-     * Helper to construct RFC 8414 Section 3 compatible URLs when paths are present.
-     * Inserts the wellKnownSuffix immediately after the host/port.
-     */
-    private fun buildRfc8414Url(inputUri: String?, wellKnownSuffix: String): String? {
-        if (inputUri == null) return null
-        return try {
-            val uri = URI(inputUri)
-            val scheme = uri.scheme ?: "https"
-            val authority = uri.authority // includes host and port if present
-            var path = uri.path ?: ""
+    private val issuerResolver = IssuerMetadataResolver(
+        policy = policy,
+        signedMetadataVerifier = signedMetadataVerifier,
+    )
 
-            if (path.startsWith("/")) {
-                path = path.substring(1)
-            }
+    private val authServerResolver = AuthServerMetadataResolver(
+        policy = policy,
+        signedMetadataVerifier = signedMetadataVerifier,
+    )
 
-            if (path.isEmpty()) {
-                "$scheme://$authority/$wellKnownSuffix"
-            } else {
-                "$scheme://$authority/$wellKnownSuffix/$path"
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * To fetch the Issue configuration
-     */
-    override suspend fun getIssuerConfig(credentialIssuerWellKnownURI: String?): WrappedIssuerConfigResponse? {
-        val baseIssuer = credentialIssuerWellKnownURI?.replace("/.well-known/openid-credential-issuer", "")
-            ?.let { removeTrailingSlash(it) } ?: return null
-
-        // Primary strategy: RFC 8414 Section 3 transformation
-        // (.well-known inserted between the host and the path)
-        val primaryUrl = buildRfc8414Url(baseIssuer, ".well-known/openid-credential-issuer")
-
-        // Fallback strategy: suffix-style URL (.well-known appended to the end)
-        val fallbackUrl = "$baseIssuer/.well-known/openid-credential-issuer"
-
-        // Execute primary strategy
-        val primaryResult = if (!primaryUrl.isNullOrEmpty()) executeIssuerFetch(primaryUrl) else null
-        if (primaryResult?.issuerConfig != null) {
-            return primaryResult
-        }
-
-        // Execute fallback strategy
-        if (fallbackUrl != primaryUrl) {
-            val fallbackResult = executeIssuerFetch(fallbackUrl)
-            if (fallbackResult?.issuerConfig != null) {
-                return fallbackResult
-            }
-            // Return the fallback result (with errors) if the primary produced none
-            if (primaryResult == null) {
-                return fallbackResult
-            }
-        }
-
-        // Return the original primary result (with errors) if both failed
-        return primaryResult
-    }
-
-    private suspend fun executeIssuerFetch(url: String): WrappedIssuerConfigResponse? {
-        try {
-            UrlUtils.validateUri(url)
-            var finalResponse: WrappedIssuerConfigResponse? = null
-
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.fetchIssuerConfig(url)
-            }
-
-            result.onSuccess { response ->
-                finalResponse = if (response.isSuccessful) {
-                    parseIssuerConfigurationResponse(issuerConfigResponseJson = response.body()?.string())
-                } else {
-                    WrappedIssuerConfigResponse(
-                        issuerConfig = null,
-                        errorResponse = ErrorResponse(error = response.code(), errorDescription = response.message())
-                    )
-                }
-            }.onFailure { e ->
-                val message = when (e) {
-                    is javax.net.ssl.SSLHandshakeException -> "Unable to establish a secure connection."
-                    else -> e.message.toString()
-                }
-                finalResponse = WrappedIssuerConfigResponse(
-                    issuerConfig = null,
-                    errorResponse = ErrorResponse(errorDescription = message)
-                )
-            }
-            return finalResponse
-        } catch (exc: UriValidationFailed) {
-            return WrappedIssuerConfigResponse(issuerConfig = null, errorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed"))
-        }
-    }
-
-    private fun removeTrailingSlash(input: String?): String? {
-        return if (input?.endsWith("/") == true) input.dropLast(1) else input
-    }
-
-    private fun parseIssuerConfigurationResponse(issuerConfigResponseJson: String?): WrappedIssuerConfigResponse? {
-        val jsonToParse = if (JwtUtils.isValidJWT(issuerConfigResponseJson)) {
-            try { JwtUtils.parseJWTForPayload(issuerConfigResponseJson) } catch (e: Exception) { issuerConfigResponseJson }
-        } else {
-            issuerConfigResponseJson
-        }
-        val gson = Gson()
-        val issuerWellKnownConfigurationV2Response = try {
-            gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV2::class.java)
-        } catch (e: Exception) { null }
-
-        return if (issuerWellKnownConfigurationV2Response?.credentialConfigurationsSupported == null) {
-            val issuerWellKnownConfigurationV1Response = try {
-                gson.fromJson(jsonToParse, IssuerWellKnownConfigurationV1::class.java)
-            } catch (e: Exception) { null }
-            if (issuerWellKnownConfigurationV1Response?.credentialsSupported == null) {
-                null
-            } else {
-                WrappedIssuerConfigResponse(
-                    issuerConfig = IssuerWellKnownConfiguration(issuerWellKnownConfigurationV1 = issuerWellKnownConfigurationV1Response),
-                    errorResponse = null
-                )
-            }
-        } else {
-            WrappedIssuerConfigResponse(
-                issuerConfig = IssuerWellKnownConfiguration(issuerWellKnownConfigurationV2 = issuerWellKnownConfigurationV2Response),
-                errorResponse = null
-            )
-        }
-    }
+    private val authorizationServerSelector = AuthorizationServerSelector()
 
     /**
-     * To fetch the authorization server configuration
+     * The Credential Issuer's metadata.
+     *
+     * @param credentialIssuerWellKnownURI the Credential Issuer Identifier, with or without a
+     *   `/.well-known/openid-credential-issuer` segment; both spec URL layouts are recognised and
+     *   stripped back to the identifier before the request URLs are built.
+     * @return never null. A failure carries an `errorResponse` rather than an empty wrapper, so a
+     *   caller can always tell what went wrong and always has something to show.
      */
-    override suspend fun getAuthConfig(authorisationServerWellKnownURI: String?): WrappedAuthConfigResponse {
-        val baseAuthServer = authorisationServerWellKnownURI?.replace("/.well-known/oauth-authorization-server", "")
-            ?.replace("/.well-known/openid-configuration", "")
-            ?.let { removeTrailingSlash(it) }
+    override suspend fun getIssuerConfig(
+        credentialIssuerWellKnownURI: String?
+    ): WrappedIssuerConfigResponse = issuerResolver.resolve(credentialIssuerWellKnownURI).response
 
-        // Core array of URLs we want to try step-by-step
-        val urlsToTry = mutableListOf<String>()
+    /** The authorization server's metadata. @see getIssuerConfig */
+    override suspend fun getAuthConfig(
+        authorisationServerWellKnownURI: String?
+    ): WrappedAuthConfigResponse = authServerResolver.resolve(authorisationServerWellKnownURI).response
 
-        baseAuthServer?.let { base ->
-            // 1. RFC 8414 variations (.well-known inserted between the host and the path)
-            buildRfc8414Url(base, ".well-known/oauth-authorization-server")?.let {
-                if (!urlsToTry.contains(it)) urlsToTry.add(it)
-            }
-            buildRfc8414Url(base, ".well-known/openid-configuration")?.let {
-                if (!urlsToTry.contains(it)) urlsToTry.add(it)
-            }
+    /**
+     * As [getIssuerConfig], plus which URL layout answered, the media type, and which spec
+     * revision the document was. For diagnostics and for exercising this function on its own; the
+     * wallet reads [getIssuerConfig].
+     */
+    suspend fun getIssuerConfigDetailed(
+        credentialIssuerWellKnownURI: String?
+    ): DiscoveredIssuerMetadata = issuerResolver.resolve(credentialIssuerWellKnownURI)
 
-            // 2. Suffix-style default (.well-known appended to the end)
-            if (!urlsToTry.contains("$base/.well-known/oauth-authorization-server"))
-                urlsToTry.add("$base/.well-known/oauth-authorization-server")
-            // 3. OpenID Connect alternative suffix-style default
-            if (!urlsToTry.contains("$base/.well-known/openid-configuration"))
-                urlsToTry.add("$base/.well-known/openid-configuration")
-        }
+    /** @see getIssuerConfigDetailed */
+    suspend fun getAuthConfigDetailed(
+        authorisationServerWellKnownURI: String?
+    ): DiscoveredAuthServerMetadata = authServerResolver.resolve(authorisationServerWellKnownURI)
 
-        var lastErrorResponse: ErrorResponse? = null
-
-        for (url in urlsToTry) {
-            try {
-                UrlUtils.validateUri(url)
-                val result = SafeApiCall.safeApiCallResponse {
-                    ApiManager.api.getService()?.fetchAuthConfig(url)
-                }
-
-                var successResponse: WrappedAuthConfigResponse? = null
-
-                result.onSuccess { response ->
-                    if (response.isSuccessful) {
-                        successResponse = WrappedAuthConfigResponse(
-                            authConfig = parseAuthConfigJson(response.body()?.string()),
-                            errorResponse = null
-                        )
-                    } else {
-                        lastErrorResponse = ErrorResponse(error = response.code(), errorDescription = response.message())
-                    }
-                }.onFailure { e ->
-                    lastErrorResponse = ErrorResponse(errorDescription = e.message)
-                }
-
-                // If this specific URL attempt resolved successfully, return it early!
-                if (successResponse?.authConfig != null) {
-                    return successResponse!!
-                }
-
-            } catch (exc: UriValidationFailed) {
-                lastErrorResponse = ErrorResponse(error = null, errorDescription = "URI validation failed for $url")
-            }
-        }
-
-        return WrappedAuthConfigResponse(
-            authConfig = null,
-            errorResponse = lastErrorResponse ?: ErrorResponse(errorDescription = "Unexpected error during discovery processes")
-        )
-    }
-
-    private fun parseAuthConfigJson(jsonOrJwt: String?): AuthorisationServerWellKnownConfiguration? {
-        val jsonToParse = if (JwtUtils.isValidJWT(jsonOrJwt)) {
-            try { JwtUtils.parseJWTForPayload(jsonOrJwt) } catch (e: Exception) { jsonOrJwt }
-        } else {
-            jsonOrJwt
-        }
-        return try {
-            Gson().fromJson(jsonToParse, AuthorisationServerWellKnownConfiguration::class.java)
-        } catch (e: Exception) {
-            null
-        }
-    }
+    /**
+     * Which authorization server to use, per OpenID4VCI 1.0 section 12.2.4.
+     *
+     * Handles the cases a host implementing this itself tends to miss: an absent
+     * `authorization_servers` means the Credential Issuer is its own authorization server, and an
+     * offer naming a server the issuer does not list must stop the flow rather than fall back.
+     *
+     * @throws com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveryException.Invalid
+     *   when the spec says the flow must not proceed.
+     */
+    fun selectAuthorizationServer(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        credentialOffer: CredentialOffer? = null,
+    ): AuthorizationServerSelection = authorizationServerSelector.select(
+        issuerConfig,
+        authorizationServerSelector.hintFrom(credentialOffer),
+    )
 }
