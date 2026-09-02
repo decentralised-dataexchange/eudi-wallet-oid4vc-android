@@ -21,7 +21,9 @@ import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
 import com.nimbusds.jose.jwk.OctetKeyPair
 import com.nimbusds.jose.jwk.RSAKey
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import org.json.JSONObject
+
 class SignatureValidator {
 
     /**
@@ -39,8 +41,18 @@ class SignatureValidator {
         var errorMessage = ""
         try {
             jwt?.let { // Null-safe check: proceed if jwt is not null
+                // An unsecured JWT (`alg: none`) carries an empty signature. Nimbus rejects it
+                // when parsing the header, but a signature check must not rest on a library's
+                // internals, so it is refused here first.
+                if (it.substringAfterLast('.').isBlank()) {
+                    throw SignatureException("JWT is unsigned")
+                }
+
                 val jwsObject = JWSObject.parse(jwt) // Parse the JWT string to a JWSObject
                 val header = jwsObject.header // Retrieve the header from the parsed JWT
+                if (header.algorithm == null || header.algorithm == JWSAlgorithm.NONE) {
+                    throw SignatureException("JWT is unsigned")
+                }
                 val kid = header.keyID // Extract the 'kid' (key ID) from the JWT header
                 val algorithm = jwsObject.header.algorithm
                 val x5c = jwsObject.header.toJSONObject()
@@ -118,10 +130,17 @@ class SignatureValidator {
                         jwt // If split fails, use the original JWT
                     }
 
-                    // Verify the JWT signature with the current JWK
-                    if (verifyJwtSignature(splitJwt, jwk.toJSONString())) {
-                        return true // ✅ If any key is valid, return immediately
+                    // A candidate key of the wrong type or curve for this algorithm makes
+                    // verifyJwtSignature throw rather than return false. Catching it per key is
+                    // what makes resolving several candidates worth doing: previously the first
+                    // such key ended the loop, so a later key -- often the one that would have
+                    // verified -- was never tried.
+                    val verified = try {
+                        verifyJwtSignature(splitJwt, jwk.toJSONString())
+                    } catch (e: IllegalArgumentException) {
+                        false
                     }
+                    if (verified) return true
                 }
                 if (!x5c.contains("x5c")) {
                     errorMessage = "JWT signature invalid"
@@ -131,12 +150,14 @@ class SignatureValidator {
 
             } ?: throw SignatureException("JWT signature invalid") // Handle the case where JWT is null
 
+        } catch (e: SignatureException) {
+            throw e // Already specific -- do not flatten it into a generic message.
         } catch (e: IllegalArgumentException) {
             // Handle any IllegalArgumentException thrown during the process
             if (e.message?.contains("x5c") == true) {
                 throw e // Rethrow if it's related to 'x5c'
             }
-            throw SignatureException("JWT signature invalid") // Wrap the exception into a SignatureException
+            throw SignatureException(errorMessage.ifBlank { "JWT signature invalid" }, e)
         }
     }
 
@@ -232,11 +253,10 @@ class SignatureValidator {
             // Verify the signature of the JWS using the appropriate verifier
             return jwsObject.verify(verifier)
         } catch (e: Exception) {
-            // Print the stack trace for debugging purposes
-            e.printStackTrace()
-
-            // Throw an IllegalArgumentException if signature verification fails or any error occurs
-            throw IllegalArgumentException("Invalid signature")
+            // Silent unless the host turned logging on. The cause is kept so a caller that catches
+            // this can say why, rather than only that something failed.
+            Logger.d(TAG, "Could not verify a JWT with a candidate key: ${e.message}")
+            throw IllegalArgumentException("Invalid signature", e)
         }
     }
 
@@ -279,4 +299,7 @@ class SignatureValidator {
 //        }
 //    }
 
+    private companion object {
+        const val TAG = "SignatureValidator"
+    }
 }
