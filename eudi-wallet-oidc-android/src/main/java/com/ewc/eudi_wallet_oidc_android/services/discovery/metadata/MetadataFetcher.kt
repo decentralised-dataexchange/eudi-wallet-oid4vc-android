@@ -112,8 +112,10 @@ internal object MetadataFetcher {
         val contentType = response.headers()["Content-Type"]
         val body = response.body()
         val declaredLength = body?.contentLength() ?: -1L
-        if (declaredLength > policy.maxMetadataBytes) {
-            throw DiscoveryException.TooLarge(declaredLength)
+        policy.maxMetadataBytes?.let { limit ->
+            if (declaredLength > limit) {
+                throw DiscoveryException.TooLarge(declaredLength)
+            }
         }
 
         val text = try {
@@ -121,8 +123,10 @@ internal object MetadataFetcher {
         } catch (e: Exception) {
             throw DiscoveryException.FetchFailed(response.code(), "The issuer configuration could not be read")
         }
-        if (text.length > policy.maxMetadataBytes) {
-            throw DiscoveryException.TooLarge(text.length.toLong())
+        policy.maxMetadataBytes?.let { limit ->
+            if (text.length > limit) {
+                throw DiscoveryException.TooLarge(text.length.toLong())
+            }
         }
         if (text.isBlank()) {
             throw DiscoveryException.FetchFailed(response.code(), "The issuer configuration was empty")
