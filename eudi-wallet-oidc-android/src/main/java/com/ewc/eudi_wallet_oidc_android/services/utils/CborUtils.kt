@@ -35,10 +35,17 @@ class CborUtils {
                 return null
             }
 
-            val paddedCbor = padBase64Url(cbor ?: "")
-
-            val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor ?: "")
-            return extractCborDataElements(cborInBytes)
+            return try {
+                val paddedCbor = padBase64Url(cbor)
+                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(paddedCbor)
+                extractCborDataElements(cborInBytes)
+            } catch (e: IllegalArgumentException) {
+                Log.e("CborUtils", "decodeCborCredential: invalid base64url input: ${e.message}")
+                null
+            } catch (e: Exception) {
+                Log.e("CborUtils", "decodeCborCredential: failed to decode: ${e.message}")
+                null
+            }
         }
         private fun padBase64Url(input: String): String {
             val mod = input.length % 4
