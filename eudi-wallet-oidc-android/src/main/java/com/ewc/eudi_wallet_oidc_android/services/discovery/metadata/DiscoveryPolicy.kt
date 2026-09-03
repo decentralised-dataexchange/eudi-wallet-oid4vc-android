@@ -75,8 +75,16 @@ data class DiscoveryPolicy(
     /** Overrides the device locale for `Accept-Language`. Null derives it from the default locale. */
     val acceptLanguage: String? = null,
 
-    /** Largest metadata document accepted. */
-    val maxMetadataBytes: Long = 512L * 1024L,
+    /**
+     * Largest metadata document accepted, in bytes. `null` (the default) means no size check is
+     * applied.
+     *
+     * Off by default: real issuer metadata -- especially `credential_configurations_supported`
+     * entries with embedded base64 `display` logos -- can legitimately run well past a few hundred
+     * KB, and there is no size the SDK can pick that is safe for every issuer. Set a value to guard
+     * against a misbehaving endpoint returning something unreasonable.
+     */
+    val maxMetadataBytes: Long? = null,
 ) {
     internal fun allowsScheme(scheme: String?): Boolean =
         scheme != null && allowedSchemes.any { it.equals(scheme, ignoreCase = true) }
@@ -96,6 +104,7 @@ data class DiscoveryPolicy(
             allowDraftMetadata = false,
             requireJsonContentType = true,
             requireIssuerIdentifierMatch = true,
+            maxMetadataBytes = 512L * 1024L,
         )
     }
 }
