@@ -1,325 +1,463 @@
 package com.ewc.eudiwalletoidcandroid
 
-import android.content.Context
-import android.widget.Toast
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import com.ewc.eudi_wallet_oidc_android.CryptographicAlgorithms
+import androidx.lifecycle.viewModelScope
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
-import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
-import com.ewc.eudi_wallet_oidc_android.models.WrappedTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.discovery.DiscoveryService
+import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveryException
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
-import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
-import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
-import com.google.gson.Gson
 import com.nimbusds.jose.jwk.ECKey
-import com.nimbusds.jose.jwk.JWK
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.ArrayList
-import java.util.Timer
-import java.util.TimerTask
 
+/**
+ * A harness for the SDK's issuance functions, one at a time.
+ *
+ * One scan feeds every step; each button invokes exactly one SDK function and prints its result
+ * plus **which internal path answered** — the source and spec revision that claimed the offer,
+ * which of the two well-known URL layouts the issuer actually serves, whether a non-spec fallback
+ * was taken. None of that is visible from the wrapped response the wallet reads, and it is the
+ * difference between "this issuer is non-conformant here" and "something is broken".
+ *
+ * Steps 4 onward are added as each function is reworked.
+ */
 class MainViewModel : ViewModel() {
 
-    private var format: String? = null
-    private var types: ArrayList<String> = arrayListOf()
-    var isLoading = MutableLiveData<Boolean>(false)
+    val isLoading = MutableLiveData(false)
+    val scannedInput = MutableLiveData("Nothing scanned yet")
+    val output = MutableLiveData("")
 
-    var isPreAuthorised = MutableLiveData<Boolean>(false)
-
-    var displayText = MutableLiveData<String?>("")
-
-    var credentialJwt = MutableLiveData<String?>("")
-
-    private lateinit var codeVerifier: String
-    private var tokenResponse: WrappedTokenResponse? = null
-    private var authConfig: AuthorisationServerWellKnownConfiguration? = null
+    private var offer: CredentialOffer? = null
     private var issuerConfig: IssuerWellKnownConfiguration? = null
-    private var offerCredential: CredentialOffer? = null
-    lateinit var did: String
-    lateinit var subJwk: JWK
+    private var authConfig: AuthorisationServerWellKnownConfiguration? = null
 
-    init {
-        isLoading.value = false
+    private val discoveryService = DiscoveryService()
+
+    // Carried between steps: the token request has to present the same wallet the authorization
+    // request did, because its DPoP proof is bound to that key.
+    private var wallet: WalletIdentity? = null
+    private var codeVerifier: String? = null
+    private var authorizationCode: String? = null
+
+    /** The transaction code, when the offer asks for one. Bound two-way to the field in the UI. */
+    val txCode = MutableLiveData("")
+
+    fun onScanned(data: String) {
+        scannedInput.value = data
+        offer = null
+        issuerConfig = null
+        authConfig = null
+        wallet = null
+        codeVerifier = null
+        authorizationCode = null
+        clear()
+        log("Scanned", data)
     }
 
-    fun issueCredential(url: String,context:Context) {
-        isLoading.value = true
-        CoroutineScope(Dispatchers.Main).launch {
-            // Resolving credential offer
-            offerCredential = IssueService().resolveCredentialOffer(url)
+    fun clear() {
+        output.value = ""
+    }
 
-            val wrappedResponse = DiscoveryService().getIssuerConfig("${offerCredential?.credentialIssuer}/.well-known/openid-credential-issuer")
-            if (wrappedResponse?.issuerConfig != null) {
-                // Handle successful response
-                issuerConfig = wrappedResponse.issuerConfig
-            } else {
-                displayErrorMessage(context, wrappedResponse?.errorResponse?.errorDescription)
-                return@launch
+    /** Step 1 — `IssueService.resolveCredentialOffer`. */
+    fun resolveOffer(then: (() -> Unit)? = null) = run("1 · Resolve credential offer") {
+        val data = scannedInput.value
+        if (data.isNullOrBlank() || data == NOTHING_SCANNED) {
+            log("1 · Resolve credential offer", "Scan a credential offer first")
+            return@run
+        }
+
+        val wrapped = IssueService().resolveCredentialOffer(data)
+        val resolved = wrapped.credentialOffer
+
+        if (resolved == null) {
+            log("1 · Resolve credential offer", "FAILED\n  ${wrapped.errorResponse?.errorDescription}")
+            return@run
+        }
+        offer = resolved
+
+        log(
+            "1 · Resolve credential offer",
+            buildString {
+                appendLine("  spec revision      ${specVersionOf(resolved)}")
+                appendLine("  credential_issuer  ${resolved.credentialIssuer}")
+                appendLine("  credentials        ${resolved.credentials?.map { it.types?.lastOrNull() }}")
+                appendLine("  formats            ${resolved.credentials?.mapNotNull { it.format }}")
+                appendLine("  grants             ${grantsOf(resolved)}")
+                append("  tx_code            ${txCodeOf(resolved)}")
+            },
+        )
+        then?.invoke()
+    }
+
+    /** Step 2 — `DiscoveryService.getIssuerConfig`. */
+    fun discoverIssuer(then: (() -> Unit)? = null) = run("2 · Discover issuer metadata") {
+        val issuer = offer?.credentialIssuer
+        if (issuer.isNullOrBlank()) {
+            log("2 · Discover issuer metadata", "Resolve an offer first")
+            return@run
+        }
+
+        val result = discoveryService.getIssuerConfigDetailed(issuer)
+        val diagnostics = result.diagnostics
+
+        val trace = buildString {
+            appendLine("  identifier         ${diagnostics.identifier}")
+            appendLine("  urls tried         ${diagnostics.attemptedUrls.size}")
+            diagnostics.attemptedUrls.forEach { appendLine("      $it") }
+            appendLine("  answered by        ${diagnostics.resolvedUrl ?: "nothing"}")
+            appendLine("  url layout         ${layoutOf(diagnostics.form, diagnostics.usedSuffixFallback)}")
+            appendLine("  content type       ${diagnostics.contentType}")
+            append("  metadata shape     ${diagnostics.specVersion ?: "—"}")
+        }
+
+        val config = result.response.issuerConfig
+        if (config == null) {
+            log("2 · Discover issuer metadata", "FAILED\n  ${result.response.errorResponse?.errorDescription}\n$trace")
+            return@run
+        }
+        issuerConfig = config
+
+        log(
+            "2 · Discover issuer metadata",
+            buildString {
+                appendLine(trace)
+                appendLine("  credential_endpoint  ${config.credentialEndpoint}")
+                appendLine("  nonce_endpoint       ${config.nonceEndpoint ?: "—"}")
+                appendLine("  deferred_endpoint    ${config.deferredCredentialEndpoint ?: "—"}")
+                appendLine("  authorization_server ${config.authorizationServer ?: "—"}")
+                append("  authorization_servers ${config.authorizationServers ?: "—"}")
+            },
+        )
+        then?.invoke()
+    }
+
+    /** Step 3 — `selectAuthorizationServer` then `DiscoveryService.getAuthConfig`. */
+    fun discoverAuthServer(then: (() -> Unit)? = null) = run("3 · Discover authorization server") {
+        val config = issuerConfig
+        if (config == null) {
+            log("3 · Discover authorization server", "Discover the issuer metadata first")
+            return@run
+        }
+
+        val selection = try {
+            discoveryService.selectAuthorizationServer(config, offer)
+        } catch (e: DiscoveryException) {
+            log("3 · Discover authorization server", "STOPPED\n  ${e.message}")
+            return@run
+        }
+
+        val result = discoveryService.getAuthConfigDetailed(selection.identifier)
+        val diagnostics = result.diagnostics
+
+        val trace = buildString {
+            appendLine("  selected           ${selection.identifier}")
+            appendLine("  chosen because     ${selection.source}")
+            appendLine("  candidates         ${selection.candidates}")
+            appendLine("  urls tried         ${diagnostics.attemptedUrls.size}")
+            diagnostics.attemptedUrls.forEach { appendLine("      $it") }
+            appendLine("  answered by        ${diagnostics.resolvedUrl ?: "nothing"}")
+            append("  well-known         ${wellKnownOf(diagnostics.wellKnown, diagnostics.usedOpenIdConfigurationFallback)}")
+        }
+
+        val auth = result.response.authConfig
+        if (auth == null) {
+            log("3 · Discover authorization server", "FAILED\n  ${result.response.errorResponse?.errorDescription}\n$trace")
+            return@run
+        }
+        authConfig = auth
+
+        log(
+            "3 · Discover authorization server",
+            buildString {
+                appendLine(trace)
+                appendLine("  issuer               ${auth.issuer}")
+                appendLine("  authorization_endpoint ${auth.authorizationEndpoint ?: "—"}")
+                appendLine("  token_endpoint         ${auth.tokenEndpoint}")
+                appendLine("  pushed_auth_endpoint   ${auth.pushedAuthorizationRequestEndpoint ?: "—"}")
+                append("  grant_types            ${auth.grantTypesSupported}")
+            },
+        )
+        then?.invoke()
+    }
+
+
+    /** Step 4 — `IssueService.requestAuthorization`. */
+    fun requestAuthorization() = run("4 · Request authorization") {
+        val session = IssuanceSession(offer, issuerConfig, authConfig)
+        if (session.authConfig == null) {
+            log("4 · Request authorization", "Discover the authorization server first")
+            return@run
+        }
+
+        // A pre-authorized offer has no authorization leg at all: the issuer has already decided
+        // to issue and handed over the code. §4.1.1 puts `issuer_state` inside the
+        // authorization_code grant, so an offer without that grant has none to send — and a server
+        // asked for one anyway answers "issuer state is not found". Step 5 is the next step here.
+        val grants = offer?.grants
+        if (grants?.authorizationCode == null && grants?.preAuthorizationCode != null) {
+            log("4 · Request authorization", """
+                  skipped            this offer is pre-authorized
+                  grants             pre-authorized_code
+                  tx_code            ${txCodeOf(offer!!)}
+                  why                a pre-authorized flow has no authorization leg and no
+                                     issuer_state to send — run step 5 instead
+            """.trimIndent())
+            return@run
+        }
+
+        val identity = walletIdentity()
+        val verifier = codeVerifier
+            ?: CodeVerifierService().generateCodeVerifier().also { codeVerifier = it }
+
+        val response = IssueService().requestAuthorization(
+            session = session,
+            wallet = identity,
+            codeVerifier = verifier,
+            mode = authorizationMode,
+        )
+
+        val heading = "4 · Request authorization"
+        val request = response.request
+
+        // What actually went out. A server rejecting the request is objecting to one of these, and
+        // the outcome alone does not say which.
+        val sent = request?.parameters.orEmpty()
+            .filterKeys { it != "client_metadata" }
+            .entries
+            .joinToString("\n") { (name, value) -> "      ${name.padEnd(22)} ${value.take(120)}" }
+
+        val trace = """
+              transport          ${request?.transport ?: "none"}
+              endpoint           ${request?.endpoint ?: "—"}
+              redirect_uri       ${request?.redirectUri ?: "—"}
+              state sent         ${request?.state ?: "—"}
+              wallet attestation ${if (request?.sentWalletAttestation == true) "sent" else "not sent"}
+              mode               $authorizationMode
+              did                ${identity.did}
+              parameters sent    ${request?.parameters?.size ?: 0}
+        """.trimIndent() + "\n" + sent
+
+        when (response.outcome) {
+            AuthorizationOutcome.AUTHORIZATION_CODE -> {
+                authorizationCode = response.code
+                log(heading, """
+                    $trace
+                      outcome            authorization code
+                      code               ${response.code}
+                      state returned     ${response.state ?: "—"}
+                      state matches      ${response.state == request?.state}
+                """.trimIndent())
             }
-            val wrappedAuthResponse = DiscoveryService().getAuthConfig(
-                "${issuerConfig?.authorizationServer ?: issuerConfig?.issuer}/.well-known/openid-configuration"
-            )
-            if(wrappedAuthResponse.authConfig !=null){
-                // Handle successful response
-                authConfig = wrappedAuthResponse.authConfig
-            }
-            else{
-                displayErrorMessage(context, wrappedAuthResponse.errorResponse?.errorDescription)
-                return@launch
-            }
 
-            codeVerifier = CodeVerifierService().generateCodeVerifier()
+            AuthorizationOutcome.OPEN_IN_BROWSER -> log(heading, """
+                $trace
+                  outcome            open in browser
+                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "—"}
+                  url                ${response.url}
+            """.trimIndent())
 
-            withContext(Dispatchers.Main) {
-                displayText.value =
-                    "${displayText?.value}Issuer Config : \n${Gson().toJson(issuerConfig)}\n\n"
-                displayText.value =
-                    "${displayText.value}Auth Config : \n${Gson().toJson(authConfig)}\n\n"
-                displayText.value =
-                    "${displayText.value}Code verifier : \n$codeVerifier\n\n"
-            }
+            AuthorizationOutcome.PRESENTATION_REQUIRED -> log(heading, """
+                $trace
+                  outcome            presentation required (IAR, or a redirect asking for one)
+                  auth_session       ${response.authSession ?: "—"}
+                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "—"}
+                  url                ${response.url}
+            """.trimIndent())
 
-            if (offerCredential?.grants?.preAuthorizationCode?.preAuthorizedCode != null) {
-                // pre authorized code flow
-                if (offerCredential?.grants?.preAuthorizationCode?.transactionCode != null) {
-                    // pre authorized code flow with pin required
-                    isPreAuthorised.value = true
-                    isLoading.value = false
-                } else {
-                    // pre authorized code flow with no pin required
-//                    tokenResponse = IssueService().processTokenRequest(
-//                        did = did,
-//                        tokenEndPoint = authConfig?.tokenEndpoint,
-//                        code = offerCredential?.grants?.preAuthorizationCode?.preAuthorizedCode,
-//                        codeVerifier = codeVerifier,
-//                        isPreAuthorisedCodeFlow = true,
-//                        userPin = null
-//                    )
-                    getCredential()
-                }
-            } else {
-                // Process Authorisation request
-//                val authResponse = IssueService().processAuthorisationRequest(
-//                    did,
-//                    subJwk,
-//                    offerCredential,
-//                    codeVerifier,
-//                    authConfig?.authorizationEndpoint
-//                )
+            AuthorizationOutcome.ID_TOKEN_REQUIRED -> log(heading, """
+                $trace
+                  outcome            id_token required
+                  url                ${response.url}
+            """.trimIndent())
 
-//                val code = Uri.parse(authResponse).getQueryParameter("code")
-
-                //process token request
-//                tokenResponse = IssueService().processTokenRequest(
-//                    did = did,
-//                    tokenEndPoint = authConfig?.tokenEndpoint,
-//                    code = code,
-//                    codeVerifier = codeVerifier,
-//                    isPreAuthorisedCodeFlow = false,
-//                    userPin = null
-//                )
-                getCredential()
-            }
-
+            AuthorizationOutcome.FAILED -> log(heading, """
+                $trace
+                  outcome            FAILED
+                  error              ${response.error?.errorCode ?: "—"}
+                  description        ${response.error?.errorDescription ?: "no reason given"}
+                  http status        ${response.error?.httpStatus ?: "—"}
+                  raw                ${response.error?.raw?.take(200) ?: "—"}
+            """.trimIndent())
         }
     }
 
-    private fun displayErrorMessage(context: Context, errorMessage: String?) {
-        val messageToShow = errorMessage?.takeIf { it.isNotBlank() } ?: "Unknown error"
-        Toast.makeText(context, messageToShow, Toast.LENGTH_SHORT).show()
-        isLoading.value = false
+    /**
+     * Which transport the request goes through.
+     *
+     * Browser is what a scanned offer uses; InApp is the first-party path the wallet-provider
+     * attestation bootstrap takes. Switchable here because it is the one input that changes which
+     * transport runs.
+     */
+    var authorizationMode: AuthorizationMode = AuthorizationMode.Browser
+
+    /** Runs the steps in sequence, stopping at the first that does not produce a result. */
+    fun runAll() {
+        clear()
+        resolveOffer {
+            discoverIssuer {
+                discoverAuthServer {
+                    // A pre-authorized offer skips step 4 entirely; running it anyway is what
+                    // makes a server complain about a missing issuer_state.
+                    if (offer?.grants?.authorizationCode == null &&
+                        offer?.grants?.preAuthorizationCode != null
+                    ) requestToken() else requestAuthorization()
+                }
+            }
+        }
     }
 
-    private suspend fun getCredential() {
-        val subJwk = DIDService().createJWK()
-        val did = DIDService().createDID(subJwk)
-        val credential = IssueService().processCredentialRequest(
-            did,
-            subJwk,
-            tokenResponse?.tokenResponse?.cNonce,
-            offerCredential,
-            issuerConfig,
-            tokenResponse?.tokenResponse?.accessToken,
-            format ?: "jwt_vc"
+    /**
+     * Step 5 — `IssueService.processTokenRequest`.
+     *
+     * Takes whichever code the offer's grant provides: the pre-authorized code straight from the
+     * offer, or the authorization code step 4 produced. Which one is not a toggle here — the
+     * offer's grants decide it, which is the point.
+     */
+    fun requestToken() = run("5 · Request token") {
+        val heading = "5 · Request token"
+        val authServer = authConfig
+        if (authServer == null) {
+            log(heading, "Discover the authorization server first")
+            return@run
+        }
+
+        val preAuthorized = offer?.grants?.preAuthorizationCode
+        val isPreAuthorised = preAuthorized?.preAuthorizedCode != null && authorizationCode == null
+        val code = if (isPreAuthorised) preAuthorized?.preAuthorizedCode else authorizationCode
+        if (code.isNullOrBlank()) {
+            log(heading, "No code yet — run step 4 for an authorization-code offer")
+            return@run
+        }
+
+        // §6.1: a `tx_code` object in the offer means a code is required *even when the object is
+        // empty*, so its presence is the test, not whether it declares a length.
+        val pin = txCode.value?.takeIf { it.isNotBlank() }
+        if (isPreAuthorised && preAuthorized?.transactionCode != null && pin == null) {
+            log(heading, "This offer declares tx_code — enter the transaction code first")
+            return@run
+        }
+
+        val identity = walletIdentity()
+        val wrapped = IssueService().processTokenRequest(
+            did = identity.did,
+            tokenEndPoint = authServer.tokenEndpoint,
+            code = code,
+            codeVerifier = codeVerifier,
+            isPreAuthorisedCodeFlow = isPreAuthorised,
+            userPin = pin,
+            version = offer?.version,
+            walletUnitAttestationJWT = null,
+            walletUnitProofOfPossession = null,
+            redirectUri = null,
+            dpopKey = identity.jwk as? ECKey,
         )
 
-        withContext(Dispatchers.Main) {
-            if (credential?.credentialResponse != null) {
-                displayText.value =
-                    "${displayText.value}Token : \n${Gson().toJson(tokenResponse)}\n\n"
-                displayText.value =
-                    "${displayText.value}Credential : \n${Gson().toJson(credential)}\n\n"
+        val trace = """
+              grant              ${if (isPreAuthorised) "pre-authorized_code" else "authorization_code"}
+              endpoint           ${authServer.tokenEndpoint ?: "—"}
+              tx_code sent       ${if (pin != null) "yes" else "no"}
+              dpop               ${if (wrapped?.dpop != null) "sent" else "not sent"}
+        """.trimIndent()
 
+        val token = wrapped?.tokenResponse
+        val error = wrapped?.errorResponse
+        when {
+            token?.accessToken != null -> log(heading, """
+                $trace
+                  outcome            access token
+                  token_type         ${token.tokenType ?: "—"}
+                  expires_in         ${token.expiresIn ?: "—"}
+                  c_nonce            ${token.cNonce ?: "—"}
+                  refresh_token      ${if (token.refreshToken != null) "present" else "—"}
+                  auth details       ${token.authorizationDetails?.size ?: 0}
+            """.trimIndent())
 
-                credentialJwt.value = credential.credentialResponse?.credential
+            token?.error != null -> log(heading, """
+                $trace
+                  outcome            FAILED
+                  error              ${token.error}
+                  description        ${token.errorDescription ?: "—"}
+            """.trimIndent())
+
+            else -> log(heading, """
+                $trace
+                  outcome            FAILED
+                  error              ${error?.errorCode ?: "—"}
+                  description        ${error?.errorDescription ?: "no reason given"}
+                  http status        ${error?.httpStatus ?: "—"}
+                  raw                ${error?.raw?.take(200) ?: "—"}
+            """.trimIndent())
+        }
+    }
+
+    /**
+     * One throwaway key per scan rather than per step: steps 4 and 5 must present the same wallet,
+     * since the token request's DPoP proof is bound to the key the authorization request used.
+     */
+    private fun walletIdentity(): WalletIdentity = wallet ?: run {
+        val jwk = DIDService().createES256JWK(null)
+        WalletIdentity(did = DIDService().createES256DID(jwk), jwk = jwk).also { wallet = it }
+    }
+
+    private fun run(label: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            isLoading.value = true
+            try {
+                block()
+            } catch (e: Exception) {
+                // The harness must never die on a bad scan; an unexpected failure is a result too.
+                log(label, "UNEXPECTED\n  ${e::class.simpleName}: ${e.message}")
+            } finally {
                 isLoading.value = false
             }
         }
-
-        fetchDeferredCredential(credential?.credentialResponse?.acceptanceToken)
     }
 
-    // fetching deferred credential
-    private fun fetchDeferredCredential(acceptanceToken: String?) {
-        if (acceptanceToken != null) {
-            val timer = Timer()
-            timer.scheduleAtFixedRate(object : TimerTask() {
-                override fun run() {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val credential =
-                            IssueService().processDeferredCredentialRequest(
-                                acceptanceToken,
-                                issuerConfig?.deferredCredentialEndpoint
-                            )
-
-                        if (credential?.credentialResponse?.credential != null) {
-
-                            withContext(Dispatchers.Main) {
-                                if (credential.credentialResponse?.credential != null) {
-
-                                    displayText.value =
-                                        "${displayText.value}Token : \n${Gson().toJson(tokenResponse)}\n\n"
-                                    displayText.value =
-                                        "${displayText.value}Credential : \n${
-                                            Gson().toJson(
-                                                credential
-                                            )
-                                        }\n\n"
-
-                                    credentialJwt.value = credential.credentialResponse?.credential
-                                    isLoading.value = false
-                                }
-                            }
-                            timer.cancel()
-                        }
-                    }
-                }
-            }, 0, 5000)
+    private fun log(heading: String, body: String) {
+        output.value = buildString {
+            output.value?.takeIf { it.isNotBlank() }?.let { append(it).append("\n\n") }
+            appendLine(heading)
+            append(body)
         }
     }
 
-    fun verifyPin(pin: String?) {
-        isLoading.value = true
-        CoroutineScope(Dispatchers.Main).launch {
-//            tokenResponse = IssueService().processTokenRequest(
-//                did = did,
-//                tokenEndPoint = authConfig?.tokenEndpoint,
-//                code = offerCredential?.grants?.preAuthorizationCode?.preAuthorizedCode,
-//                codeVerifier = codeVerifier,
-//                isPreAuthorisedCodeFlow = true,
-//                userPin = pin
-//            )
-            getCredential()
-        }
+    private fun specVersionOf(offer: CredentialOffer) = when (offer.version) {
+        2 -> "OpenID4VCI 1.0"
+        1 -> "pre-1.0 draft"
+        else -> "unknown (${offer.version})"
     }
 
-    fun verifyCredential(url: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            val presentationRequest =
-                VerificationService().processAuthorisationRequest(url)
+    private fun grantsOf(offer: CredentialOffer) = buildList {
+        offer.grants?.authorizationCode?.let { add("authorization_code") }
+        offer.grants?.preAuthorizationCode?.let { add("pre-authorized_code") }
+    }.ifEmpty { listOf("none declared") }
 
-            val subJwk = DIDService().createJWK(cryptographicAlgorithm = CryptographicAlgorithms.ES256)
-            val did = DIDService().createDID(subJwk)
-
-            withContext(Dispatchers.Main) {
-                displayText.value =
-                    "${displayText.value}Verification started\n\n"
-                displayText.value =
-                    "${displayText.value}Presentation Request : \n${
-                        Gson().toJson(
-                            presentationRequest
-                        )
-                    }\n\n"
-
-                displayText.value =
-                    "${displayText.value}Did : \n${did}\n\n"
-
-                displayText.value =
-                    "${displayText.value}private key : \n${Gson().toJson(subJwk)}\n\n"
-            }
-
-
-            if (presentationRequest != null) {
-
-//                val presentationDefinition =
-//                    VerificationService().processPresentationDefinition(presentationRequest.presentationDefinition)
-//                val updatedJsonString = "{\"format\":{},\"id\":\"6978f6b6-97be-4918-af02-4625ea49cf20\",\"input_descriptors\":[{\"constraints\":{\"fields\":[{\"filter\":{\"contains\":{\"const\":\"NationalIdCard\"},\"type\":\"string\"},\"path\":[\"\$.vct\"]},{\"path\":[\"\$.name\"]},{\"path\":[\"\$.address\"]},{\"path\":[\"\$.phone.number\"]}],\"limit_disclosure\":\"required\"},\"format\":{\"vc+sd-jwt\":{\"alg\":[\"ES256\"]},\"vp+sd-jwt\":{\"alg\":[\"ES256\"]}},\"id\":\"f945fe99-1185-43ec-8f56-c9684114c9e4\"}]}"
-//                val presentationDefinition = Gson().fromJson(
-//                    updatedJsonString,
-//                    com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition::class.java
-//                )
-
-//                val allCredentials = listOf(credentialJwt.value)
-                //               val allCredentials = listOf("eyJhbGciOiJFUzI1NiIsImtpZCI6Ii1hZzAxSmNJTjBYOGhNWjV6UE8tVG13N1BMUnRuSWpIZW5MSVRRTnlZUzgiLCJ0eXAiOiJKV1QifQ.eyJfc2QiOlsiRkhpVDYwVW9mZy15UVJ0QjZnSlZNV0d4Nllvb1JVNWNlQXFFUV9YS1VmTSIsInZMem1XalVCSklodjRqdUJvTEQxcU83LVVKelQ3X0ZtMXZWTnRnOXlCcFEiXSwiYWRkcmVzcyI6eyJfc2QiOlsiTFdFb2xJVk4tN2lzSnJjcEF2ZTdzSTVJS0RIYk1JbGtYTTl1UGpIQ2pwVSIsInktVjlrNjd5Mnc2WDJrN0JTWjk2ekZoQVRjUFBibXZDUkhRcU9FbVN1dmciLCJpcENHUUZtQm9UeE1JakE2T1hQeXE1Zlg0ZVg0RTZFQ2ZRZ3d5QVpCVHRVIiwiaUljdkwxalJMbTMzMmgxZ3hYTVlsMkZNTjlHSUZ3M0l1ZENDSG1fYlZ3SSJdfSwiZW1wbG95bWVudCI6eyJkZXNpZ25hdGlvbiI6InRlc3RlciIsInR5cGVPZkVtcGxveW1lbnQiOiJmdWxsIHRpbWUgZW1wbG95ZWUifSwiZXhwIjoxNzMwODc2MzgzLCJpYXQiOjE3MzA3ODk5ODMsImlzcyI6Imh0dHBzOi8vc3RhZ2luZy1vaWQ0dmMuaWdyYW50LmlvL29yZ2FuaXNhdGlvbi8zMGUzMjE5OS02YWIzLTQ1NDMtOTllMC04OWQzYTRkYjU2YmUvc2VydmljZSIsImp0aSI6InVybjpkaWQ6ZWEzYzA1MTgtYzNmMy00OGI0LThjYWYtZWUxN2FlMDdiYmNmIiwibmJmIjoxNzMwNzg5OTgzLCJzdWIiOiJkaWQ6a2V5OnoyZG16RDgxY2dQeDhWa2k3SmJ1dU1tRllyV1BnWW95dHlrVVozZXlxaHQxajlLYnJEcnAzUGZWSFJGVUcyOTU5dGZWN3RQeTNqUkdyNXpRaExyam1na2c2N0M2QVozamJ2UWNqMnJlSkZicGhKTGhObUFEYkJCV3IxQ21lSEw1cWZNQ0UzVEJQRmQxUjlZQXZVUGV5VVNQdVJ3RVJOM0YyRnEzTjlzZEhYNlJNeUZmd3oiLCJ2Y3QiOiJOYXRpb25hbElkQ2FyZCJ9.WM9wcchULnOYUrAdpWyl75ua8MC1sA5vqnjGjy85-w7qWYD5bDhhxXM-sGRaCWgQvfapVaTvdlcqH28wChUxGQ~WyI5Y2I3YjdiZmRjNzJiNDczMDhiNzAxNDYxZWEzYTIxOTVhNTIyZjVlMDgwYzQ4NWJkMDIzNGE0MDRmNDBiNjgyIiwiZmllbGQxIiwidGVzdCBmaWVsZDEiXQ~WyJhOGNlYmE1MWE0ZTYxMjhhMjU1OGUzODlkZjRiNWU3MGYxZjcxZGUyZDhhY2U3M2VhZmRhYzQ5ZmZjYWQwNjA5IiwiZmllbGQyIiwidGVzdCBmaWVsZDIiXQ~WyIyMDBlZTExZTUwN2U0OWMxMjgyMDQwNDU1ZjE3MmE3ZGFmNzczNDMwMTQ0MmI3ODdmOGUxNGI4ODMxZWE2NjQ1IiwicGluQ29kZSIsIjY4MDU1NSJd~WyIyMjE1MGNiMGE3NWI5YzA3M2Y2NGFiYTAxYjg4NjQyMzEwYzkwZGFiODhkYjc0NTRhYzJkODJlYTFmN2M0MTNhIiwic3RhdGUiLCJrZXJhbGEiXQ~WyIzOTdkMTVkMGE5NzM1MzY4MTYwZjQ2N2MzOTQ2NDlhMzBmYjNkNzU1ZDQ0ZGFlOWIxZjYwOGFiYzZmZDEzZjUyIiwibmFtZSIsIkxpam8iXQ~WyI1M2Q4NmY1ODQyMGM2MDFmNTYyZWQzNDdlYzU3YzQ4NzM1Nzg1NTliZmQ1MTI4NTJhMzRjOWQ2ZWEzMGYzYjk4IiwicGhvbmUiLHsiY291bnRyeUNvZGUiOiI5MSIsIm51bWJlciI6Ijk3NDU4MDEwNTYifV0")
-//                val filteredCredentials = takeFirstElementInEachList(
-//                    VerificationService().filterCredentials(
-//                        allCredentials,
-//                        presentationDefinition
-//                    ),
-//                    presentationDefinition.format?.containsKey("sd_jwt") == true,
-//                    presentationRequest,
-//                    subJwk
-//                )
-
-                // if (filteredCredentials.isNotEmpty()) {
-                val code = presentationRequest.presentationRequest?.let {
-                        VerificationService().processAndSendAuthorisationResponse(
-                            did = did,
-                            subJwk = subJwk,
-                            presentationRequest = it,
-                            credentialList = listOf("eyJhbGciOiJFUzI1NiIsImtpZCI6Ii1hZzAxSmNJTjBYOGhNWjV6UE8tVG13N1BMUnRuSWpIZW5MSVRRTnlZUzgiLCJ0eXAiOiJKV1QifQ.eyJfc2QiOlsiakZYSGx4U3lfdDFiU0hpRk44Q3U2d1RUNDN3aXBsSzdDTjhueUc5SmF4VSIsImtLb3NxMk1KVWZlZG9HckhaXzlJa1dacUc0SVpvQTREekkyVkdtRjVKRTgiXSwiZXhwIjoxNzM1Nzk4NDAxLCJpYXQiOjE3MzMyMDY0MDEsImlzcyI6Imh0dHBzOi8vc3RhZ2luZy1vaWQ0dmMuaWdyYW50LmlvL29yZ2FuaXNhdGlvbi8zMGUzMjE5OS02YWIzLTQ1NDMtOTllMC04OWQzYTRkYjU2YmUvc2VydmljZSIsImp0aSI6InVybjpkaWQ6YzMxNDYwNmUtNjMyNy00NTJiLTgzOGQtMzllYzg1OTRlOTYxIiwibmJmIjoxNzMzMjA2NDAxLCJzdGF0dXMiOnsic3RhdHVzX2xpc3QiOnsiaWR4IjoxNTA2LCJ1cmkiOiJodHRwczovL3N0YWdpbmctb2lkNHZjLmlncmFudC5pby9vcmdhbmlzYXRpb24vMzBlMzIxOTktNmFiMy00NTQzLTk5ZTAtODlkM2E0ZGI1NmJlL3NlcnZpY2UvcmV2b2NhdGlvbi1zdGF0dXNsaXN0cy8yYmRiNmI4ZS0yZGU3LTQ0ZDYtYjc2NC1mZmZkYmQwNDQ2ZDIifX0sInN1YiI6ImRpZDprZXk6ejJkbXpEODFjZ1B4OFZraTdKYnV1TW1GWXJXUGdZb3l0eWtVWjNleXFodDFqOUtidEEzRkFOWDZ5SHduSkxicWlXNUsxaXhkWEQ0cktCcFJQdG4za29OZm9zZmZWZm1OV3F4akhIVFI5OGhGNVVVd0pXTTNwaUV3eUdYeEVLOUZrWDdocmlqSG5YWE1heFM2R1k2RXdVd1JwNnA2TVZObTlKNGtvb21MaU1ZSll6ODFwRyIsInZjdCI6IkxlZ2FsUGVyc29uYWxJZGVudGlmaWNhdGlvbkRhdGEifQ.nSee2ZHkEaeZGvFVVGm_7Mtj5cnGXYrI1UamtHdvBeC5a5k4PP3FAo1igXCRB3CSzJJ7poMUBo5IXG7lIwAbfQ~WyJiZDhkYjNmMmI1MjUxOGJhMzQ0ZGUxZDNiZjc5MWQyYWM1MGMyODc3Y2M4OGVjMjBiNDU2YTY3YTExZWY4N2ExIiwiaWRlbnRpZmllciIsImRmZCJd~WyIwMDZkMGFmYzJhOGRlYjRhM2RiYjIxNTVlNzdiY2QzMjE0ZGY0ZmE4NDYyZmQ3YzhmZDUxNDA3Y2MxODU4YWNlIiwibGVnYWxOYW1lIiwiZGZkZiJd")
-                        ,walletUnitAttestationJWT = null, walletUnitProofOfPossession = null
-                        )
-                }
-
-                withContext(Dispatchers.Main) {
-                    displayText.value =
-                        "${displayText.value} ${if (code != null) "Verification success" else "Verification failed"}\n\n"
-                }
-//                } else {
-//                    withContext(Dispatchers.Main) {
-//                        displayText.value =
-//                            "${displayText.value}No valid credentials\n\n"
-//                    }
-//                }
-            }
-        }
+    private fun txCodeOf(offer: CredentialOffer): String {
+        val txCode = offer.grants?.preAuthorizationCode?.transactionCode ?: return "—"
+        return "length=${txCode.length ?: "unspecified"} input_mode=${txCode.inputMode}"
     }
 
-    //since we are doing selection of cards here, we pick the latest card
-//    private fun takeFirstElementInEachList(
-//        filterCredentials: List<List<String>>,
-//        isSdJwt: Boolean,
-//        presentationRequest: WrappedPresentationRequest?,
-//        subJwk: ECKey
-//    ): List<String> {
-//        val response: MutableList<String> = mutableListOf()
-//        filterCredentials.forEach {
-//            if (it.isNotEmpty())
-//                if (isSdJwt)
-//                    response.add(
-//                        WrappedPresentationRequest(). presentationRequest?.let { it1 ->
-//                            SDJWTService().createSDJWTR(
-//                                it.first(),
-//                                it1,
-//                                subJwk
-//                            )
-//                        } ?: ""
-//                    )
-//                else {
-//                    response.add(it.first())
-//                }
-//
-//        }
-//        return response
-//    }
+    private fun layoutOf(form: Any?, usedFallback: Boolean) = when {
+        form == null -> "—"
+        usedFallback -> "$form  ← non-spec fallback"
+        else -> "$form  (spec form)"
+    }
+
+    private fun wellKnownOf(wellKnown: String?, usedFallback: Boolean) = when {
+        wellKnown == null -> "—"
+        usedFallback -> "$wellKnown  ← OpenID Connect Discovery fallback"
+        else -> "$wellKnown  (the location OpenID4VCI names)"
+    }
+
+    private companion object {
+        const val NOTHING_SCANNED = "Nothing scanned yet"
+    }
 }
