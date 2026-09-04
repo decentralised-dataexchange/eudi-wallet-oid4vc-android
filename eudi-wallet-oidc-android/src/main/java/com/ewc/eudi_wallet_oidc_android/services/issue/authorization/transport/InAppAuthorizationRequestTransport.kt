@@ -63,6 +63,13 @@ internal class InAppAuthorizationRequestTransport(
             throw AuthorizationException.Unusable("Unexpected error. Please try again.", status = 502)
         }
 
+        // A 4xx carries the server's own explanation. Without this the status fell through to
+        // "gave no redirect to continue with" below, which discarded the body and the OAuth error
+        // code -- the same loss this rework removed from the PAR and interactive transports.
+        if (response.code() >= 400) {
+            throw AuthorizationException.Rejected(response.code(), AuthorizationHttp.errorBody(response))
+        }
+
         // Preserved: the redirect is read only from a 302, and its absence is an outcome rather
         // than a crash -- it used to be a bare `return null`.
         val location = if (response.code() == 302) response.headers()["Location"] else null
@@ -115,7 +122,12 @@ internal class InAppAuthorizationRequestTransport(
                     param("response_type") == null &&
                     param("state") == null
                 )
-        if (wantsPresentation) return AuthorizationResponse.presentationRequired(location)
+        if (wantsPresentation) {
+            return AuthorizationResponse.presentationRequired(
+                url = location,
+                authSession = param("auth_session"),
+            )
+        }
 
         val asksForIdToken = param("response_type") == "id_token" &&
             param("redirect_uri") != null

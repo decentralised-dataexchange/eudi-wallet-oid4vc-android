@@ -4,6 +4,11 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.authorization
  * What the SDK sends and accepts when making an authorization request.
  *
  * [Default] preserves the SDK's existing behaviour; [Strict] is OpenID4VCI 1.0 as written.
+ *
+ * Note on what is *not* configurable: `authorization_details` and `scope` are always sent together.
+ * Sections 5.1.1 and 5.1.2 present them as two alternative ways of identifying the requested
+ * credential, but sending both is what this SDK has always done and what deployed servers expect.
+ * There was a flag for it that no code ever read, which is worse than no flag at all.
  */
 data class AuthorizationRequestPolicy(
 
@@ -13,15 +18,6 @@ data class AuthorizationRequestPolicy(
      * presentation mid-issuance.
      */
     val sendClientMetadata: Boolean = true,
-
-    /**
-     * Send both `authorization_details` and `scope`.
-     *
-     * Sections 5.1.1 and 5.1.2 present these as two *alternative* ways of identifying the requested
-     * credential. Sending both is what this SDK has always done and what deployed servers expect,
-     * so it stays the default.
-     */
-    val sendBothAuthorizationDetailsAndScope: Boolean = true,
 
     /** Allow the IAR profile extension when the authorization server advertises its endpoint. */
     val allowInteractiveAuthorization: Boolean = true,

@@ -128,4 +128,34 @@ class InAppAuthorizationTest {
         assertTrue(result.error!!.errorDescription!!.contains("Unexpected error"))
         assertEquals(502, result.error!!.httpStatus)
     }
+    /**
+     * A 4xx used to fall through to "gave no redirect to continue with", which threw the body and
+     * the OAuth code away -- the same loss already fixed for the PAR and interactive transports.
+     */
+    @Test
+    fun `a rejection reports the server's own error rather than a missing redirect`() {
+        server.enqueue(
+            MockResponse().setResponseCode(400).setBody(
+                """{"error":"invalid_request","error_description":"redirect_uri is not registered"}"""
+            )
+        )
+
+        val result = resolve()
+
+        assertEquals(AuthorizationOutcome.FAILED, result.outcome)
+        assertEquals("invalid_request", result.error!!.errorCode)
+        assertEquals("redirect_uri is not registered", result.error!!.errorDescription)
+        assertEquals(400, result.error!!.httpStatus)
+    }
+
+    /** The interactive transport carried it; this one dropped it on the floor. */
+    @Test
+    fun `a presentation redirect carries its auth_session`() {
+        redirect("openid://callback?presentation_definition=%7B%7D&auth_session=sess-9")
+
+        val result = resolve()
+
+        assertEquals(AuthorizationOutcome.PRESENTATION_REQUIRED, result.outcome)
+        assertEquals("sess-9", result.authSession)
+    }
 }
