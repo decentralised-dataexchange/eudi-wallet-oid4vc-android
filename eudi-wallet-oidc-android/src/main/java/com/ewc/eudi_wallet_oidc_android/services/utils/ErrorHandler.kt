@@ -7,8 +7,20 @@ import org.json.JSONException
 import org.json.JSONObject
 
 object ErrorHandler {
+
+    /**
+     * Turns whatever a server sent into an [ErrorResponse].
+     *
+     * The description logic below is unchanged and deliberately so — issuers send at least five
+     * different shapes and each branch exists because one of them was met in the field. What is
+     * new is that the OAuth `error` **code** now survives alongside the description instead of
+     * being overwritten by it: a standard
+     * `{"error":"invalid_grant","error_description":"Issuer state is not found"}` used to come back
+     * as the sentence alone, leaving callers to string-match prose to decide what to do.
+     */
     @Suppress("TooGenericExceptionCaught")
-    fun processError(err: String?): ErrorResponse? {
+    @JvmOverloads
+    fun processError(err: String?, httpStatus: Int? = null): ErrorResponse? {
         // Known possibilities for error:
         // 1. "Validation is failed"
         // 2. {"error_description": "Validation is failed", }
@@ -20,7 +32,16 @@ object ErrorHandler {
         } catch (e: Exception) {
             null
         }
-    return try {
+        // Read the code and the description as the two separate fields they are. `error` is only
+        // a code when it is a string: some issuers nest the real pair under `detail`.
+        val oauthCode = jsonObject?.let { root ->
+            (root.opt("error") as? String)?.takeIf { it.isNotBlank() }
+                ?: (root.opt("detail") as? JSONObject)
+                    ?.let { it.opt("error") as? String }?.takeIf { it.isNotBlank() }
+        }
+        val errorUri = jsonObject?.let { (it.opt("error_uri") as? String)?.takeIf(String::isNotBlank) }
+
+        val result = try {
         val errorResponse = when {
             err?.contains(
                 "Invalid Proof JWT: iss doesn't match the expected client_id",
@@ -133,6 +154,13 @@ object ErrorHandler {
             Log.e("ErrorHandler", "Error processing error response: ${e.message}")
             // Fallback: if any parsing step throws unexpectedly, return raw string
             ErrorResponse(error = -1, errorDescription = err)
+        }
+
+        return result?.apply {
+            errorCode = oauthCode
+            this.errorUri = errorUri
+            this.httpStatus = httpStatus
+            raw = err
         }
     }
 }

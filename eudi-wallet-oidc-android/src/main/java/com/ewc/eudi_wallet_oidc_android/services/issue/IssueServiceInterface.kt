@@ -1,5 +1,13 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestInfo
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
@@ -52,6 +60,40 @@ interface IssueServiceInterface {
     ): String?
 
     /**
+     * The authorization request.
+     *
+     * Replaces [processAuthorisationRequest], whose `String?` meant six different things and left
+     * the caller re-parsing query parameters off a URL to work out which. Switch on
+     * [AuthorizationResponse.outcome].
+     *
+     * @param session the offer and the two metadata documents, from the offer and discovery steps
+     * @param wallet the DID and key this authorization is bound to
+     * @param attestation the wallet unit attestation and its proof of possession, when the issuer
+     *   requires them; null sends no `OAuth-Client-Attestation` headers
+     * @param codeVerifier PKCE (RFC 7636). Owned by the caller because the **token request needs the
+     *   same value**; the SDK only derives the challenge from it.
+     * @param selection overrides the format and doctype the session implies; both are derived when
+     *   left null
+     * @param redirectUri where the authorization server should send the user back to. Defaults to
+     *   `openid://callback`. Whatever is used is returned as
+     *   [AuthorizationRequestInfo.redirectUri] and **must be repeated verbatim in the token
+     *   request** (RFC 6749 section 4.1.3)
+     * @param mode [AuthorizationMode.Browser] for a scanned offer (RFC 8252), or
+     *   [AuthorizationMode.InApp] for first-party non-interactive flows such as the
+     *   wallet-provider attestation bootstrap
+     */
+    suspend fun requestAuthorization(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        codeVerifier: String,
+        selection: CredentialSelection = CredentialSelection(),
+        redirectUri: String? = null,
+        mode: AuthorizationMode = AuthorizationMode.Browser,
+        policy: AuthorizationRequestPolicy = AuthorizationRequestPolicy.Default,
+    ): AuthorizationResponse
+
+    /**
      * To process the token,
      *
      * @param did
@@ -66,6 +108,19 @@ interface IssueServiceInterface {
      *
      * @return Token response
      */
+    /**
+     * Answers an authorization server that asked for an ID token rather than authorizing directly.
+     *
+     * Was public on the implementation but missing here, so a host could reach it only by parsing
+     * the URL [processAuthorisationRequest] returned.
+     */
+    suspend fun processAuthorisationRequestUsingIdToken(
+        did: String?,
+        authorisationEndPoint: String?,
+        location: String?,
+        subJwk: JWK?
+    ): String?
+
     suspend fun processTokenRequest(
         did: String?,
         tokenEndPoint: String?,

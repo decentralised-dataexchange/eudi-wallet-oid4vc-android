@@ -177,7 +177,7 @@ class ReIssuanceService : ReIssuanceServiceInterface {
                     Log.e("IssueService", "Error reissuing credential: ${error.message}")
                     WrappedCredentialResponse(
                         credentialResponse = null,
-                        errorResponse = ErrorResponse(errorDescription = error.message)
+                        errorResponse = ErrorResponse(error = -1, errorDescription = error.message)
                     )
                 }
             )
