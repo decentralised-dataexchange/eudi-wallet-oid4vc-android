@@ -105,4 +105,48 @@ class ErrorHandlerTest {
         assertEquals(-1, result?.error)
         assertEquals("reason: unsupported_format", result?.errorDescription)
     }
+    // The code and the description are two different fields and both have to survive. Before this,
+    // `error_description` won and the code — the only machine-readable half — was discarded.
+
+    @Test
+    fun `oauth error code survives alongside the description`() {
+        val result = ErrorHandler.processError(
+            """{"error":"invalid_grant","error_description":"Issuer state is not found"}"""
+        )
+        assertEquals("invalid_grant", result?.errorCode)
+        assertEquals("Issuer state is not found", result?.errorDescription)
+        assertEquals(-1, result?.error)
+    }
+
+    @Test
+    fun `nested detail also yields its error code`() {
+        val result = ErrorHandler.processError(
+            """{"detail":{"error":"invalid_grant","error_description":"PIN is wrong"}}"""
+        )
+        assertEquals("invalid_grant", result?.errorCode)
+        assertEquals("PIN is wrong", result?.errorDescription)
+    }
+
+    @Test
+    fun `a body with no code reports none rather than inventing one`() {
+        assertNull(ErrorHandler.processError("Invalid Proof JWT")?.errorCode)
+        assertNull(ErrorHandler.processError("""{"message":"Something went wrong"}""")?.errorCode)
+    }
+
+    @Test
+    fun `http status and the raw body are carried for diagnostics`() {
+        val body = """{"error":"use_dpop_nonce"}"""
+        val result = ErrorHandler.processError(body, httpStatus = 401)
+        assertEquals("use_dpop_nonce", result?.errorCode)
+        assertEquals(401, result?.httpStatus)
+        assertEquals(body, result?.raw)
+    }
+
+    @Test
+    fun `error_uri is kept when the server sends one`() {
+        val result = ErrorHandler.processError(
+            """{"error":"invalid_request","error_uri":"https://issuer.example/errors/1"}"""
+        )
+        assertEquals("https://issuer.example/errors/1", result?.errorUri)
+    }
 }
