@@ -85,6 +85,14 @@ class AuthorizationRequestResolver(
         } catch (e: AuthorizationException) {
             Logger.e(TAG, "authorization request failed via ${transport.name}: ${e.message}")
             AuthorizationResponse.failed(e.toErrorResponse())
+        } catch (e: Exception) {
+            // Anything a transport did not anticipate -- a malformed body, a null from a stubbed
+            // dependency. Catching only AuthorizationException left these to reach the caller as a
+            // throw, which is the one outcome this class exists to remove.
+            Logger.e(TAG, "authorization request failed via ${transport.name}: ${e.message}")
+            AuthorizationResponse.failed(
+                reason = e.message ?: "The authorization request failed",
+            )
         }.copy(request = request)
     }
 

@@ -78,10 +78,22 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
         }
 
         val body = response.body()
+
+        // `type` is the discriminator, not the shape of the payload. The wallet advertises
+        // `interaction_types_supported` and the server answers by naming the one it chose; reading
+        // the payload instead would let the wallet decide what the server meant, and would make the
+        // negotiation pointless. The payload is then required to match what the type announced --
+        // without that check a presentation with no request produced a URL missing
+        // `openid4vp_request`, which the verification side reports two layers later as the generic
+        // "Invalid Request".
         return when (body?.type) {
             TYPE_PRESENTATION -> {
+                val presentationRequest = body.openid4vpRequest ?: throw AuthorizationException.Unusable(
+                    "This issuer announced an $TYPE_PRESENTATION interaction but sent no openid4vp_request",
+                    status = response.code(),
+                )
                 // The presentation side identifies the verifier by this scheme.
-                body.openid4vpRequest?.clientId = "iar:$interactiveEndpoint"
+                presentationRequest.clientId = "iar:$interactiveEndpoint"
                 val url = AuthorizationUri.appendQueryParameters(
                     authorizationEndpoint,
                     mapOf(
@@ -89,7 +101,7 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
                         "status" to body.status,
                         "type" to body.type,
                         "auth_session" to body.authSession,
-                        "openid4vp_request" to body.openid4vpRequest?.let { Gson().toJson(it) },
+                        "openid4vp_request" to Gson().toJson(presentationRequest),
                     ),
                 )
                 AuthorizationResponse.presentationRequired(
@@ -100,17 +112,23 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
             }
 
             TYPE_REDIRECT_TO_WEB -> {
+                val requestUri = body.requestUri?.takeIf { it.isNotBlank() }
+                    ?: throw AuthorizationException.Unusable(
+                        "This issuer announced a $TYPE_REDIRECT_TO_WEB interaction but sent no request_uri",
+                        status = response.code(),
+                    )
                 AuthorizationResponse.openInBrowser(
                     AuthorizationUri.appendQueryParameters(
                         authorizationEndpoint,
-                        mapOf("client_id" to parameters.clientId, "request_uri" to body.requestUri),
+                        mapOf("client_id" to parameters.clientId, "request_uri" to requestUri),
                     ),
                     expiresIn = body.expiresIn,
                 )
             }
 
             else -> throw AuthorizationException.Unusable(
-                "This issuer asked for an interaction this wallet does not support: ${body?.type ?: "none"}"
+                "This issuer asked for an interaction this wallet does not support: ${body?.type ?: "none"}",
+                status = response.code(),
             )
         }
     }

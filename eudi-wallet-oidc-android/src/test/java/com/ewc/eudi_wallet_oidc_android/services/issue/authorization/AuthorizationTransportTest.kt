@@ -243,4 +243,71 @@ class AuthorizationTransportTest {
         assertEquals(AuthorizationTransportKind.PUSHED, result.request!!.transport)
         assertTrue(result.request!!.parameters.containsKey("code_challenge"))
     }
+    // MARK: - The interaction type is the discriminator
+
+    /**
+     * `type` decides, not the shape of the payload: the wallet advertises
+     * `interaction_types_supported` and the server answers by naming the one it chose. Reading the
+     * payload instead would make that negotiation pointless.
+     */
+    @Test
+    fun `an announced presentation with no request is refused rather than half-built`() {
+        serve(
+            "/iar" to MockResponse().setResponseCode(200).setBody(
+                """{"status":"ok","type":"openid4vp_presentation","auth_session":"s1"}"""
+            )
+        )
+
+        val result = resolve(authConfig(interactive = server.url("/iar").toString()))
+
+        assertEquals(AuthorizationOutcome.FAILED, result.outcome)
+        assertTrue(result.error!!.errorDescription!!.contains("no openid4vp_request"))
+    }
+
+    @Test
+    fun `an announced redirect with no request_uri is refused`() {
+        serve(
+            "/iar" to MockResponse().setResponseCode(200)
+                .setBody("""{"status":"ok","type":"redirect_to_web"}""")
+        )
+
+        val result = resolve(authConfig(interactive = server.url("/iar").toString()))
+
+        assertEquals(AuthorizationOutcome.FAILED, result.outcome)
+        assertTrue(result.error!!.errorDescription!!.contains("no request_uri"))
+    }
+
+    /** A payload the wallet could act on does not override a type it did not advertise. */
+    @Test
+    fun `an unadvertised interaction type is refused even when it carries a usable payload`() {
+        serve(
+            "/iar" to MockResponse().setResponseCode(200).setBody(
+                """{"type":"something_new","request_uri":"urn:x","openid4vp_request":{"nonce":"n"}}"""
+            )
+        )
+
+        val result = resolve(authConfig(interactive = server.url("/iar").toString()))
+
+        assertEquals(AuthorizationOutcome.FAILED, result.outcome)
+        assertTrue(result.error!!.errorDescription!!.contains("does not support: something_new"))
+    }
+
+    /** The presentation URL must not carry request_uri -- see the transport's KDoc. */
+    @Test
+    fun `the presentation url omits request_uri and keeps status`() {
+        serve(
+            "/iar" to MockResponse().setResponseCode(200).setBody(
+                """{"status":"ok","type":"openid4vp_presentation","auth_session":"s1",
+                    "request_uri":"urn:should-not-appear","openid4vp_request":{"nonce":"n"}}"""
+            )
+        )
+
+        val result = resolve(authConfig(interactive = server.url("/iar").toString()))
+
+        assertEquals(AuthorizationOutcome.PRESENTATION_REQUIRED, result.outcome)
+        assertTrue(result.url!!.contains("status=ok"))
+        assertTrue(result.url!!.contains("type=openid4vp_presentation"))
+        assertTrue(result.url!!.contains("openid4vp_request="))
+        assertTrue(!result.url!!.contains("request_uri="))
+    }
 }
