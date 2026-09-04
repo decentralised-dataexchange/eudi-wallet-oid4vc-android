@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">Eudi Wallet OIDC Android</string>
+    <string name="harness_scan">Scan QR</string>
+    <string name="harness_paste_hint">Scan, or paste a credential offer link</string>
+    <string name="harness_step_offer">1 · Resolve credential offer</string>
+    <string name="harness_step_issuer">2 · Discover issuer metadata</string>
+    <string name="harness_step_auth">3 · Discover authorization server</string>
+    <string name="harness_step_authorization">4 · Request authorization</string>
+    <string name="harness_run_all">Run 1 → 4</string>
+    <string name="harness_clear">Clear</string>
+    <string name="harness_camera_permission">Camera permission is needed to scan</string>
+    <string name="harness_scan_empty">Nothing was scanned</string>
+    <string name="harness_step_token">5 · Request token</string>
+    <string name="harness_tx_code_hint">Transaction code (only if the offer declares tx_code)</string>
 </resources>
