@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# GitHub Packages credentials — never commit
+github.properties
