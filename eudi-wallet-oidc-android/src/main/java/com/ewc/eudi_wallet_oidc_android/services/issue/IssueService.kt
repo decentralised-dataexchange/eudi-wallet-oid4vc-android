@@ -32,6 +32,17 @@ import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
 import com.ewc.eudi_wallet_oidc_android.services.codeVerifier.CodeVerifierService
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestResolver
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.details.AuthorizationDetailsBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.idtoken.IdTokenResponder
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
@@ -100,6 +111,22 @@ class IssueService(
     override suspend fun resolveCredentialOffer(data: String?): WrappedCredentialOffer =
         offerResolver.resolve(data)
 
+    /**
+     * The authorization request.
+     *
+     * A delegation to `services/issue/authorization/`, where each way of putting the request to the
+     * authorization server is an `AuthorizationRequestTransport` -- the IAR profile extension, PAR,
+     * the in-app call, and the browser -- consulted in that order, and the parameters they all
+     * share are assembled once.
+     *
+     * @return the same overloaded URL string this has always returned. Prefer
+     *   [requestAuthorization], which names the outcome instead of leaving the caller to work it
+     *   out from query parameters.
+     */
+    @Deprecated(
+        "Returns a URL that means six different things. Use requestAuthorization, which returns AuthorizationResponse.",
+        ReplaceWith("requestAuthorization(...)"),
+    )
     override suspend fun processAuthorisationRequest(
         did: String?,
         subJwk: JWK?,
@@ -111,471 +138,111 @@ class IssueService(
         issuerConfig: IssuerWellKnownConfiguration?,
         redirectUri: String?,
         isApiCallRequired: Boolean,
-        walletUnitAttestationJWT: String? ,
+        walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
     ): String? {
-        val headers = WalletUnitAttestationHeaders.build(
-            walletUnitAttestationJWT,
-            walletUnitProofOfPossession
+        val result = requestAuthorization(
+            session = IssuanceSession(credentialOffer, issuerConfig, authConfig),
+            wallet = WalletIdentity(did, subJwk),
+            attestation = WalletAttestation(walletUnitAttestationJWT, walletUnitProofOfPossession),
+            codeVerifier = codeVerifier,
+            selection = CredentialSelection(format, docType),
+            redirectUri = redirectUri,
+            mode = if (isApiCallRequired) AuthorizationMode.InApp else AuthorizationMode.Browser,
         )
-        val TAG = "iar"
-        val authorisationEndPoint =authConfig?.authorizationEndpoint
-        val responseType = "code"
-        val types = getTypesFromCredentialOffer(credentialOffer)
-        val scope = if (format == "mso_mdoc") {
-            "${types.firstOrNull() ?: ""} openid"
-        } else {
-            "openid"
+
+        // Flattened back onto the old contract, case for case. `location` is the redirect the
+        // outcome was read from, which is exactly what this method used to return.
+        return when (result.outcome) {
+            AuthorizationOutcome.AUTHORIZATION_CODE -> result.location
+            AuthorizationOutcome.OPEN_IN_BROWSER -> result.url
+            AuthorizationOutcome.PRESENTATION_REQUIRED -> result.url
+            AuthorizationOutcome.ID_TOKEN_REQUIRED -> result.url
+            AuthorizationOutcome.FAILED -> result.location
         }
-        val state = UUID.randomUUID().toString()
-        //val clientId = did
-        val clientId = WalletUnitAttestationHeaders.clientId(walletUnitAttestationJWT, did)
-        val authorisationDetails = buildAuthorizationRequest(
-            credentialOffer = credentialOffer,
-            format = format,
-            doctype = docType,
-            issuerConfig = issuerConfig,
-            version = credentialOffer?.version
-        )
-        val redirectURI = redirectUri ?: "openid://callback"
-        val nonce = UUID.randomUUID().toString()
-
-        val codeChallenge = CodeVerifierService().generateCodeChallenge(codeVerifier)
-        val codeChallengeMethod = "S256"
-        val clientMetadata = if (format == "mso_mdoc") "" else Gson().toJson(
-            ClientMetaDataas(
-                vpFormatsSupported = VpFormatsSupported(
-                    jwtVp = Jwt(arrayListOf("ES256")), jwtVc = Jwt(arrayListOf("ES256"))
-                ), responseTypesSupported = arrayListOf(
-                    "vp_token", "id_token"
-                ), authorizationEndpoint = redirectURI
-            )
-        )
-        if (!authConfig?.interactiveAuthorizationEndpoint.isNullOrEmpty()) {
-            Log.d(TAG, "${authConfig.interactiveAuthorizationEndpoint}")
-
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.interactiveAuthorizationRequest(
-                    authConfig?.interactiveAuthorizationEndpoint ?: "",
-                    mapOf(
-                        "response_type" to responseType,
-                        "scope" to scope.trim(),
-                        "state" to state,
-                        "client_id" to (clientId ?: ""),
-                        "authorization_details" to authorisationDetails,
-                        "redirect_uri" to redirectURI,
-                        "nonce" to nonce,
-                        "code_challenge" to (codeChallenge ?: ""),
-                        "code_challenge_method" to codeChallengeMethod,
-                        "client_metadata" to clientMetadata,
-                        "interaction_types_supported" to "openid4vp_presentation,redirect_to_web",
-                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-                    ),
-                    headers
-                )
-            }
-
-            result.fold(
-                onSuccess = { iarResponse ->
-                    if (iarResponse.isSuccessful) {
-                        val body = iarResponse.body()
-                        Log.d(TAG, "Status: ${body.toString()}, Type: ${body?.type}")
-                        when (body?.type) {
-                            "openid4vp_presentation" -> {
-                                val urlBuilder = Uri.parse(authConfig.authorizationEndpoint ?: "").buildUpon()
-                                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                                urlBuilder.appendQueryParameter("status", body.status ?: "")
-                                urlBuilder.appendQueryParameter("type", body.type ?: "")
-                                urlBuilder.appendQueryParameter("auth_session", body.authSession ?: "")
-                                body.openid4vpRequest?.clientId = "iar:${authConfig.interactiveAuthorizationEndpoint}"
-                                body.openid4vpRequest?.let {
-                                    urlBuilder.appendQueryParameter("openid4vp_request", Gson().toJson(it))
-                                }
-                                return urlBuilder.build().toString()
-                            }
-
-                            "redirect_to_web" -> {
-                                val urlBuilder = Uri.parse(authConfig.authorizationEndpoint ?: "").buildUpon()
-                                urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                                urlBuilder.appendQueryParameter("request_uri", body.requestUri)
-                                return urlBuilder.build().toString()
-                            }
-
-                            else -> Log.e(TAG, "Unknown interaction type: ${body?.type}")
-                        }
-                    } else {
-                        Log.e(TAG, "Failed: ${iarResponse.errorBody()?.string()}")
-                    }
-                },
-                onFailure = { error ->
-                    Log.e(TAG, "Interactive request failed: ${error.message}")
-                }
-            )
-        }
-
-        // ---------- PAR Request ----------
-        else if (authConfig?.requirePushedAuthorizationRequests == true) {
-            val parParams = mapOf(
-                "response_type" to responseType,
-                "scope" to scope.trim(),
-                "state" to state,
-                "client_id" to (clientId ?: ""),
-                "authorization_details" to authorisationDetails,
-                "redirect_uri" to redirectURI,
-                "nonce" to nonce,
-                "code_challenge" to (codeChallenge ?: ""),
-                "code_challenge_method" to codeChallengeMethod,
-                "client_metadata" to clientMetadata,
-                "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-            )
-            // The attestation headers and PAR params are not logged: they carry the wallet
-            // attestation and its PoP, which are credentials in their own right.
-            Log.d("BankIdWatch", "PAR POST ${authConfig.pushedAuthorizationRequestEndpoint}")
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.processParAuthorisationRequest(
-                    authConfig.pushedAuthorizationRequestEndpoint ?: "",
-                    parParams,
-                    headers
-                )
-            }
-
-            result.fold(
-                onSuccess = { parResponse ->
-                    if (parResponse.isSuccessful) {
-                        val requestUri = parResponse.body()?.requestUri ?: ""
-                        Log.d("BankIdWatch", "PAR response code=${parResponse.code()} request_uri=$requestUri Set-Cookie=${parResponse.headers().values("Set-Cookie")}")
-                        if (isApiCallRequired) {
-                            val nextResult = SafeApiCall.safeApiCallResponse {
-                                ApiManager.api.getService()?.processAuthorisationRequest(
-                                    authorisationEndPoint ?: "",
-                                    mapOf("client_id" to (clientId ?: ""), "request_uri" to requestUri)
-                                )
-                            }
-
-                            nextResult.fold(
-                                onSuccess = { response ->
-                                    val location = response.headers()["Location"]
-                                    Log.d("BankIdWatch", "authorize GET $authorisationEndPoint request_uri=$requestUri")
-                                    Log.d("BankIdWatch", "authorize response code=${response.code()} Location=$location")
-                                    Log.d("BankIdWatch", "authorize Set-Cookie=${response.headers().values("Set-Cookie")}")
-                                    if (response.code() == 302 && !location.isNullOrEmpty()) {
-                                        Log.d("BankIdWatch", "returning Location AS-IS to caller: $location")
-                                        return location
-                                    } else if (response.isSuccessful && response.headers()["Content-Type"]?.contains("text/html") == true) {
-                                        Log.d("BankIdWatch", "html branch, returning final request url: ${response.raw().request.url}")
-                                        return response.raw().request.url.toString()
-                                    } else if ((response.code()) >= 400) {
-                                        val errorMessage = response.errorBody()?.string() ?: "Unexpected error."
-                                        Log.d("BankIdWatch", "error branch code=${response.code()} body=$errorMessage")
-                                        val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                                        urlBuilder.appendQueryParameter("error", errorMessage)
-                                        return urlBuilder.build().toString()
-                                    }
-                                },
-                                onFailure = { error ->
-                                    Log.e(TAG, "PAR follow-up failed: ${error.message}")
-                                    Log.e("BankIdWatch", "authorize call failed: ${error.message}")
-                                }
-                            )
-                        } else {
-                            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-                            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-                            urlBuilder.appendQueryParameter("request_uri", requestUri)
-                            return urlBuilder.build().toString()
-                        }
-                    } else {
-                        // A rejected PAR used to be swallowed silently. The Date header is the
-                        // server's own clock — compare it with the PoP iat logged above.
-                        Log.e(
-                            "BankIdWatch",
-                            "PAR REJECTED code=${parResponse.code()} " +
-                                "serverDate=${parResponse.headers()["Date"]} " +
-                                "body=${parResponse.errorBody()?.string()}"
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    Log.e(TAG, "PAR request failed: ${error.message}")
-                }
-            )
-        }
-
-        // ---------- Standard flow ----------
-        else if (isApiCallRequired) {
-            val result = SafeApiCall.safeApiCallResponse {
-                ApiManager.api.getService()?.processAuthorisationRequest(
-                    authorisationEndPoint ?: "",
-                    mapOf(
-                        "response_type" to responseType,
-                        "scope" to scope.trim(),
-                        "state" to state,
-                        "client_id" to (clientId ?: ""),
-                        "authorization_details" to authorisationDetails,
-                        "redirect_uri" to redirectURI,
-                        "nonce" to nonce,
-                        "code_challenge" to (codeChallenge ?: ""),
-                        "code_challenge_method" to codeChallengeMethod,
-                        "client_metadata" to clientMetadata,
-                        "issuer_state" to (credentialOffer?.grants?.authorizationCode?.issuerState ?: "")
-                    ),
-                )
-            }
-
-            result.fold(
-                onSuccess = { response ->
-
-                    // ------ Part 1: 502 check ------
-                    if (response.code() == 502) {
-                        throw Exception("Unexpected error. Please try again.")
-                    }
-
-                    // ------ Part 2: extract redirect ------
-                    val location: String? = if (response.code() == 302) {
-                        response.headers()["Location"]
-                    } else null
-
-                    // ------ Part 3: Apply the original return logic ------
-                    return when {
-
-                        // Case: no redirect → return null
-                        location == null -> null
-
-                        // Case: ?error= detected
-                        Uri.parse(location).getQueryParameter("error") != null -> location
-
-                        // Case: authorization code / PEX
-                        Uri.parse(location).getQueryParameter("code") != null
-                                || Uri.parse(location).getQueryParameter("presentation_definition") != null
-                                || Uri.parse(location).getQueryParameter("presentation_definition_uri") != null
-                                || (
-                                Uri.parse(location).getQueryParameter("request_uri") != null &&
-                                        Uri.parse(location).getQueryParameter("response_type") == null &&
-                                        Uri.parse(location).getQueryParameter("state") == null
-                                ) -> location
-
-                        // Case: ID Token flow
-                        Uri.parse(location).getQueryParameter("response_type") == "id_token" &&
-                                Uri.parse(location).getQueryParameter("redirect_uri") != null ->
-                            processAuthorisationRequestUsingIdToken(
-                                did = did,
-                                authorisationEndPoint = authorisationEndPoint,
-                                location = location,
-                                subJwk = subJwk
-                            )
-
-                        // Case: redirect is to external URL
-                        !location.startsWith(redirectURI) -> location
-
-                        // Case: final fallback → ID Token process
-                        else ->
-                            processAuthorisationRequestUsingIdToken(
-                                did = did,
-                                authorisationEndPoint = authorisationEndPoint,
-                                location = location,
-                                subJwk = subJwk
-                            )
-                    }
-
-                },
-                onFailure = { error ->
-                    Log.e(TAG, "Authorization request failed: ${error.message}")
-                }
-            )
-        } else {
-            val urlBuilder = Uri.parse(authorisationEndPoint ?: "").buildUpon()
-            urlBuilder.appendQueryParameter("response_type", responseType)
-            urlBuilder.appendQueryParameter("scope", scope.trim())
-            urlBuilder.appendQueryParameter("state", state)
-            urlBuilder.appendQueryParameter("client_id", clientId ?: "")
-            urlBuilder.appendQueryParameter("authorization_details", authorisationDetails)
-            urlBuilder.appendQueryParameter("redirect_uri", redirectURI ?: "")
-            urlBuilder.appendQueryParameter("nonce", nonce)
-            urlBuilder.appendQueryParameter("code_challenge", codeChallenge ?: "")
-            urlBuilder.appendQueryParameter("code_challenge_method", codeChallengeMethod)
-            urlBuilder.appendQueryParameter("client_metadata", clientMetadata)
-            urlBuilder.appendQueryParameter(
-                "issuer_state",
-                credentialOffer?.grants?.authorizationCode?.issuerState ?: ""
-            )
-            return urlBuilder.build().toString()
-        }
-
-        return null
     }
 
-    suspend fun processAuthorisationRequestUsingIdToken(
+    /**
+     * The authorization request.
+     *
+     * Returns one [AuthorizationResponse]: the outcome, and what was sent to produce it. There is
+     * deliberately no second "detailed" variant -- `request` is part of the contract, because the
+     * caller needs `redirectUri` and `state` to finish the flow correctly.
+     *
+     * @param selection overrides what the session implies about the credential being requested;
+     *   both fields are derived when left null.
+     */
+    override suspend fun requestAuthorization(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation?,
+        codeVerifier: String,
+        selection: CredentialSelection,
+        redirectUri: String?,
+        mode: AuthorizationMode,
+        policy: AuthorizationRequestPolicy,
+    ): AuthorizationResponse {
+        val types = getTypesFromCredentialOffer(session.credentialOffer)
+        val format = selection.format
+            ?: getFormatFromIssuerConfig(session.issuerConfig, types.lastOrNull())
+        val resolved = selection.copy(format = format)
+
+        val authorizationDetails = buildAuthorizationRequest(
+            credentialOffer = session.credentialOffer,
+            format = resolved.format,
+            doctype = resolved.docType,
+            issuerConfig = session.issuerConfig,
+            version = session.offerVersion,
+        )
+
+        return AuthorizationRequestResolver(policy = policy).resolve(
+            session = session,
+            wallet = wallet,
+            attestation = attestation,
+            codeVerifier = codeVerifier,
+            authorizationDetails = authorizationDetails,
+            scopeTypes = types,
+            selection = resolved,
+            redirectUri = redirectUri,
+            mode = mode,
+        )
+    }
+
+    /**
+     * Answers an authorization server that asked for an ID token rather than authorizing directly.
+     *
+     * A delegation to [IdTokenResponder]; the token itself is built exactly as before. Reached when
+     * [requestAuthorization] answers with [AuthorizationOutcome.ID_TOKEN_REQUIRED], whose `url` is
+     * the `location` to pass here.
+     */
+    override suspend fun processAuthorisationRequestUsingIdToken(
         did: String?,
         authorisationEndPoint: String?,
         location: String?,
         subJwk: JWK?
-    ): String? {
-        val claimsSet =
-            JWTClaimsSet.Builder()
-                .issueTime(Date())
-                .expirationTime(Date(Date().time + 60000))
-                .issuer(did)
-                .subject(did)
-                .audience( Uri.parse(location).getQueryParameter("client_id")?:authorisationEndPoint)
-                .claim("nonce", Uri.parse(location).getQueryParameter("nonce"))
-                .build()
+    ): String? = IdTokenResponder().respond(
+        wallet = WalletIdentity(did, subJwk),
+        authorisationEndPoint = authorisationEndPoint,
+        location = location,
+    )
 
-        // Create JWT for ES256K alg
-        val jwsHeader =
-            JWSHeader.Builder(if (subJwk is OctetKeyPair) JWSAlgorithm.EdDSA else JWSAlgorithm.ES256)
-                .type(JOSEObjectType.JWT)
-                .keyID("$did#${did?.replace("did:key:", "")}")
-                .build()
-
-        val jwt = SignedJWT(
-            jwsHeader, claimsSet
-        )
-
-        // Sign with private EC key
-        jwt.sign(
-            if (subJwk is OctetKeyPair) Ed25519Signer(subJwk as OctetKeyPair) else ECDSASigner(
-                subJwk as ECKey
-            )
-        )
-
-        val result = SafeApiCall.safeApiCallResponse {
-            ApiManager.api.getService()?.sendIdTokenForCode(
-                url = Uri.parse(location).getQueryParameter("redirect_uri") ?: "",
-                idToken = jwt.serialize(),
-                state = Uri.parse(location).getQueryParameter("state") ?: "",
-                contentType = "application/x-www-form-urlencoded"
-            )
-        }
-
-        return result.fold(
-            onSuccess = { response ->
-                if (response.code() == 302) {
-                    response.headers()["Location"]
-                } else {
-                    null
-                }
-            },
-            onFailure = { error ->
-                println("Error while sending ID Token: ${error.message}")
-                null
-            }
-        )
-    }
-
-    private fun buildAuthorizationRequest(
-        credentialOffer: CredentialOffer?,
-        format: String?,
-        doctype: String?
-    ): String {
-        val gson = Gson()
-        var credentialDefinitionNeeded = false
-        try {
-            if (credentialOffer?.credentials?.get(0)?.trustFramework == null)
-                credentialDefinitionNeeded = true
-
-        } catch (e: Exception) {
-            credentialDefinitionNeeded = true
-        }
-        if (format == "mso_mdoc" && doctype != null) {
-            return gson.toJson(
-                arrayListOf(
-                    AuthorizationDetails(
-                        format = format,
-                        doctype = doctype,
-                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                    )
-                )
-            )
-        } else {
-            if (credentialDefinitionNeeded) {
-                return gson.toJson(
-                    arrayListOf(
-                        AuthorizationDetails(
-                            format = format,
-                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: ""),
-                            credentialDefinition = CredentialTypeDefinition(
-                                type = getTypesFromCredentialOffer(credentialOffer)
-                            )
-                        )
-                    )
-                )
-
-            } else {
-                return gson.toJson(
-                    arrayListOf(
-                        AuthorizationDetails(
-                            format = format,
-                            types = getTypesFromCredentialOffer(credentialOffer),
-                            locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-                        )
-                    )
-                )
-            }
-        }
-
-    }
-
-
+    /**
+     * The `authorization_details` parameter.
+     *
+     * A delegation to [AuthorizationDetailsBuilder]; the draft shapes live in its `legacy` package.
+     */
     private fun buildAuthorizationRequest(
         credentialOffer: CredentialOffer?,
         format: String?,
         doctype: String?,
         version: Int? = 2,
         issuerConfig: IssuerWellKnownConfiguration?
-    ): String {
-        val gson = Gson()
-
-        when (version) {
-            1 -> {
-                return buildAuthorizationRequest(
-                    credentialOffer = credentialOffer,
-                    format = format,
-                    doctype = doctype
-                )
-            }
-            else -> {
-                val authorizationDetailList: ArrayList<AuthorizationDetails> = ArrayList()
-                for (credential in credentialOffer?.credentials ?: arrayListOf()) {
-                    authorizationDetailList.add(AuthorizationDetails(
-                        credentialConfigurationId = credential.types?.firstOrNull(),
-                    ))
-                }
-                return gson.toJson(authorizationDetailList)
-            }
-        }
-//        if (format == "mso_mdoc" && doctype != null) {
-//            return gson.toJson(
-//                arrayListOf(
-//                    AuthorizationDetails(
-//                        type = "openid_credential",
-//                        doctype = doctype,
-//                        credentialConfigurationId = credentialConfigurationId,
-//                        locations = arrayListOf(credentialOffer?.credentialIssuer ?: "")
-//                    )
-//                )
-//            )
-//        } else {
-//            when (version) {
-//                1 -> {
-//                    return buildAuthorizationRequest(
-//                        credentialOffer = credentialOffer,
-//                        format = format,
-//                        doctype = doctype
-//                    )
-//                }
-//
-//                else -> {
-//                    return gson.toJson(
-//                        arrayListOf(
-//                            AuthorizationDetails(
-//                                format = null ,
-//                                credentialConfigurationId = credentialConfigurationId,
-//                            )
-//                        )
-//                    )
-//                }
-//            }
-//        }
-    }
+    ): String = AuthorizationDetailsBuilder().build(
+        session = IssuanceSession(credentialOffer, issuerConfig, null),
+        format = format,
+        docType = doctype,
+        types = getTypesFromCredentialOffer(credentialOffer),
+    )
 
     /**
      * To process the token,

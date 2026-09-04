@@ -57,7 +57,7 @@ class TokenRefreshService : TokenRefreshInterface {
             }
         }.onFailure { e ->
             tokenResponse = WrappedRefreshTokenResponse(
-                errorResponse = ErrorResponse(errorDescription = e.message ?: "Unknown error")
+                errorResponse = ErrorResponse(error = -1, errorDescription = e.message ?: "Unknown error")
             )
         }
 
