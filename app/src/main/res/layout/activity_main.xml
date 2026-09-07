@@ -85,6 +85,12 @@
                     android:text="@string/harness_step_token" />
 
                 <Button
+                    android:id="@+id/btnCredential"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/harness_step_credential" />
+
+                <Button
                     android:id="@+id/btnRunAll"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

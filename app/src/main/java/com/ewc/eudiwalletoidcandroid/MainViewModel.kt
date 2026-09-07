@@ -16,6 +16,9 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdent
 import com.ewc.eudi_wallet_oidc_android.services.discovery.DiscoveryService
 import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveryException
 import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.nimbusds.jose.jwk.ECKey
 import kotlinx.coroutines.launch
@@ -52,6 +55,10 @@ class MainViewModel : ViewModel() {
     /** What the authorization request sent, so the token request can repeat it verbatim. */
     private var sentRedirectUri: String? = null
 
+    /** The token step's answer, which the credential request needs in full. */
+    private var token: TokenResponse? = null
+    private var dpopNonce: String? = null
+
     /** The transaction code, when the offer asks for one. Bound two-way to the field in the UI. */
     val txCode = MutableLiveData("")
 
@@ -64,6 +71,8 @@ class MainViewModel : ViewModel() {
         codeVerifier = null
         authorizationCode = null
         sentRedirectUri = null
+        token = null
+        dpopNonce = null
         clear()
         log("Scanned", data)
     }
@@ -387,6 +396,8 @@ class MainViewModel : ViewModel() {
 
         val token = wrapped.tokenResponse
         val error = wrapped.errorResponse
+        this.token = token
+        this.dpopNonce = wrapped.dpopNonce
         when {
             token?.accessToken != null -> log(heading, """
                 $trace
@@ -414,6 +425,78 @@ class MainViewModel : ViewModel() {
                   raw                ${error?.raw?.take(200) ?: "—"}
             """.trimIndent())
         }
+    }
+
+    /**
+     * Step 6 — `IssueService.requestCredential`.
+     *
+     * Which form names the credential is section 8.2's rule, so `CredentialSubject.of` decides it
+     * rather than the harness: identifiers from the token response, else a configuration id, else
+     * the draft shape.
+     */
+    fun requestCredential() = run("6 · Request credential") {
+        val heading = "6 · Request credential"
+        val issuedToken = token
+        if (issuedToken?.accessToken == null) {
+            log(heading, "Run step 5 for an access token first")
+            return@run
+        }
+
+        val session = IssuanceSession(offer, issuerConfig, authConfig)
+        val identity = walletIdentity()
+        val credential = offer?.credentials?.firstOrNull()
+        val subject = CredentialSubject.of(session, issuedToken, credential)
+
+        val outcome = IssueService().requestCredential(
+            session = session,
+            wallet = identity,
+            token = issuedToken,
+            subject = subject,
+            // The harness holds no wallet unit attestation; the DPoP key is its throwaway one.
+            attestation = WalletAttestation(null, null, identity.jwk as? ECKey),
+            dpopNonce = dpopNonce,
+        )
+
+        val trace = """
+              endpoint           ${issuerConfig?.credentialEndpoint ?: "—"}
+              subject            ${describe(subject)}
+              nonce endpoint     ${issuerConfig?.nonceEndpoint ?: "— (c_nonce comes with the token)"}
+        """.trimIndent()
+
+        when (outcome) {
+            is CredentialOutcome.Issued -> log(heading, """
+                $trace
+                  outcome            issued
+                  credentials        ${outcome.credentials.size}
+                  notification_id    ${outcome.notificationId ?: "—"}
+                  next c_nonce       ${outcome.cNonce ?: "—"}
+                ${outcome.credentials.joinToString("\n") { "      ${it.take(72)}…" }}
+            """.trimIndent())
+
+            is CredentialOutcome.Deferred -> log(heading, """
+                $trace
+                  outcome            deferred — the issuer will have it later
+                  transaction_id     ${outcome.transactionId}
+                  interval           ${outcome.interval?.let { "$it s" } ?: "—"}
+                  next               the deferred endpoint, which is the next step to build
+            """.trimIndent())
+
+            is CredentialOutcome.Failed -> log(heading, """
+                $trace
+                  outcome            FAILED
+                  error              ${outcome.error.errorCode ?: "—"}
+                  description        ${outcome.error.errorDescription ?: "no reason given"}
+                  http status        ${outcome.error.httpStatus ?: "—"}
+                  raw                ${outcome.error.raw?.take(200) ?: "—"}
+            """.trimIndent())
+        }
+    }
+
+    private fun describe(subject: CredentialSubject) = when (subject) {
+        is CredentialSubject.ByIdentifier -> "credential_identifier=${subject.credentialIdentifier}"
+        is CredentialSubject.ByConfiguration -> "credential_configuration_id=${subject.credentialConfigurationId}"
+        is CredentialSubject.LegacyFormat ->
+            "legacy format=${subject.format} types=${subject.types} vct=${subject.vct} doctype=${subject.docType}"
     }
 
     /**
