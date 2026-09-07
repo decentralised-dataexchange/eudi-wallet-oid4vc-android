@@ -1,12 +1,13 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transport.extension
 
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationException
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transportFailure
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestParameters
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationTransportKind
-import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationHttp
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationUri
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
@@ -66,7 +67,7 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
         val authorizationEndpoint = session.authConfig?.authorizationEndpoint
             ?: throw AuthorizationException.NoAuthorizationEndpoint()
 
-        val response = AuthorizationHttp.call {
+        val response = HttpCall.call(::transportFailure) {
             ApiManager.api.getService()?.interactiveAuthorizationRequest(
                 interactiveEndpoint,
                 parameters.toMap() + mapOf("interaction_types_supported" to interactionTypesSupported),
@@ -74,7 +75,7 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
             )
         }
         if (!response.isSuccessful) {
-            throw AuthorizationException.Rejected(response.code(), AuthorizationHttp.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
         }
 
         val body = response.body()

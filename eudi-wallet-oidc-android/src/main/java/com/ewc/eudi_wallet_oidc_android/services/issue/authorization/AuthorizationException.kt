@@ -4,6 +4,15 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 
 /**
+ * Wraps a transport failure as this leg's own exception type.
+ *
+ * Passed to [com.ewc.eudi_wallet_oidc_android.services.network.HttpCall], which is shared with the
+ * token leg and so cannot know which exception to raise.
+ */
+internal fun transportFailure(detail: String?): Exception =
+    AuthorizationException.RequestFailed(detail)
+
+/**
  * Why an authorization request could not be completed.
  *
  * Internal to the package: the resolver turns these into an [AuthorizationResponse] whose outcome

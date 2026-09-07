@@ -2,12 +2,13 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transport
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationException
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transportFailure
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestParameters
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationTransportKind
-import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationHttp
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationUri
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
@@ -53,7 +54,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
         // wallet attestation and its proof of possession, which are credentials in their own right.
         Logger.d(TAG, "PAR POST ${session.authConfig.pushedAuthorizationRequestEndpoint}")
 
-        val response = AuthorizationHttp.call {
+        val response = HttpCall.call(::transportFailure) {
             ApiManager.api.getService()?.processParAuthorisationRequest(
                 session.authConfig.pushedAuthorizationRequestEndpoint.orEmpty(),
                 parameters.toMap(),
@@ -67,7 +68,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
             // Now actually reachable for a 4xx. The Date header is the server's own clock --
             // compare it with the proof-of-possession `iat` when a rejection looks like skew.
             Logger.e(TAG, "PAR rejected code=${response.code()} serverDate=${response.headers()["Date"]}")
-            throw AuthorizationException.Rejected(response.code(), AuthorizationHttp.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
         }
 
         val requestUri = response.body()?.requestUri.orEmpty()
@@ -106,7 +107,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
         requestUri: String,
         expiresIn: Int?,
     ): AuthorizationResponse {
-        val response = AuthorizationHttp.call {
+        val response = HttpCall.call(::transportFailure) {
             ApiManager.api.getService()?.processAuthorisationRequest(
                 authorizationEndpoint,
                 mapOf("client_id" to clientId, "request_uri" to requestUri),
@@ -128,7 +129,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
                 )
 
             response.code() >= 400 -> throw AuthorizationException.Rejected(
-                response.code(), AuthorizationHttp.errorBody(response)
+                response.code(), HttpCall.errorBody(response)
             )
 
             else -> throw AuthorizationException.Unusable(
