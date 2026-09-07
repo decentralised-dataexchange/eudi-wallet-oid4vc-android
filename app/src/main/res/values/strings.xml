@@ -12,4 +12,5 @@
     <string name="harness_scan_empty">Nothing was scanned</string>
     <string name="harness_step_token">5 · Request token</string>
     <string name="harness_tx_code_hint">Transaction code (only if the offer declares tx_code)</string>
+    <string name="harness_step_credential">6 · Request credential</string>
 </resources>
