@@ -21,7 +21,17 @@ data class WrappedTokenResponse(
     var errorResponse: ErrorResponse? = null,
     var legalPidAttestation: String? = null,
     var legalPidAttestationPoP: String? = null,
-    var dpop: String? = null
+    var dpop: String? = null,
+
+    /**
+     * A nonce the authorization server supplied in a `DPoP-Nonce` header, on the success or on a
+     * `use_dpop_nonce` challenge.
+     *
+     * RFC 9449 section 8.2: the client "MUST use the new nonce value supplied for the next token
+     * request and for all subsequent token requests until the authorization server supplies a new
+     * nonce". Carry it forward rather than discarding it.
+     */
+    var dpopNonce: String? = null,
 )
 
 data class AuthorizationDetail(

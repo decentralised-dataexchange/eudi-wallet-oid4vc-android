@@ -2,12 +2,13 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transport
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationException
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.transportFailure
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestParameters
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationTransportKind
-import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationHttp
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationUri
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
@@ -52,7 +53,7 @@ internal class InAppAuthorizationRequestTransport(
         val endpoint = session.authConfig?.authorizationEndpoint
             ?: throw AuthorizationException.NoAuthorizationEndpoint()
 
-        val response = AuthorizationHttp.call {
+        val response = HttpCall.call(::transportFailure) {
             ApiManager.api.getService()?.processAuthorisationRequest(endpoint, parameters.toMap())
         }
 
@@ -67,7 +68,7 @@ internal class InAppAuthorizationRequestTransport(
         // "gave no redirect to continue with" below, which discarded the body and the OAuth error
         // code -- the same loss this rework removed from the PAR and interactive transports.
         if (response.code() >= 400) {
-            throw AuthorizationException.Rejected(response.code(), AuthorizationHttp.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
         }
 
         // Preserved: the redirect is read only from a 302, and its absence is an outcome rather
