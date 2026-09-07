@@ -54,13 +54,17 @@ class DPoPProofService {
         }
     }
 
+    /**
+     * RFC 9449 section 4.2's `ath`: base64url of the SHA-256 of the access token.
+     *
+     * java.util rather than android.util: the latter is stubbed in JVM unit tests and returns null,
+     * which made every code path that computes an `ath` -- the credential and deferred requests --
+     * untestable off a device. minSdk 28 covers it, and the rest of the SDK decodes this way.
+     */
     fun computeAccessTokenHash(token: String?): String {
         if (token == null) return ""
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(token.toByteArray(Charsets.US_ASCII))
-        return android.util.Base64.encodeToString(
-            hash,
-            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
-        )
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 }

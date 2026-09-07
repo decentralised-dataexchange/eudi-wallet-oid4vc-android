@@ -46,7 +46,17 @@ data class CredentialResponse(
     @SerializedName("authorizationConfig") var authorizationConfig: AuthorisationServerWellKnownConfiguration? = null,
     @SerializedName("credentialOffer") var credentialOffer: CredentialOffer? = null,
     @SerializedName("notification_id") var notificationId: String? = null,
-    @SerializedName("interval") var interval: Int? = null
+    @SerializedName("interval") var interval: Int? = null,
+
+    /**
+     * A fresh nonce for the next credential request.
+     *
+     * Section 8.3: "The Credential Issuer SHOULD return a new `c_nonce` value with the Credential
+     * Response." It was never modelled, so every request after the first re-used a nonce the issuer
+     * had already spent -- and an issuer that answers `invalid_proof` with a fresh one (section
+     * 8.3.1) could not be taken up on it.
+     */
+    @SerializedName("c_nonce") var cNonce: String? = null
 )
 
 data class Credential(
