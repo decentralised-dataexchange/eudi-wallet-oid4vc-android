@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnAuthServer.setOnClickListener { viewModel.discoverAuthServer() }
         binding.btnAuthorization.setOnClickListener { viewModel.requestAuthorization() }
         binding.btnToken.setOnClickListener { viewModel.requestToken() }
+        binding.btnCredential.setOnClickListener { viewModel.requestCredential() }
         binding.btnRunAll.setOnClickListener { viewModel.runAll() }
         binding.btnClear.setOnClickListener { viewModel.clear() }
     }
