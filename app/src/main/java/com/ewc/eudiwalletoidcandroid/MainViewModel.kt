@@ -11,9 +11,11 @@ import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.discovery.DiscoveryService
 import com.ewc.eudi_wallet_oidc_android.services.discovery.metadata.DiscoveryException
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.nimbusds.jose.jwk.ECKey
 import kotlinx.coroutines.launch
@@ -47,6 +49,9 @@ class MainViewModel : ViewModel() {
     private var codeVerifier: String? = null
     private var authorizationCode: String? = null
 
+    /** What the authorization request sent, so the token request can repeat it verbatim. */
+    private var sentRedirectUri: String? = null
+
     /** The transaction code, when the offer asks for one. Bound two-way to the field in the UI. */
     val txCode = MutableLiveData("")
 
@@ -58,6 +63,7 @@ class MainViewModel : ViewModel() {
         wallet = null
         codeVerifier = null
         authorizationCode = null
+        sentRedirectUri = null
         clear()
         log("Scanned", data)
     }
@@ -248,6 +254,7 @@ class MainViewModel : ViewModel() {
         when (response.outcome) {
             AuthorizationOutcome.AUTHORIZATION_CODE -> {
                 authorizationCode = response.code
+                sentRedirectUri = request?.redirectUri
                 log(heading, """
                     $trace
                       outcome            authorization code
@@ -315,7 +322,7 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * Step 5 — `IssueService.processTokenRequest`.
+     * Step 5 — `IssueService.requestToken`.
      *
      * Takes whichever code the offer's grant provides: the pre-authorized code straight from the
      * offer, or the authorization code step 4 produced. Which one is not a toggle here — the
@@ -337,45 +344,56 @@ class MainViewModel : ViewModel() {
             return@run
         }
 
-        // §6.1: a `tx_code` object in the offer means a code is required *even when the object is
-        // empty*, so its presence is the test, not whether it declares a length.
+        val identity = walletIdentity()
         val pin = txCode.value?.takeIf { it.isNotBlank() }
-        if (isPreAuthorised && preAuthorized?.transactionCode != null && pin == null) {
-            log(heading, "This offer declares tx_code — enter the transaction code first")
-            return@run
+        val session = IssuanceSession(offer, issuerConfig, authServer)
+
+        // The offer decides the grant; the harness does not choose. The SDK now enforces §6.1's
+        // "tx_code MUST be present if a tx_code object was in the offer, even an empty one".
+        val grant = if (isPreAuthorised) {
+            TokenGrant.PreAuthorized(code = code, txCode = pin)
+        } else {
+            TokenGrant.AuthorizationCode(
+                code = code,
+                codeVerifier = codeVerifier,
+                // The value the authorization request actually sent, not a re-derived one
+                // (RFC 6749 §4.1.3).
+                redirectUri = sentRedirectUri,
+            )
         }
 
-        val identity = walletIdentity()
-        val wrapped = IssueService().processTokenRequest(
-            did = identity.did,
-            tokenEndPoint = authServer.tokenEndpoint,
-            code = code,
-            codeVerifier = codeVerifier,
-            isPreAuthorisedCodeFlow = isPreAuthorised,
-            userPin = pin,
-            version = offer?.version,
-            walletUnitAttestationJWT = null,
-            walletUnitProofOfPossession = null,
-            redirectUri = null,
-            dpopKey = identity.jwk as? ECKey,
+        val wrapped = IssueService().requestToken(
+            session = session,
+            wallet = identity,
+            // The DPoP key belongs with the attestation, not beside it: TS3 requires it to be the
+            // key the attestation names in `cnf`.
+            attestation = WalletAttestation(
+                attestationJwt = null,
+                proofOfPossession = null,
+                dpopKey = identity.jwk as? ECKey,
+            ),
+            grant = grant,
         )
 
         val trace = """
-              grant              ${if (isPreAuthorised) "pre-authorized_code" else "authorization_code"}
+              grant              ${grant.grantType}
               endpoint           ${authServer.tokenEndpoint ?: "—"}
+              tx_code required   ${session.requiresTransactionCode}
               tx_code sent       ${if (pin != null) "yes" else "no"}
-              dpop               ${if (wrapped?.dpop != null) "sent" else "not sent"}
+              redirect_uri       ${sentRedirectUri ?: "—"}
+              dpop               ${if (wrapped.dpop != null) "sent" else "not sent"}
+              dpop nonce         ${wrapped.dpopNonce ?: "—"}
         """.trimIndent()
 
-        val token = wrapped?.tokenResponse
-        val error = wrapped?.errorResponse
+        val token = wrapped.tokenResponse
+        val error = wrapped.errorResponse
         when {
             token?.accessToken != null -> log(heading, """
                 $trace
                   outcome            access token
                   token_type         ${token.tokenType ?: "—"}
                   expires_in         ${token.expiresIn ?: "—"}
-                  c_nonce            ${token.cNonce ?: "—"}
+                  c_nonce            ${token.cNonce ?: "— (1.0 uses the nonce endpoint)"}
                   refresh_token      ${if (token.refreshToken != null) "present" else "—"}
                   auth details       ${token.authorizationDetails?.size ?: 0}
             """.trimIndent())

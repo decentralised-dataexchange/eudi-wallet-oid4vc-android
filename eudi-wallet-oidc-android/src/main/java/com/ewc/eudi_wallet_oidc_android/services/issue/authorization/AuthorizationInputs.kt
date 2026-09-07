@@ -4,6 +4,8 @@ import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfi
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.nimbusds.jose.jwk.ECKey
+import org.json.JSONObject
+import java.util.Base64
 import com.nimbusds.jose.jwk.JWK
 
 /**
@@ -29,6 +31,19 @@ data class IssuanceSession(
      */
     val issuerState: String?
         get() = credentialOffer?.grants?.authorizationCode?.issuerState?.takeIf { it.isNotBlank() }
+
+    /**
+     * Whether the offer obliges the wallet to send a Transaction Code with the token request.
+     *
+     * Section 6.1: the code "MUST be present if a `tx_code` object was present in the Credential
+     * Offer (**including if the object was empty**)". So the test is the presence of the object,
+     * not whether it declares a length -- and not whether the caller happens to have a code.
+     *
+     * Ask this before prompting the user: an empty `"tx_code": {}` still means a code is required,
+     * and Gson yields a non-null [com.ewc.eudi_wallet_oidc_android.models.TxCode] for it.
+     */
+    val requiresTransactionCode: Boolean
+        get() = credentialOffer?.grants?.preAuthorizationCode?.transactionCode != null
 }
 
 /** The wallet's own key identity. `jwk` signs the ID token when one is asked for. */
@@ -48,7 +63,34 @@ data class WalletAttestation(
     val attestationJwt: String?,
     val proofOfPossession: String?,
     val dpopKey: ECKey? = null,
-)
+) {
+    /**
+     * Whether [dpopKey] is the key the attestation names in its `cnf` claim, as ARF TS3 requires.
+     *
+     * Null when there is nothing to compare -- no key, no attestation, or a `cnf` this cannot be
+     * parsed. A `false` is the shape of failure that produces `invalid_client_attestation` from the
+     * authorization server, and it is invisible in the response, so it is worth logging before the
+     * request goes out.
+     */
+    val dpopKeyMatchesAttestation: Boolean?
+        get() {
+            val thumbprint = runCatching { dpopKey?.computeThumbprint()?.toString() }.getOrNull()
+                ?: return null
+            val cnf = runCatching {
+                val payload = attestationJwt?.substringBefore('~')?.split('.')?.getOrNull(1)
+                    ?: return@runCatching null
+                // java.util rather than android.util: the latter is stubbed in JVM unit tests and
+                // returns nothing, which would make this check silently unverifiable. minSdk 28
+                // covers it, and IssueService already decodes this way.
+                val json = String(Base64.getUrlDecoder().decode(payload))
+                JSONObject(json).optJSONObject("cnf")?.optJSONObject("jwk")
+            }.getOrNull() ?: return null
+            val cnfThumbprint = runCatching {
+                ECKey.parse(cnf.toString()).computeThumbprint().toString()
+            }.getOrNull() ?: return null
+            return thumbprint == cnfThumbprint
+        }
+}
 
 /**
  * Whether the wallet makes the authorization request itself or hands a URL to a browser.

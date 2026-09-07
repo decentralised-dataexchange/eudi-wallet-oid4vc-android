@@ -1,4 +1,4 @@
-package com.ewc.eudi_wallet_oidc_android.services.issue.authorization
+package com.ewc.eudi_wallet_oidc_android.services.network
 
 import retrofit2.Response
 import java.io.IOException
@@ -6,7 +6,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 /**
- * Performs an authorization-leg request, keeping the response.
+ * Performs a request, keeping the status code and the headers.
  *
  * Deliberately not routed through
  * [com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall]: that helper converts any non-2xx
@@ -21,23 +21,33 @@ import java.net.UnknownHostException
  * The transport-exception messages below are kept identical to SafeApiCall's, so nothing a user
  * sees changes wording.
  */
-internal object AuthorizationHttp {
+internal object HttpCall {
 
     /**
-     * @throws AuthorizationException.RequestFailed when the request never completed.
+     * Performs [request] and hands back the whole response.
+     *
+     * @param onTransportFailure builds the exception thrown when the request never completed, so
+     *   each leg can raise its own type. The messages are the ones SafeApiCall uses, so nothing a
+     *   user sees changes wording.
      */
-    suspend fun <T> call(request: suspend () -> Response<T>?): Response<T> = try {
-        request() ?: throw AuthorizationException.RequestFailed("Service unavailable")
-    } catch (e: UnknownHostException) {
-        throw AuthorizationException.RequestFailed("No Internet or DNS issue")
-    } catch (e: SocketTimeoutException) {
-        throw AuthorizationException.RequestFailed("Connection timed out. Please try again.")
-    } catch (e: IOException) {
-        throw AuthorizationException.RequestFailed("Network error occurred. Please check your connection.")
-    } catch (e: AuthorizationException) {
-        throw e
-    } catch (e: Exception) {
-        throw AuthorizationException.RequestFailed(e.message)
+    suspend fun <T> call(
+        onTransportFailure: (String?) -> Exception,
+        request: suspend () -> Response<T>?,
+    ): Response<T> {
+        // The null check is deliberately outside the try: raising it inside would let the catch
+        // below wrap our own exception a second time.
+        val response = try {
+            request()
+        } catch (e: UnknownHostException) {
+            throw onTransportFailure("No Internet or DNS issue")
+        } catch (e: SocketTimeoutException) {
+            throw onTransportFailure("Connection timed out. Please try again.")
+        } catch (e: IOException) {
+            throw onTransportFailure("Network error occurred. Please check your connection.")
+        } catch (e: Exception) {
+            throw onTransportFailure(e.message)
+        }
+        return response ?: throw onTransportFailure("Service unavailable")
     }
 
     /**
