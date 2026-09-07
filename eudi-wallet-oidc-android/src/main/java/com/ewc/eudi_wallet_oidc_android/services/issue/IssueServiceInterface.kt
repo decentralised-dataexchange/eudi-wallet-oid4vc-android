@@ -5,6 +5,10 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.Authorizati
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
 import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
@@ -198,6 +202,10 @@ interface IssueServiceInterface {
         format: String
     ): WrappedCredentialResponse?
 
+    @Deprecated(
+        "Fourteen parameters, four of which pair up and two of which are dead. Use requestCredential, which takes a CredentialSubject and returns a CredentialOutcome.",
+        ReplaceWith("requestCredential(session, wallet, token, subject)"),
+    )
     suspend fun processCredentialRequest(
         did: String?,
         subJwk: JWK?,
@@ -216,6 +224,43 @@ interface IssueServiceInterface {
         /** The client_id the token request used, for the proof's `iss`. Null keeps `did`. */
         clientId: String? = null
     ): WrappedCredentialResponse?
+
+    /**
+     * The credential request.
+     *
+     * Replaces the fourteen-parameter form above. What each change buys:
+     *
+     *  - `credentialOffer` + `issuerConfig` + `authConfig` become one [IssuanceSession] -- and
+     *    `authConfig` was never read;
+     *  - `did` + `subJwk` become one [WalletIdentity], as in the authorization and token steps;
+     *  - `authorizationDetail` + `index` become one [CredentialSubject], which makes section 8.2's
+     *    "`credential_identifier` ... MUST NOT be present with `credential_configuration_id`"
+     *    unrepresentable rather than merely unwritten, and removes an unguarded `get(index)`;
+     *  - `ecKeyWithAlgEnc` + `credentialRequestEncryptionInfo` become one [CredentialEncryption],
+     *    since asking for an encrypted response over a plaintext request is not a thing to express;
+     *  - `attachKeyAttestation` + `keyAttestationJwt` become one nullable attestation -- the boolean
+     *    only chose between attaching one and logging that none arrived;
+     *  - the DPoP key travels inside [WalletAttestation], where ARF TS3's `cnf` rule is checkable.
+     *
+     * @param nonce overrides the `c_nonce`. Left null the SDK obtains one: from the Nonce Endpoint
+     *   when the issuer publishes one (section 7 -- it is unauthenticated), otherwise from the token
+     *   response. Callers used to do this themselves, which is why one nonce was reused for every
+     *   credential in a multi-credential offer.
+     * @param dpopNonce carry `WrappedTokenResponse.dpopNonce` here; RFC 9449 section 8.2 makes
+     *   using the most recent nonce a MUST.
+     */
+    suspend fun requestCredential(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        token: TokenResponse,
+        subject: CredentialSubject,
+        attestation: WalletAttestation? = null,
+        keyAttestation: String? = null,
+        encryption: CredentialEncryption? = null,
+        nonce: String? = null,
+        dpopNonce: String? = null,
+        policy: CredentialRequestPolicy = CredentialRequestPolicy.Default,
+    ): CredentialOutcome
 
     /**
      * For issuance of the deferred credential.

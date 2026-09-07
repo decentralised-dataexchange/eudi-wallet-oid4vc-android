@@ -38,6 +38,11 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.Authorizati
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestResolver
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.details.AuthorizationDetailsBuilder
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.idtoken.IdTokenResponder
@@ -496,6 +501,34 @@ class IssueService(
      *
      * @return credential response
      */
+    /** The credential request. See [IssueServiceInterface.requestCredential]. */
+    override suspend fun requestCredential(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        token: TokenResponse,
+        subject: CredentialSubject,
+        attestation: WalletAttestation?,
+        keyAttestation: String?,
+        encryption: CredentialEncryption?,
+        nonce: String?,
+        dpopNonce: String?,
+        policy: CredentialRequestPolicy,
+    ): CredentialOutcome = CredentialRequestResolver(policy = policy).resolve(
+        session = session,
+        wallet = wallet,
+        token = token,
+        subject = subject,
+        attestation = attestation,
+        keyAttestation = keyAttestation,
+        encryption = encryption,
+        nonce = nonce,
+        dpopNonce = dpopNonce,
+    )
+
+    @Deprecated(
+        "Fourteen parameters, four of which pair up and two of which are dead. Use requestCredential, which takes a CredentialSubject and returns a CredentialOutcome.",
+        ReplaceWith("requestCredential(session, wallet, token, subject)"),
+    )
     override suspend fun processCredentialRequest(
         did: String?,
         subJwk: JWK?,
