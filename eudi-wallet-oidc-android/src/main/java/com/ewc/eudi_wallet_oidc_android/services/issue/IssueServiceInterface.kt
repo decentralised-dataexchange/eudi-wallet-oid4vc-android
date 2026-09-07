@@ -7,6 +7,8 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.Authorizati
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
@@ -134,6 +136,36 @@ interface IssueServiceInterface {
         redirectUri: String? = null,
         dpopKey: ECKey?
     ): WrappedTokenResponse?
+
+    /**
+     * The token request.
+     *
+     * Replaces [processTokenRequest], whose loose `code` / `codeVerifier` /
+     * `isPreAuthorisedCodeFlow` / `userPin` parameters made illegal combinations expressible. The
+     * grant is a sealed [TokenGrant], so section 6.1's "`tx_code` MUST only be used if the
+     * grant_type is `urn:ietf:params:oauth:grant-type:pre-authorized_code`" cannot be broken.
+     *
+     * Whether a Transaction Code is *required* is read from the offer, not from whether one was
+     * supplied: section 6.1 obliges the wallet to send it "if a `tx_code` object was present in the
+     * Credential Offer (including if the object was empty)".
+     *
+     * @param grant [TokenGrant.PreAuthorized] or [TokenGrant.AuthorizationCode]; the offer decides
+     *   which. The latter's `redirectUri` must be the value the authorization request sent --
+     *   `AuthorizationResponse.request.redirectUri` (RFC 6749 section 4.1.3).
+     * @param attestation carries the wallet unit attestation, its proof of possession **and the
+     *   DPoP key**: ARF TS3 requires that key to be the one the attestation names in `cnf`, and
+     *   keeping the three together is what makes that checkable rather than a mismatch a caller can
+     *   make silently.
+     * @param dpopNonce a nonce from an earlier `DPoP-Nonce` header, when one has been seen.
+     */
+    suspend fun requestToken(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        grant: TokenGrant,
+        dpopNonce: String? = null,
+        policy: TokenRequestPolicy = TokenRequestPolicy.Default,
+    ): WrappedTokenResponse
 
     /**
      * To process the credential, credentials can be issued in two ways,

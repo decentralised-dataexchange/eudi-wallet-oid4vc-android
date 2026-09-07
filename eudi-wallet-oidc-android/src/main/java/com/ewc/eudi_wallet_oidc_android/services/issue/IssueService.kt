@@ -42,6 +42,9 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSes
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.details.AuthorizationDetailsBuilder
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.idtoken.IdTokenResponder
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
@@ -260,6 +263,52 @@ class IssueService(
      *     will be provided by the user
      * @return Token response
      */
+    /**
+     * The token request.
+     *
+     * Replaces [processTokenRequest], whose eleven parameters let illegal states be expressed --
+     * `isPreAuthorisedCodeFlow = false` with a `userPin` set, for instance. The grant is now a
+     * sealed [TokenGrant], so section 6.1's "`tx_code` MUST only be used if the grant_type is
+     * `urn:ietf:params:oauth:grant-type:pre-authorized_code`" cannot be broken.
+     *
+     * @param grant built from the offer: [TokenGrant.PreAuthorized] when it carried a
+     *   pre-authorized code, otherwise [TokenGrant.AuthorizationCode] with the code the
+     *   authorization request produced. Its `redirectUri` must be the value that request actually
+     *   sent -- read it from `AuthorizationResponse.request.redirectUri`.
+     * @param dpopNonce a nonce from an earlier `DPoP-Nonce` header, when one has been seen.
+     */
+    override suspend fun requestToken(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation?,
+        grant: TokenGrant,
+        dpopNonce: String?,
+        policy: TokenRequestPolicy,
+    ): WrappedTokenResponse {
+        val authorizationDetails = if (policy.sendAuthorizationDetails) {
+            val types = getTypesFromCredentialOffer(session.credentialOffer)
+            buildAuthorizationRequest(
+                credentialOffer = session.credentialOffer,
+                format = getFormatFromIssuerConfig(session.issuerConfig, types.lastOrNull()),
+                doctype = null,
+                issuerConfig = session.issuerConfig,
+            )
+        } else null
+
+        return TokenRequestResolver(policy = policy).resolve(
+            session = session,
+            wallet = wallet,
+            attestation = attestation,
+            grant = grant,
+            authorizationDetails = authorizationDetails,
+            dpopNonce = dpopNonce,
+        )
+    }
+
+    @Deprecated(
+        "Eleven parameters in which illegal grant/tx_code combinations are expressible. Use requestToken, which takes a sealed TokenGrant.",
+        ReplaceWith("requestToken(session, wallet, attestation, grant)"),
+    )
     override suspend fun processTokenRequest(
         did: String?,
         tokenEndPoint: String?,
@@ -268,121 +317,43 @@ class IssueService(
         isPreAuthorisedCodeFlow: Boolean?,
         userPin: String?,
         version: Int?,
-        walletUnitAttestationJWT: String? ,
+        walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
         redirectUri: String?,
         dpopKey: ECKey?
     ): WrappedTokenResponse? {
-        val redirectURI = redirectUri ?: "openid://callback"
-        val dpop = if (dpopKey != null && !tokenEndPoint.isNullOrEmpty()) {
-            DPoPProofService().generateDPoP(
-                httpMethod = "POST",
-                targetUri = tokenEndPoint,
-                dpopKey = dpopKey
-            )
-        } else null
-        val headers = WalletUnitAttestationHeaders.build(
-            walletUnitAttestationJWT,
-            walletUnitProofOfPossession
-        ).apply {
-            if (!dpop.isNullOrEmpty()) {
-                this["DPoP"] = dpop
-            }
-        }
+        // The old signature carried the token endpoint and the version loose rather than deriving
+        // them from a session, so one is rebuilt here that carries just enough for the resolver.
+        val session = IssuanceSession(
+            credentialOffer = CredentialOffer(version = version),
+            issuerConfig = null,
+            authConfig = AuthorisationServerWellKnownConfiguration(tokenEndpoint = tokenEndPoint),
+        )
 
-        // --- invalid_client_attestation diagnostics (filter: adb logcat -s KaWatch) ---
-        // The AS rejects the token request when the client attestation (WIA), its PoP, or
-        // the DPoP binding is wrong. Log the decoded, non-secret fields so a rejection can
-        // be traced to iss/aud/exp/nonce or a DPoP <-> WIA cnf key mismatch (the TS3 rule
-        // that the DPoP key must equal the WIA cnf key).
-        try {
-            val dpopThumb = dpopKey?.computeThumbprint()?.toString()
-            Log.d("KaWatch", "token request: endpoint=$tokenEndPoint clientId=$did grant=${if (isPreAuthorisedCodeFlow == true) "pre-authorized_code" else "authorization_code"} hasWIA=${walletUnitAttestationJWT != null} hasPoP=${walletUnitProofOfPossession != null} dpopKid=${dpopKey?.keyID} dpopThumb=$dpopThumb")
-            val wia = decodeJwtPayloadForLog(walletUnitAttestationJWT)
-            val wiaCnf = wia?.optJSONObject("cnf")?.optJSONObject("jwk")
-            Log.d("KaWatch", "token request WIA: iss=${wia?.opt("iss")} sub=${wia?.opt("sub")} aud=${wia?.opt("aud")} iat=${wia?.opt("iat")} exp=${wia?.opt("exp")} cnf.jwk=$wiaCnf")
-            val pop = decodeJwtPayloadForLog(walletUnitProofOfPossession)
-            Log.d("KaWatch", "token request WIA-PoP: iss=${pop?.opt("iss")} aud=${pop?.opt("aud")} iat=${pop?.opt("iat")} exp=${pop?.opt("exp")} jti=${pop?.opt("jti")} nonce=${pop?.opt("nonce")}")
-            val wiaCnfThumb = wiaCnf?.let { runCatching { ECKey.parse(it.toString()).computeThumbprint().toString() }.getOrNull() }
-            Log.d("KaWatch", "token request key-binding: dpopThumb=$dpopThumb wiaCnfThumb=$wiaCnfThumb match=${dpopThumb != null && dpopThumb == wiaCnfThumb}")
-        } catch (e: Exception) {
-            Log.e("KaWatch", "token request: attestation diagnostics failed: ${e.message}")
-        }
-
-        val result = SafeApiCall.safeApiCallResponse {
-            ApiManager.api.getService()?.getAccessTokenFromCode(
-                tokenEndPoint ?: "",
-                if (isPreAuthorisedCodeFlow == true) {
-                    // Map for pre-authorized code flow
-                    mutableMapOf(
-                        "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                        "pre-authorized_code" to (code ?: "")
-                    ).apply {
-                        if (userPin != null) {
-                            if (version == 1) {
-                                this["user_pin"] = userPin ?: ""
-                            } else {
-                                this["tx_code"] = userPin ?: ""
-                            }
-                        }
-                    }
-                } else {
-                    // Map for authorization code flow
-                    mutableMapOf(
-                        "grant_type" to "authorization_code",
-                        "code" to (code ?: ""),
-                        "client_id" to (did ?: ""),
-                        "code_verifier" to (codeVerifier ?: ""),
-                        "redirect_uri" to (redirectURI)
-                    )
-                },
-                headers
+        val grant = if (isPreAuthorisedCodeFlow == true) {
+            TokenGrant.PreAuthorized(code = code.orEmpty(), txCode = userPin)
+        } else {
+            TokenGrant.AuthorizationCode(
+                code = code.orEmpty(),
+                codeVerifier = codeVerifier,
+                redirectUri = redirectUri ?: "openid://callback",
             )
         }
 
-        return result.fold(
-            onSuccess = { response ->
-                when {
-                    response.isSuccessful -> {
-                        val lpid = response.headers()["legal-pid-attestation"]
-                        val lpidPoP = response.headers()["legal-pid-attestation-pop"]
-                        WrappedTokenResponse(
-                            tokenResponse = response.body(),
-                            legalPidAttestation = lpid,
-                            legalPidAttestationPoP = lpidPoP,
-                            dpop = dpop
-                        )
-                    }
-
-                    (response.code() >= 400) -> {
-                        try {
-                            val errorBodyString = response.errorBody()?.string()
-                            Log.e("KaWatch", "token endpoint ${response.code()} endpoint=$tokenEndPoint error=$errorBodyString")
-                            WrappedTokenResponse(
-                                errorResponse = ErrorHandler.processError(errorBodyString)
-                            )
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-
-                    else -> null
-                }
-            },
-            onFailure = { error ->
-                Log.e("KaWatch", "token request FAILED endpoint=$tokenEndPoint error=${error.message}")
-                println("Error while processing token request: ${error.message}")
-                WrappedTokenResponse(
-                    errorResponse = ErrorHandler.processError(error.message)
-                )
-            }
+        return requestToken(
+            session = session,
+            wallet = WalletIdentity(did, null),
+            attestation = WalletAttestation(
+                walletUnitAttestationJWT,
+                walletUnitProofOfPossession,
+                dpopKey,
+            ),
+            grant = grant,
+            dpopNonce = null,
+            policy = TokenRequestPolicy.Default,
         )
     }
 
-    /**
-     * Decodes a JWT / SD-JWT payload to JSON for diagnostic logging only (no signature
-     * check). Tolerates the SD-JWT trailing '~' and base64url without padding.
-     */
     private fun decodeJwtPayloadForLog(jwt: String?): JSONObject? {
         if (jwt.isNullOrBlank()) return null
         return try {
