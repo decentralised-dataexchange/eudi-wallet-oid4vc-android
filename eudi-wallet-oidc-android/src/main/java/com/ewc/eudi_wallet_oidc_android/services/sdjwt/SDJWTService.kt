@@ -529,6 +529,9 @@ class SDJWTService : SDJWTServiceInterface {
     }
 
     override fun updateIssuerJwtWithDisclosures(credential: String?): String? {
+        if (credential.isNullOrBlank() || !credential.contains(".")) {
+            return credential
+        }
         val split = credential?.split(".")
 
         val jsonString = Base64.decode(
