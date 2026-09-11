@@ -86,7 +86,9 @@ class JWTVpTokenBuilder: VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: Any?,
         isScaFlow: Boolean,
-        jwkList: List<JWK?>?
+        jwkList: List<JWK?>?,
+        amrInherenceFactor: String?,
+        amrKnowledgeFactor: String?
     ): List<String?> {
         if (credentialList.isNullOrEmpty()) return emptyList()
 

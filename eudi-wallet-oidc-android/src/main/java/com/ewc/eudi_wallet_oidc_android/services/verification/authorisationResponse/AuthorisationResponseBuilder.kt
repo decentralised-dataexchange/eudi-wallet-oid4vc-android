@@ -118,7 +118,9 @@ class AuthorisationResponseBuilder {
         did: String?,
         jwk: JWK?,
         isScaFlow: Boolean = false,
-        jwkList: List<List<JWK?>>? = null
+        jwkList: List<List<JWK?>>? = null,
+        amrInherenceFactor: String? = null,
+        amrKnowledgeFactor: String? = null
     ): Map<String, Any?> {
         var params = mapOf<String, Any?>()
         if (presentationRequest.dcqlQuery != null) {
@@ -128,7 +130,9 @@ class AuthorisationResponseBuilder {
                 did = did,
                 jwk = jwk,
                 isScaFlow = isScaFlow,
-                jwkList = jwkList
+                jwkList = jwkList,
+                amrInherenceFactor = amrInherenceFactor,
+                amrKnowledgeFactor = amrKnowledgeFactor
             )
         } else {
             var vpToken: List<String>? = null
@@ -136,7 +140,7 @@ class AuthorisationResponseBuilder {
             var presentationSubmission: PresentationSubmission? = null
 
             val processTokenResponse =
-                processTokenRequestV2(presentationRequest, did, credentialList, jwk, isScaFlow, jwkList)
+                processTokenRequestV2(presentationRequest, did, credentialList, jwk, isScaFlow, jwkList, amrInherenceFactor, amrKnowledgeFactor)
             vpToken = processTokenResponse.first
             Log.d("processAndSendAuthorisationResponse", "vpToken:$vpToken")
             idToken = processTokenResponse.second
@@ -375,7 +379,9 @@ class AuthorisationResponseBuilder {
         credentialList: List<List<String>>?,
         subJwk: JWK?,
         isScaFlow: Boolean = false,
-        jwkList: List<List<JWK?>>? = null
+        jwkList: List<List<JWK?>>? = null,
+        amrInherenceFactor: String? = null,
+        amrKnowledgeFactor: String? = null
     ): Triple<List<String>?, String?, PresentationSubmission?> {
 
         val vpTokenList: MutableList<String> = mutableListOf()
@@ -446,7 +452,9 @@ class AuthorisationResponseBuilder {
                                 jwk = subJwk ,
                                 inputDescriptors = inputDescriptors,
                                 isScaFlow = isScaFlow,
-                                jwkList = currentCredentialJwkList
+                                jwkList = currentCredentialJwkList,
+                                amrInherenceFactor = amrInherenceFactor,
+                                amrKnowledgeFactor = amrKnowledgeFactor
                             )
                             //NEW: Iterate through results (SD-JWT buildV2 returns a list)
                             updatedCredentials.forEach { updatedCredential ->

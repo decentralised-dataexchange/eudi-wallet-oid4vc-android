@@ -21,6 +21,8 @@ interface VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: Any? = null,
         isScaFlow: Boolean = false,
-        jwkList: List<JWK?>? = null
+        jwkList: List<JWK?>? = null,
+        amrInherenceFactor: String? = null,
+        amrKnowledgeFactor: String? = null,
     ): List<String?>
 }

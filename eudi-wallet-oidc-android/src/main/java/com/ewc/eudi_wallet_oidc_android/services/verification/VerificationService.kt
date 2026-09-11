@@ -278,7 +278,9 @@ class VerificationService : VerificationServiceInterface {
         walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
         isScaFlow: Boolean,
-        jwkList: List<List<JWK?>>?
+        jwkList: List<List<JWK?>>?,
+        amrInherenceFactor: String?,
+        amrKnowledgeFactor: String?
     ): WrappedVpTokenResponse {
         val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
         if (responseUri.isNullOrEmpty()) {
@@ -302,7 +304,9 @@ class VerificationService : VerificationServiceInterface {
                 did = did,
                 jwk = subJwk,
                 isScaFlow = isScaFlow,
-                jwkList = jwkList
+                jwkList = jwkList,
+                amrInherenceFactor = amrInherenceFactor,
+                amrKnowledgeFactor = amrKnowledgeFactor
             )
             Log.d("Params value:", params.toString())
 
