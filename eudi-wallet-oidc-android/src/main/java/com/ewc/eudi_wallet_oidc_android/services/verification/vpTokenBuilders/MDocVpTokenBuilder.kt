@@ -192,7 +192,9 @@ class MDocVpTokenBuilder : VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: Any?,
         isScaFlow: Boolean,
-        jwkList: List<JWK?>?
+        jwkList: List<JWK?>?,
+        amrInherenceFactor: String?,
+        amrKnowledgeFactor:String?
     ): List<String?> {
         var processPresentationDefinition: PresentationDefinition? = null
         if (presentationRequest == null) return listOf()

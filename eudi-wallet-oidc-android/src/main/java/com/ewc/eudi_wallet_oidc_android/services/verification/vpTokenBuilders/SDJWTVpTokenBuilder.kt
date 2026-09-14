@@ -80,7 +80,9 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         jwk: JWK?,
         inputDescriptors: Any?,
         isScaFlow: Boolean,
-        jwkList: List<JWK?>?
+        jwkList: List<JWK?>?,
+        amrInherenceFactor: String?,
+        amrKnowledgeFactor: String?
     ): List<String?> {
         val claims = mutableMapOf<String, Any>()
         Log.d(
@@ -112,35 +114,36 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         // URL). They must NOT be added for EWC `payment_data` (PWA) or QES/QESAC flows. The DC API path
         // forwards isScaFlow=false, so we also detect SCA from the transaction_data type itself.
         val scaFlow = isScaFlow ||
-            isTs12ScaTransactionData(presentationRequest?.transactionDdata?.getOrNull(0))
+                isTs12ScaTransactionData(presentationRequest?.transactionDdata?.getOrNull(0))
         val results = mutableListOf<String?>()
-if (!credentialList.isNullOrEmpty()) {
-    credentialList.forEachIndexed  { index, cred ->
-        val credentialJwk = jwkList?.getOrNull(index) ?: jwk
-        val tempCredential = "${cred}${if (cred.endsWith("~")) "" else "~"}"
-        val keyBindingResponse = createKeyBindingJWT(
-            aud = presentationRequest?.clientId,
-            credential = tempCredential,
-            subJwk = credentialJwk,
-            claims = if (claims.isNotEmpty()) claims else null,
-            nonce = presentationRequest?.nonce,
-            responseMode = if (scaFlow) presentationRequest?.responseMode else null,
-            amr = if (scaFlow) {
-                listOf(
-                    mapOf("possession" to "key_in_local_native_wscd"),
-                    mapOf("inherence" to "fingerprint_device")
+        if (!credentialList.isNullOrEmpty()) {
+            credentialList.forEachIndexed { index, cred ->
+                val credentialJwk = jwkList?.getOrNull(index) ?: jwk
+                val tempCredential = "${cred}${if (cred.endsWith("~")) "" else "~"}"
+                val keyBindingResponse = createKeyBindingJWT(
+                    aud = presentationRequest?.clientId,
+                    credential = tempCredential,
+                    subJwk = credentialJwk,
+                    claims = if (claims.isNotEmpty()) claims else null,
+                    nonce = presentationRequest?.nonce,
+                    responseMode = if (scaFlow) presentationRequest?.responseMode else null,
+                    amr = if (scaFlow) {
+                        buildList {
+                            add(mapOf("possession" to "key_in_local_native_wscd"))
+                            amrInherenceFactor?.let { add(mapOf("inherence" to it)) }
+                            amrKnowledgeFactor?.let { add(mapOf("knowledge" to it)) }
+                        }
+                    } else null
                 )
-            } else null
-        )
-        if (keyBindingResponse != null) {
-            val updatedCredential = "$tempCredential$keyBindingResponse"
-            results.add(updatedCredential)
-        } else {
-            results.add(cred)
+                if (keyBindingResponse != null) {
+                    val updatedCredential = "$tempCredential$keyBindingResponse"
+                    results.add(updatedCredential)
+                } else {
+                    results.add(cred)
+                }
+            }
         }
-    }
-}
-return results
+        return results
 
     }
     private fun checkTransactionDataWithInputDescriptor(
