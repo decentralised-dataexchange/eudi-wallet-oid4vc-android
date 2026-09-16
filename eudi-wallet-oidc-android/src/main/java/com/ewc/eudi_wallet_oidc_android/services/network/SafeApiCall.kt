@@ -80,5 +80,29 @@ object SafeApiCall {
             Result.failure(e)
         }
     }
-}
 
+    /**
+     * Like [safeApiCallResponse], but every HTTP status is a success: the caller
+     * reads response.code() and errorBody() itself. Only a null service or a
+     * transport error is a failure. For endpoints whose 4xx bodies carry
+     * information the caller acts on (for example 400 invalid_key_evidence).
+     */
+    suspend fun <T> safeApiCallAnyStatus(apiCall: suspend () -> Response<T>?): Result<Response<T>> {
+        return try {
+            val response = apiCall()
+            if (response == null) {
+                Result.failure(Exception("Service unavailable"))
+            } else {
+                Result.success(response)
+            }
+        } catch (e: UnknownHostException) {
+            Result.failure(Exception("No Internet or DNS issue"))
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("Connection timed out. Please try again."))
+        } catch (e: IOException) {
+            Result.failure(Exception("Network error occurred. Please check your connection."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
