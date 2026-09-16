@@ -995,14 +995,7 @@ class IssueService : IssueServiceInterface {
         Log.d("BankIdWatch", "credential request: attachKA=$attachKeyAttestation preMintedHardwareKA=${keyAttestationJwt != null} kaAttached=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
         Log.d("KaWatch", "credential request: attachKA=$attachKeyAttestation preMintedKA=${keyAttestationJwt != null} kaOnProof=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
         // Appendix F.1: iss is the client_id the token request sent, omitted when that was anonymous.
-        // Pre-1.0 draft pre-authorized offers keep the DID.
-        val isPreAuthorised = credentialOffer?.grants?.preAuthorizationCode?.preAuthorizedCode != null
-        val issuer = if (isPreAuthorised && credentialOffer?.version == 1) did else ClientIdentity.resolve(
-            isPreAuthorised,
-            authConfig?.preAuthorizedGrantAnonymousAccessSupported,
-            credentialOffer?.version,
-            clientId ?: did,
-        )
+        val issuer = ClientIdentity.proofIssuer(credentialOffer, authConfig?.preAuthorizedGrantAnonymousAccessSupported, clientId, did)
         val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation, issuer)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")

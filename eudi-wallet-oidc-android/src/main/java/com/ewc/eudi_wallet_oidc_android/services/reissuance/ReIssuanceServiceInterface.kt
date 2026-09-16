@@ -25,7 +25,11 @@ interface ReIssuanceServiceInterface {
         interactiveAuthorizationEndpoint: String?,
         dpopKey: ECKey?,
         attachKeyAttestation: Boolean = false,
-        keyAttestationJwt: String? = null
+        keyAttestationJwt: String? = null,
+        /** The client_id of the original grant, for the proof's `iss`. Null keeps `did`. */
+        clientId: String? = null,
+        /** The Authorization Server's `pre-authorized_grant_anonymous_access_supported`. */
+        preAuthorizedGrantAnonymousAccessSupported: Boolean? = null
     ): WrappedCredentialResponse?
 
 }

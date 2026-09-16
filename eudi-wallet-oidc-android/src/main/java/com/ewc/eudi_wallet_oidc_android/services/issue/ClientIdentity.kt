@@ -1,5 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
+import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
+
 /**
  * The `client_id` the token request sends, which is also the key proof's `iss`. Null means neither.
  *
@@ -25,5 +27,21 @@ object ClientIdentity {
         // The pre-1.0 drafts never sent client_id with the pre-authorized grant. Unchanged.
         if (version == DRAFT_VERSION) return null
         return if (preAuthorizedGrantAnonymousAccessSupported == true) null else identity
+    }
+
+    /**
+     * The key proof's `iss` for a credential request authorized by [credentialOffer]'s grant, including
+     * with an access token refreshed from it: RFC 6749 section 6 binds the refresh token to the client
+     * it was issued to. Null omits `iss`. Pre-1.0 draft pre-authorized offers keep [did].
+     */
+    fun proofIssuer(
+        credentialOffer: CredentialOffer?,
+        preAuthorizedGrantAnonymousAccessSupported: Boolean?,
+        clientId: String?,
+        did: String?,
+    ): String? {
+        val isPreAuthorised = credentialOffer?.grants?.preAuthorizationCode?.preAuthorizedCode != null
+        if (isPreAuthorised && credentialOffer?.version == DRAFT_VERSION) return did
+        return resolve(isPreAuthorised, preAuthorizedGrantAnonymousAccessSupported, credentialOffer?.version, clientId ?: did)
     }
 }
