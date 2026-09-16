@@ -26,7 +26,9 @@ class ProofService {
         issuerConfig: IssuerWellKnownConfiguration?,
         credentialOffer: CredentialOffer?,
         index: Int = 0,
-        keyAttestation: String? = null
+        keyAttestation: String? = null,
+        /** The proof's `iss`. Null omits the claim. */
+        issuer: String? = did
     ): String? {
         val credentialsSupported = issuerConfig?.credentialsSupported
         val credentials = credentialOffer?.credentials
@@ -52,7 +54,7 @@ class ProofService {
             // backdated. Only the client-attestation PoP needs the WalletClock backdate.
             .issueTime(Date())
             .expirationTime(Date(Date().time + 86400))
-            .issuer(did)
+            .issuer(issuer)
             .audience(issuerConfig?.credentialIssuer ?: "")
             .claim("nonce", nonce).build()
 

@@ -688,9 +688,16 @@ class IssueService : IssueServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String?,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        preAuthorizedGrantAnonymousAccessSupported: Boolean?
     ): WrappedTokenResponse? {
         val redirectURI = redirectUri ?: "openid://callback"
+        val clientId = ClientIdentity.resolve(
+            isPreAuthorisedCodeFlow = isPreAuthorisedCodeFlow,
+            preAuthorizedGrantAnonymousAccessSupported = preAuthorizedGrantAnonymousAccessSupported,
+            version = version,
+            clientId = WalletUnitAttestationHeaders.clientId(walletUnitAttestationJWT, did),
+        )
         val dpop = if (dpopKey != null && !tokenEndPoint.isNullOrEmpty()) {
             DPoPProofService().generateDPoP(
                 httpMethod = "POST",
@@ -735,6 +742,7 @@ class IssueService : IssueServiceInterface {
                         "grant_type" to "urn:ietf:params:oauth:grant-type:pre-authorized_code",
                         "pre-authorized_code" to (code ?: "")
                     ).apply {
+                        clientId?.let { this["client_id"] = it }
                         if (userPin != null) {
                             if (version == 1) {
                                 this["user_pin"] = userPin ?: ""
@@ -748,7 +756,7 @@ class IssueService : IssueServiceInterface {
                     mutableMapOf(
                         "grant_type" to "authorization_code",
                         "code" to (code ?: ""),
-                        "client_id" to (did ?: ""),
+                        "client_id" to (clientId ?: ""),
                         "code_verifier" to (codeVerifier ?: ""),
                         "redirect_uri" to (redirectURI)
                     )
@@ -948,7 +956,8 @@ class IssueService : IssueServiceInterface {
         authConfig: AuthorisationServerWellKnownConfiguration?,
         dpopKey: ECKey?,
         attachKeyAttestation: Boolean,
-        keyAttestationJwt: String?
+        keyAttestationJwt: String?,
+        clientId: String?
     ): WrappedCredentialResponse? {
         val TAG = "processCredentialRequestKeyAttestation"
 
@@ -985,7 +994,9 @@ class IssueService : IssueServiceInterface {
         )
         Log.d("BankIdWatch", "credential request: attachKA=$attachKeyAttestation preMintedHardwareKA=${keyAttestationJwt != null} kaAttached=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
         Log.d("KaWatch", "credential request: attachKA=$attachKeyAttestation preMintedKA=${keyAttestationJwt != null} kaOnProof=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
-        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation)
+        // Appendix F.1: iss is the client_id the token request sent, omitted when that was anonymous.
+        val issuer = ClientIdentity.proofIssuer(credentialOffer, authConfig?.preAuthorizedGrantAnonymousAccessSupported, clientId, did)
+        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation, issuer)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null

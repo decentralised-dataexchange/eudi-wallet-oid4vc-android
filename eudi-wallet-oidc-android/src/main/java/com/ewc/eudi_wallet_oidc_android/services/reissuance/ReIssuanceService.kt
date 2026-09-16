@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.reissuance
 
+import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
@@ -43,7 +44,9 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         interactiveAuthorizationEndpoint: String?,
         dpopKey: ECKey?,
         attachKeyAttestation: Boolean,
-        keyAttestationJwt: String?
+        keyAttestationJwt: String?,
+        clientId: String?,
+        preAuthorizedGrantAnonymousAccessSupported: Boolean?
     ): WrappedCredentialResponse? {
         val dpopHeaderValue =
             if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
@@ -76,7 +79,9 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         val keyAttestation = KeyAttestationService.forProof(
             keyAttestationJwt, attachKeyAttestation
         )
-        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index, keyAttestation)
+        // Appendix F.1: iss is the original grant's client_id, omitted when that token was anonymous.
+        val issuer = ClientIdentity.proofIssuer(credentialOffer, preAuthorizedGrantAnonymousAccessSupported, clientId, did)
+        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
         if (jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null
