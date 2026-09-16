@@ -28,7 +28,12 @@ data class AuthorisationServerWellKnownConfiguration(
     @SerializedName("pushed_authorization_request_endpoint") var pushedAuthorizationRequestEndpoint: String? = null,
     @SerializedName("id_token_signing_alg_values_supported") var idTokenSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
     @SerializedName("interactive_authorization_endpoint") var interactiveAuthorizationEndpoint: String? = null,
-    @SerializedName("dpop_signing_alg_values_supported") var dpopSigningAlgValuesSupported: ArrayList<String> = arrayListOf()
+    @SerializedName("dpop_signing_alg_values_supported") var dpopSigningAlgValuesSupported: ArrayList<String> = arrayListOf(),
+    /**
+     * OpenID4VCI 1.0 section 12.3: whether the token endpoint accepts a Pre-Authorized Code without a
+     * `client_id`. Absent means false.
+     */
+    @SerializedName("pre-authorized_grant_anonymous_access_supported") var preAuthorizedGrantAnonymousAccessSupported: Boolean? = null
 )
 
 data class RequestAuthenticationMethodsSupported(

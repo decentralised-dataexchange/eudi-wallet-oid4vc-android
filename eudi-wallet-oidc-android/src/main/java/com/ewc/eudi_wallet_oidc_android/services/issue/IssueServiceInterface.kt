@@ -63,6 +63,9 @@ interface IssueServiceInterface {
      *                                  if pre-authorized_code is present
      * @param userPin - optional value, if the user_pin_required is true
      *              PIN will be provided by the user
+     * @param preAuthorizedGrantAnonymousAccessSupported - the Authorization Server's
+     *              `pre-authorized_grant_anonymous_access_supported`. When true the pre-authorized
+     *              request sends no `client_id`; absent or false, it sends the wallet's client identity.
      *
      * @return Token response
      */
@@ -77,7 +80,8 @@ interface IssueServiceInterface {
         walletUnitAttestationJWT: String? ,
         walletUnitProofOfPossession: String?,
         redirectUri: String? = null,
-        dpopKey: ECKey?
+        dpopKey: ECKey?,
+        preAuthorizedGrantAnonymousAccessSupported: Boolean? = null
     ): WrappedTokenResponse?
 
     /**
@@ -121,7 +125,9 @@ interface IssueServiceInterface {
         authConfig: AuthorisationServerWellKnownConfiguration?,
         dpopKey: ECKey?,
         attachKeyAttestation: Boolean = false,
-        keyAttestationJwt: String? = null
+        keyAttestationJwt: String? = null,
+        /** The client_id the token request used, for the proof's `iss`. Null keeps `did`. */
+        clientId: String? = null
     ): WrappedCredentialResponse?
 
     /**
