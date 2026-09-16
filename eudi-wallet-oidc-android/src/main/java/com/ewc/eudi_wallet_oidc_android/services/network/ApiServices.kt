@@ -1,9 +1,11 @@
 package com.ewc.eudi_wallet_oidc_android.services.network
 
+import com.ewc.eudi_wallet_oidc_android.BatchCredentialOfferResponse
 import com.ewc.eudi_wallet_oidc_android.CredentialOfferResponse
 import com.ewc.eudi_wallet_oidc_android.InteractiveAuthResponse
 import com.ewc.eudi_wallet_oidc_android.models.RefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.BatchClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.ClientAssertion
 import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationRequest
 import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationResponse
@@ -161,6 +163,16 @@ interface ApiService {
         @Header("X-Wallet-Unit-Nonce") nonce: String,
         @Body body: ClientAssertion
     ): Response<CredentialOfferResponse>
+
+    /** Batch wallet-unit registration (#3347): N client assertions, N attestations. */
+    @POST
+    suspend fun sendBatchWUARequest(
+        @Url url: String,
+        @Header("X-Wallet-Unit-Integrity-Token") deviceIntegrityToken: String,
+        @Header("X-Wallet-Unit-Platform") devicePlatform: String,
+        @Header("X-Wallet-Unit-Nonce") nonce: String,
+        @Body body: BatchClientAssertion
+    ): Response<BatchCredentialOfferResponse>
 
     @GET
     suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
