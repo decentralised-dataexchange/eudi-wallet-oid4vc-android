@@ -102,7 +102,7 @@ class ProofService {
         return when (bindingMethod) {
             "did:jwk" -> {
                 val processedDidJwk = subJwk?.let { createDidJwk(it.toPublicJWK().toJSONString()) }
-                processedDidJwk ?: ""
+                processedDidJwk?.let { "$it#0" } ?: ""
             }
             "jwk" ->{
                 subJwk?.keyID ?: ""
