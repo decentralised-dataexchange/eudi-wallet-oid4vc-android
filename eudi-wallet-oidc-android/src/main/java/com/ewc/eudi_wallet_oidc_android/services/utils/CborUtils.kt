@@ -797,7 +797,8 @@ class CborUtils {
         @OptIn(ExperimentalEncodingApi::class)
         fun processExtractNameSpaces(
             allCredentialList: List<String?>?,
-            presentationRequest: PresentationRequest?
+            presentationRequest: PresentationRequest?,
+            docType: String? = null
         ): CborMap {
             var filteredNameSpaces = CborMap()
 
@@ -846,9 +847,21 @@ class CborUtils {
                         }
                         else{
                             presentationRequest?.dcqlQuery?.let { dcqlQuery ->
+                                // Scope the keyList to just the query whose doctype_value
+                                // matches THIS credential - the caller already knows this
+                                // credential's docType before calling us.
+                                val matchingCredentialQueries = if (!docType.isNullOrBlank()) {
+                                    dcqlQuery.credentials?.filter { it.meta?.doctypeValue == docType }
+                                } else {
+                                    // docType unknown to the caller: fall back to the prior
+                                    // (unscoped) behaviour rather than silently disclosing
+                                    // nothing, but this should not happen on the live path -
+                                    // both MDocVpTokenBuilder call sites always pass docType.
+                                    dcqlQuery.credentials
+                                }
 
-                                dcqlQuery.credentials?.forEach { credential ->
-                                    credential.claims?.forEach { claim ->
+                                matchingCredentialQueries?.forEach { credentialQuery ->
+                                    credentialQuery.claims?.forEach { claim ->
 
                                         val path =  if(claim.namespace != null && claim.claimName != null){
                                             "$['${claim.namespace}']['${claim.claimName}']"
