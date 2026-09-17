@@ -123,6 +123,10 @@ object WalletUnitAttestationService {
      * [initiateWalletUnitAttestation]'s inputEcKey does. Keys 1..count-1 are
      * always fresh.
      *
+     * [keys], when given, are the signable keys to register (for example
+     * Android Keystore handles); [count] must equal their number and
+     * [firstKey] is ignored.
+     *
      * Returns null only when the flow failed before a request could be made
      * (key generation, Play Integrity, signing). An HTTP error is returned in
      * the result (httpCode / errorBody, no attestations) so the caller can
@@ -135,11 +139,13 @@ object WalletUnitAttestationService {
         count: Int,
         profile: String? = null,
         clientId: String? = null,
-        firstKey: ECKey? = null
+        firstKey: ECKey? = null,
+        keys: List<ECKey>? = null
     ): BatchWalletAttestationResult? {
         require(count >= 1) { "count must be at least 1" }
+        require(keys == null || keys.size == count) { "keys must hold count keys" }
         return try {
-            val keys = List(count) { i -> if (i == 0 && firstKey != null) firstKey else generateSoftwareEcKey() }
+            val keys = keys ?: List(count) { i -> if (i == 0 && firstKey != null) firstKey else generateSoftwareEcKey() }
             val dids = keys.map { DIDService().createDID(it) }
             val sharedClientId = clientId ?: dids[0]
             Logger.d(TAG, "Batch registration: $count keys, client_id=$sharedClientId")
