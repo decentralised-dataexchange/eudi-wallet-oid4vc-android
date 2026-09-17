@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation
 
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.clock.WalletClock
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationOutcome
 import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationRequest
@@ -18,7 +19,6 @@ import com.nimbusds.jwt.SignedJWT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response
-import java.util.Date
 
 /**
  * ARF TS3 v1.5 Key Attestation (KA).
@@ -101,8 +101,7 @@ object KeyAttestationService {
     /**
      * Proof of possession over the issuer c_nonce, for the wallet-provider
      * key-attestation endpoint (software tier). The key_pops array is
-     * positionally aligned with attested_keys; the WIA cnf key's slot needs
-     * a placeholder.
+     * positionally aligned with attested_keys, one proof per key.
      */
     fun generateKeyProofOfPossession(key: ECKey, nonce: String): String? {
         return try {
@@ -110,7 +109,7 @@ object KeyAttestationService {
                 .type(JOSEObjectType(KEY_POP_TYP))
                 .build()
             val claims = JWTClaimsSet.Builder()
-                .issueTime(Date())
+                .issueTime(WalletClock.issuedAt())
                 .claim("nonce", nonce)
                 .build()
             val jwt = SignedJWT(header, claims)
