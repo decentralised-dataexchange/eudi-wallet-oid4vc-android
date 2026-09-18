@@ -53,7 +53,7 @@ class ProofService {
             // c_nonce, and (like DPoP) can be rejected for a stale iat, so it is NOT
             // backdated. Only the client-attestation PoP needs the WalletClock backdate.
             .issueTime(Date())
-            .expirationTime(Date(Date().time + 86400))
+            .expirationTime(Date(Date().time + PROOF_LIFETIME_MS))
             .issuer(issuer)
             .audience(issuerConfig?.credentialIssuer ?: "")
             .claim("nonce", nonce).build()
@@ -190,4 +190,9 @@ class ProofService {
         return matchingCredential?.cryptographicBindingMethodsSupported
     }
 
+
+    private companion object {
+        /** Credential proofs are single use and bound to a fresh c_nonce; 10 minutes covers a slow flow. */
+        const val PROOF_LIFETIME_MS = 10 * 60 * 1000L
+    }
 }

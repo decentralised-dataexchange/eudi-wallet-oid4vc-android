@@ -22,6 +22,7 @@ data class IssuerWellKnownConfigurationV2(
     @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null,
     @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponseEncryption? = null,
     @SerializedName("credential_request_encryption") var credentialRequestEncryption: Any? = null,
+    @SerializedName("batch_credential_issuance") var batchCredentialIssuance: com.ewc.eudi_wallet_oidc_android.models.BatchCredentialIssuance? = null,
 )
 data class CredentialsSupportedV2(
     @SerializedName("format") var format: String? = null,

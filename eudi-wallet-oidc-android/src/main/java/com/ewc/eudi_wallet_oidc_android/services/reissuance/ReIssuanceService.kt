@@ -24,6 +24,7 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.Key
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
 import okhttp3.MediaType.Companion.toMediaType
@@ -46,7 +47,8 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         attachKeyAttestation: Boolean,
         keyAttestationJwt: String?,
         clientId: String?,
-        preAuthorizedGrantAnonymousAccessSupported: Boolean?
+        preAuthorizedGrantAnonymousAccessSupported: Boolean?,
+        additionalProofKeys: List<ECKey>?
     ): WrappedCredentialResponse? {
         val dpopHeaderValue =
             if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
@@ -132,6 +134,14 @@ class ReIssuanceService : ReIssuanceServiceInterface {
             }
         if (credentialRequestEncryptionInfo?.encryptionRequired != null || interactiveAuthorizationEndpoint != null) {
             request.proofs = ProofsV3(jwt = arrayListOf(jwt))
+            request.proof = null
+        }
+        if (!additionalProofKeys.isNullOrEmpty()) {
+            val extraProofs = additionalProofKeys.map { key ->
+                ProofService().createProof(DIDService().createDID(key), key, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
+                    ?: return null
+            }
+            request.proofs = ProofsV3(jwt = listOf(jwt) + extraProofs)
             request.proof = null
         }
 

@@ -18,6 +18,8 @@ data class IssuerWellKnownConfiguration(
     @SerializedName("nonce_endpoint") var nonceEndpoint: String? = null,
     @SerializedName("credential_response_encryption") var credentialResponseEncryption: CredentialResponseEncryption? = null,
     @SerializedName("credential_request_encryption") var credentialRequestEncryption: Any? = null,
+    /** OpenID4VCI 1.0 §12.2.4: present when the issuer accepts several proofs per request. */
+    @SerializedName("batch_credential_issuance") var batchCredentialIssuance: BatchCredentialIssuance? = null,
 ){
     constructor(issuerWellKnownConfigurationV1: IssuerWellKnownConfigurationV1) : this(
         issuer = issuerWellKnownConfigurationV1.issuer,
@@ -31,7 +33,8 @@ data class IssuerWellKnownConfiguration(
         notificationEndpoint = issuerWellKnownConfigurationV1.notificationEndpoint,
         nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint,
         credentialResponseEncryption = issuerWellKnownConfigurationV1.credentialResponseEncryption,
-        credentialRequestEncryption = issuerWellKnownConfigurationV1.credentialRequestEncryption
+        credentialRequestEncryption = issuerWellKnownConfigurationV1.credentialRequestEncryption,
+        batchCredentialIssuance = issuerWellKnownConfigurationV1.batchCredentialIssuance
     )
     constructor(issuerWellKnownConfigurationV2:IssuerWellKnownConfigurationV2):this(
         issuer = issuerWellKnownConfigurationV2.issuer,
@@ -45,8 +48,8 @@ data class IssuerWellKnownConfiguration(
         notificationEndpoint = issuerWellKnownConfigurationV2.notificationEndpoint,
         nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint,
         credentialResponseEncryption = issuerWellKnownConfigurationV2.credentialResponseEncryption,
-        credentialRequestEncryption = issuerWellKnownConfigurationV2.credentialRequestEncryption
-
+        credentialRequestEncryption = issuerWellKnownConfigurationV2.credentialRequestEncryption,
+        batchCredentialIssuance = issuerWellKnownConfigurationV2.batchCredentialIssuance
     )
 }
 
@@ -109,4 +112,9 @@ data class CredentialRequestEncryption(
 data class WrappedIssuerConfigResponse(
     var issuerConfig: IssuerWellKnownConfiguration? = null,
     var errorResponse: ErrorResponse? = null
+)
+/** OpenID4VCI 1.0 §12.2.4 `batch_credential_issuance`. */
+data class BatchCredentialIssuance(
+    /** Maximum number of proofs in one Credential Request (2 or more). */
+    @SerializedName("batch_size") var batchSize: Int? = null
 )
