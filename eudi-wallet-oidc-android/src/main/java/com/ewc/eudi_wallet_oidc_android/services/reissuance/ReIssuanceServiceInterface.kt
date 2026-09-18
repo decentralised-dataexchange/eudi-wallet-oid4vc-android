@@ -29,7 +29,9 @@ interface ReIssuanceServiceInterface {
         /** The client_id of the original grant, for the proof's `iss`. Null keeps `did`. */
         clientId: String? = null,
         /** The Authorization Server's `pre-authorized_grant_anonymous_access_supported`. */
-        preAuthorizedGrantAnonymousAccessSupported: Boolean? = null
+        preAuthorizedGrantAnonymousAccessSupported: Boolean? = null,
+        /** Batch re-issuance: one more `jwt` proof per key. See IssueServiceInterface.processCredentialRequest. */
+        additionalProofKeys: List<ECKey>? = null
     ): WrappedCredentialResponse?
 
 }
