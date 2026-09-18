@@ -7,13 +7,7 @@ import com.ewc.eudi_wallet_oidc_android.models.DCQL
 import com.ewc.eudi_wallet_oidc_android.models.InputDescriptors
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
-import com.ewc.eudi_wallet_oidc_android.services.dcql.DCQLFiltering
-import com.ewc.eudi_wallet_oidc_android.services.utils.CborUtils
-import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.processCredentialsToJsonString
-import com.ewc.eudi_wallet_oidc_android.services.utils.CredentialProcessor.splitCredentialsBySdJWT
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
-import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
-import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -259,7 +253,6 @@ class SDJWTService : SDJWTServiceInterface {
         return withContext(Dispatchers.Default) {
 
             try {
-                val disclosureList: MutableList<String> = mutableListOf()
                 val disclosures = getDisclosuresFromSDJWT(credential)
                 var issuedJwt = getIssuerJwtFromSDJWT(credential)
 
@@ -274,112 +267,30 @@ class SDJWTService : SDJWTServiceInterface {
 
                 }
                 else{
-                    // Extract requested parameters from the presentation definition
-                    val requestedParams: MutableList<String> = mutableListOf()
-//                presentationDefinition.inputDescriptors?.get(0)?.constraints?.fields?.forEach {
-//                    it.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
-//                        requestedParams.add(paramName)
-//                    }
-//                }
+                    // Each requested field's path, kept intact (not flattened) — this is what
+                    // lets disclosure selection tell address.locality apart from
+                    // place_of_birth.locality. See WAL-14.128 / WAL-04.34.
+                    val requestedPaths: List<List<String>> =
+                        inputDescriptors.constraints?.fields?.mapNotNull { field ->
+                            field.path?.firstOrNull()
+                                ?.removePrefix("$.")
+                                ?.removePrefix("$")
+                                ?.split(".")
+                                ?.filter { it.isNotBlank() }
+                                ?.takeIf { it.isNotEmpty() }
+                        } ?: emptyList()
 
-                    inputDescriptors.constraints?.fields?.forEach { field ->
-                        field.path?.get(0)?.split(".")?.lastOrNull()?.let { paramName ->
-                            requestedParams.add(paramName)
-                        }
-                    }
+                    val payload = issuerPayload(issuedJwt)
+                        ?: return@withContext issuedJwt ?: ""
 
-                    val sdList = mutableListOf<String>()
-                    val pex = PresentationExchange()
-
-
-                    var processedCredentials: List<String> = emptyList()
-                    var credentialList: ArrayList<String?> = arrayListOf()
-
-                    if (format != null) {
-                        if (format == "mso_mdoc") {
-                            credentialList = arrayListOf(credential)
-                            processedCredentials =
-                                CborUtils.processMdocCredentialToJsonString(credentialList)
-                                    ?: emptyList()
-                        } else {
-                            credentialList = splitCredentialsBySdJWT(
-                                listOf(credential),
-                                inputDescriptors.constraints?.limitDisclosure != null
-                            )
-                            processedCredentials =
-                                processCredentialsToJsonString(
-                                    credentialList
-                                )
-                        }
-                    }
-
-                    val inputDescriptor = Gson().toJson(inputDescriptors)
-                    val matches: List<MatchedCredential> =
-                        pex.matchCredentials(inputDescriptor, processedCredentials)
-
-                    for (match in matches) {
-                        for (field in match.fields) {
-                            val value = field.path.value
-                            if (value is JSONObject) {
-                                if (value.has("_sd")) {
-                                    val sdArray = value.getJSONArray("_sd")
-                                    for (i in 0 until sdArray.length()) {
-                                        val sdItem = sdArray.get(i)
-                                        if (sdItem is String) {
-                                            sdList.add(sdItem)
-                                        }
-                                    }
-                                }
-                            } else if (value is Map<*, *>) {
-                                val map = value as Map<String, Any>
-                                val sdArray = map["_sd"]
-                                if (sdArray is List<*>) {
-                                    for (sdItem in sdArray) {
-                                        if (sdItem is String) {
-                                            sdList.add(sdItem)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    disclosures?.map { disclosure ->
-                        try {
-                            val list = JSONArray(
-                                Base64.decode(disclosure, Base64.URL_SAFE)
-                                    .toString(charset("UTF-8"))
-                            )
-
-                            if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
-                                disclosureList.add(disclosure)
-                            }
-                            val thirdElement = list.opt(2)
-                            if (thirdElement is JSONObject) {
-                                val keys = thirdElement.keys()
-                                while (keys.hasNext()) {
-                                    val key = keys.next()
-                                    if (requestedParams.contains(key)) {
-                                        disclosureList.add(disclosure)
-                                    }
-                                }
-                            }
-
-                            val response = calculateSHA256Hash(disclosure)
-                            if (sdList.contains(response)) {
-                                disclosureList.add(disclosure)
-                            }
-                            // Handle array element disclosures [salt, value] — no key at index 1
-                            if (list.length() == 2) {
-                                disclosureList.add(disclosure)
-                            }
-                        } catch (e: Exception) {
-                            println(e.message.toString())
-                        }
-                    }
+                    val selected = selectDisclosures(
+                        payload,
+                        disclosures ?: emptyList(),
+                        requestedPaths
+                    )
 
                     // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
-                    for (disclosureValue in disclosureList.toSet()) {
+                    for (disclosureValue in selected.toSet()) {
                         issuedJwt = "$issuedJwt~$disclosureValue"
                     }
 
@@ -405,113 +316,32 @@ class SDJWTService : SDJWTServiceInterface {
         return withContext(Dispatchers.Default) {
 
             try {
-                val disclosureList: MutableList<String> = mutableListOf()
                 val disclosures = getDisclosuresFromSDJWT(credential)
                 var issuedJwt = getIssuerJwtFromSDJWT(credential)
 
                 if (credentialList.claims?.isEmpty() == true) {
-                    return@withContext credential
+                    return@withContext issuedJwt
                 } else {
 
-                    // Extract requested parameters
-                    val requestedParams: MutableList<String> = mutableListOf()
+                    // Each requested claim's path, kept intact (not flattened) — this is what
+                    // lets disclosure selection tell address.locality apart from
+                    // place_of_birth.locality. See WAL-14.128 / WAL-04.34.
+                    val requestedPaths: List<List<String>> =
+                        credentialList.claims?.mapNotNull { claim ->
+                            claim.path?.takeIf { it.isNotEmpty() }
+                        } ?: emptyList()
 
-                    credentialList.claims?.forEach { claim ->
-                        claim.path?.forEach { pathElement ->
-                            requestedParams.add(pathElement)
-                        }
-                    }
+                    val payload = issuerPayload(issuedJwt)
+                        ?: return@withContext issuedJwt ?: ""
 
-                    val sdList = mutableListOf<String>()
+                    val selected = selectDisclosures(
+                        payload,
+                        disclosures ?: emptyList(),
+                        requestedPaths
+                    )
 
-                    var processedCredentials: List<String> = emptyList()
-                    var credentialArrayList: ArrayList<String?> = arrayListOf()
-
-                    if (format != null) {
-                        if (format == "mso_mdoc") {
-                            credentialArrayList = arrayListOf(credential)
-                            processedCredentials =
-                                CborUtils.processMdocCredentialToJsonString(credentialArrayList)
-                                    ?: emptyList()
-                        } else {
-                            credentialArrayList = splitCredentialsBySdJWT(
-                                listOf(credential)
-                            )
-                            processedCredentials =
-                              processCredentialsToJsonString(
-                                    credentialArrayList
-                                )
-                        }
-                    }
-
-                    val matches: List<MatchedCredential> =
-                        DCQLFiltering.filterCredentialUsingSingleDCQLCredentialFilter(
-                            credentialList,
-                            processedCredentials
-                        )
-
-                    for (match in matches) {
-                        for (field in match.fields) {
-                            val value = field.path.value
-                            if (value is JSONObject) {
-                                if (value.has("_sd")) {
-                                    val sdArray = value.getJSONArray("_sd")
-                                    for (i in 0 until sdArray.length()) {
-                                        val sdItem = sdArray.get(i)
-                                        if (sdItem is String) {
-                                            sdList.add(sdItem)
-                                        }
-                                    }
-                                }
-                            } else if (value is Map<*, *>) {
-                                val map = value as Map<String, Any>
-                                val sdArray = map["_sd"]
-                                if (sdArray is List<*>) {
-                                    for (sdItem in sdArray) {
-                                        if (sdItem is String) {
-                                            sdList.add(sdItem)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    disclosures?.map { disclosure ->
-                        try {
-                            val list = JSONArray(
-                                Base64.decode(disclosure, Base64.URL_SAFE)
-                                    .toString(charset("UTF-8"))
-                            )
-
-                            if (list.length() >= 2 && requestedParams.contains(list.optString(1))) {
-                                disclosureList.add(disclosure)
-                            }
-                            val thirdElement = list.opt(2)
-                            if (thirdElement is JSONObject) {
-                                val keys = thirdElement.keys()
-                                while (keys.hasNext()) {
-                                    val key = keys.next()
-                                    if (requestedParams.contains(key)) {
-                                        disclosureList.add(disclosure)
-                                    }
-                                }
-                            }
-
-                            val response = calculateSHA256Hash(disclosure)
-                            if (sdList.contains(response)) {
-                                disclosureList.add(disclosure)
-                            }
-                            // Handle array element disclosures [salt, value] — no key at index 1
-                            if (list.length() == 2) {
-                                disclosureList.add(disclosure)
-                            }
-                        } catch (e: Exception) {
-                            println(e.message.toString())
-                        }
-                    }
                     // Append unique disclosure values to issuedJwt, ensuring no duplicates are added
-                    for (disclosureValue in disclosureList.toSet()) {
+                    for (disclosureValue in selected.toSet()) {
                         issuedJwt = "$issuedJwt~$disclosureValue"
                     }
 
@@ -774,6 +604,141 @@ class SDJWTService : SDJWTServiceInterface {
     }
 
 
+
+    /**
+     * A single decoded SD-JWT disclosure, keyed by its digest.
+     * [name] is null for array-element disclosures (`[salt, value]`).
+     */
+    private data class ParsedDisclosure(val encoded: String, val name: String?, val value: Any?)
+
+    /**
+     * Decodes the (unsigned-portion) payload of a compact JWT — "header.payload.signature" —
+     * into a JSONObject, or null if it isn't shaped like one.
+     */
+    private fun issuerPayload(fromJwt: String?): JSONObject? {
+        if (fromJwt.isNullOrBlank()) return null
+        val parts = fromJwt.split(".")
+        if (parts.size < 2) return null
+        return try {
+            val json = Base64.decode(parts[1], Base64.URL_SAFE).toString(charset("UTF-8"))
+            JSONObject(json)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Resolves exactly the disclosures needed to satisfy [paths], by walking the actual
+     * credential [payload] tree one path segment at a time and only expanding a disclosure
+     * once it's reached through the correct parent object/array — never by claim name alone.
+     * This is what keeps sibling claims that share a leaf name (e.g. address.locality vs
+     * place_of_birth.locality) from being confused with one another. See WAL-14.128 / WAL-04.34.
+     *
+     * When a requested path is fully consumed (e.g. the whole "address" object, or an array
+     * like "nationalities" was requested), every disclosure reachable below that point is
+     * included too — that's what a request for a whole object or array means.
+     */
+    private fun selectDisclosures(
+        payload: JSONObject,
+        disclosures: List<String>,
+        paths: List<List<String>>
+    ): List<String> {
+        val byDigest = mutableMapOf<String, ParsedDisclosure>()
+        for (encoded in disclosures) {
+            try {
+                val decoded = Base64.decode(encoded, Base64.URL_SAFE).toString(charset("UTF-8"))
+                val list = JSONArray(decoded)
+                val digest = calculateSHA256Hash(encoded) ?: continue
+                when {
+                    list.length() >= 3 -> byDigest[digest] =
+                        ParsedDisclosure(encoded, list.optString(1), list.opt(2))
+                    list.length() == 2 -> byDigest[digest] =
+                        ParsedDisclosure(encoded, null, list.opt(1))
+                }
+            } catch (e: Exception) {
+                // Malformed disclosure — skip it rather than fail the whole presentation.
+            }
+        }
+
+        val selected = mutableSetOf<String>()
+
+        fun collectSubtree(node: Any?) {
+            when (node) {
+                is JSONObject -> {
+                    node.optJSONArray("_sd")?.let { sdArray ->
+                        for (i in 0 until sdArray.length()) {
+                            val disclosure = byDigest[sdArray.optString(i)] ?: continue
+                            selected.add(disclosure.encoded)
+                            collectSubtree(disclosure.value)
+                        }
+                    }
+                    val keys = node.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        if (key != "_sd") collectSubtree(node.opt(key))
+                    }
+                }
+                is JSONArray -> {
+                    for (i in 0 until node.length()) {
+                        val element = node.opt(i)
+                        if (element is JSONObject && element.has("...")) {
+                            val disclosure = byDigest[element.optString("...")] ?: continue
+                            selected.add(disclosure.encoded)
+                            collectSubtree(disclosure.value)
+                        } else {
+                            collectSubtree(element)
+                        }
+                    }
+                }
+                else -> {}
+            }
+        }
+
+        fun walk(node: Any?, remaining: List<String>) {
+            val key = remaining.firstOrNull()
+            if (key == null) {
+                collectSubtree(node)
+                return
+            }
+            val rest = remaining.drop(1)
+            if (node is JSONArray) {
+                // A path segment never names an array index here, so it applies to every
+                // element — resolving each element's own digest on the way in if needed.
+                for (i in 0 until node.length()) {
+                    val element = node.opt(i)
+                    if (element is JSONObject && element.has("...")) {
+                        val disclosure = byDigest[element.optString("...")] ?: continue
+                        selected.add(disclosure.encoded)
+                        walk(disclosure.value, remaining)
+                    } else {
+                        walk(element, remaining)
+                    }
+                }
+                return
+            }
+            if (node !is JSONObject) return
+            // A claim the issuer left in the clear needs no disclosure of its own.
+            if (node.has(key)) {
+                walk(node.opt(key), rest)
+                return
+            }
+            // Otherwise it's behind one of THIS node's digests — never a sibling node's.
+            val sdArray = node.optJSONArray("_sd") ?: return
+            for (i in 0 until sdArray.length()) {
+                val disclosure = byDigest[sdArray.optString(i)] ?: continue
+                if (disclosure.name == key) {
+                    selected.add(disclosure.encoded)
+                    walk(disclosure.value, rest)
+                    return
+                }
+            }
+        }
+
+        for (path in paths) {
+            walk(payload, path)
+        }
+        return selected.toList()
+    }
 
     private fun getDisclosuresFromSDJWT(credential: String?): List<String>? {
         val split = credential?.split("~")
