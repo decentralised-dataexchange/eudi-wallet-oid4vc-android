@@ -1765,6 +1765,7 @@ class IssueService : IssueServiceInterface {
         issuerConfig: IssuerWellKnownConfiguration?,
         type: String?
     ): ArrayList<String>? {
+        if (issuerConfig == null) return null
         var types: ArrayList<String> = ArrayList()
         val credentialOfferJsonString = Gson().toJson(issuerConfig)
         val jsonObject = JSONObject(credentialOfferJsonString)
