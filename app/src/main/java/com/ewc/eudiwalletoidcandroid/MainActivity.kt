@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnAuthorization.setOnClickListener { viewModel.requestAuthorization() }
         binding.btnToken.setOnClickListener { viewModel.requestToken() }
         binding.btnCredential.setOnClickListener { viewModel.requestCredential() }
+        binding.btnDeferred.setOnClickListener { viewModel.requestDeferredCredential() }
+        binding.btnNotify.setOnClickListener { viewModel.sendNotification() }
         binding.btnRunAll.setOnClickListener { viewModel.runAll() }
         binding.btnClear.setOnClickListener { viewModel.clear() }
     }

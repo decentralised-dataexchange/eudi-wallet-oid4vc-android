@@ -91,6 +91,18 @@
                     android:text="@string/harness_step_credential" />
 
                 <Button
+                    android:id="@+id/btnDeferred"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/harness_step_deferred" />
+
+                <Button
+                    android:id="@+id/btnNotify"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/harness_step_notify" />
+
+                <Button
                     android:id="@+id/btnRunAll"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
