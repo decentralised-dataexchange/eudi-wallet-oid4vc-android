@@ -19,6 +19,7 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
+import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.nimbusds.jose.jwk.ECKey
 import kotlinx.coroutines.launch
@@ -452,6 +453,16 @@ class MainViewModel : ViewModel() {
             wallet = identity,
             token = issuedToken,
             subject = subject,
+            // Appendix F.1: the harness holds no wallet unit attestation, so the DID is the
+            // client_id -- unless the offer is pre-authorized and the server advertises anonymous
+            // access, in which case `iss` is omitted entirely.
+            issuer = ClientIdentity.proofIssuer(
+                credentialOffer = session.credentialOffer,
+                preAuthorizedGrantAnonymousAccessSupported =
+                    session.authConfig?.preAuthorizedGrantAnonymousAccessSupported,
+                clientId = identity.did,
+                did = identity.did,
+            ),
             // The harness holds no wallet unit attestation; the DPoP key is its throwaway one.
             attestation = WalletAttestation(null, null, identity.jwk as? ECKey),
             dpopNonce = dpopNonce,

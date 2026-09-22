@@ -55,6 +55,7 @@ class CredentialRequestResolverTest {
             wallet = WalletIdentity("did:key:zabc", ECKeyGenerator(Curve.P_256).keyID("k").generate()),
             token = token,
             subject = CredentialSubject.ByConfiguration("PidSdJwt"),
+            issuer = "did:key:zabc",
             attestation = if (withDpop) {
                 WalletAttestation(null, null, ECKeyGenerator(Curve.P_256).keyID("d").generate())
             } else null,
