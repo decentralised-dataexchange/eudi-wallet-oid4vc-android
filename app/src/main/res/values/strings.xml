@@ -13,4 +13,6 @@
     <string name="harness_step_token">5 · Request token</string>
     <string name="harness_tx_code_hint">Transaction code (only if the offer declares tx_code)</string>
     <string name="harness_step_credential">6 · Request credential</string>
+    <string name="harness_step_deferred">7 · Request deferred credential</string>
+    <string name="harness_step_notify">8 · Notify the issuer</string>
 </resources>
