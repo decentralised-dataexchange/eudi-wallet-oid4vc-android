@@ -259,6 +259,7 @@ interface IssueServiceInterface {
         wallet: WalletIdentity,
         token: TokenResponse,
         subject: CredentialSubject,
+        issuer: String?,
         attestation: WalletAttestation? = null,
         keyAttestation: String? = null,
         encryption: CredentialEncryption? = null,

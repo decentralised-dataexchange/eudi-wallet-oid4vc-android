@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue.token
 
+import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.Grants
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
@@ -21,6 +22,7 @@ class TokenRequestParametersTest {
         txCode: TxCode? = null,
         preAuthorized: Boolean = true,
         authorizationServers: ArrayList<String>? = null,
+        anonymousAccess: Boolean? = null,
     ) = IssuanceSession(
         credentialOffer = CredentialOffer(
             credentialIssuer = "https://issuer.example.com",
@@ -33,7 +35,9 @@ class TokenRequestParametersTest {
             credentialIssuer = "https://issuer.example.com",
             authorizationServers = authorizationServers,
         ),
-        authConfig = null,
+        authConfig = AuthorisationServerWellKnownConfiguration(
+            preAuthorizedGrantAnonymousAccessSupported = anonymousAccess,
+        ),
     )
 
     private fun build(
@@ -56,7 +60,23 @@ class TokenRequestParametersTest {
         assertEquals("urn:ietf:params:oauth:grant-type:pre-authorized_code", body["grant_type"])
         assertEquals("pre-1", body["pre-authorized_code"])
         assertNull(body["code"])
-        // Section 6.1: client authentication is OPTIONAL for this grant, and none is sent.
+        // Appendix F.1 and section 12.3: the client identifies itself unless the server advertises
+        // `pre-authorized_grant_anonymous_access_supported`.
+        assertEquals("did:key:zabc", body["client_id"])
+    }
+
+    @Test
+    fun `a pre-authorized grant sends no client_id when the server allows anonymous access`() {
+        val body = build(session(anonymousAccess = true), TokenGrant.PreAuthorized("pre-1"))
+
+        assertEquals("pre-1", body["pre-authorized_code"])
+        assertNull(body["client_id"])
+    }
+
+    @Test
+    fun `a draft pre-authorized offer still sends no client_id`() {
+        val body = build(session(version = 1), TokenGrant.PreAuthorized("pre-1"))
+
         assertNull(body["client_id"])
     }
 
