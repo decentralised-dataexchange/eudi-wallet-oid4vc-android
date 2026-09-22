@@ -39,6 +39,9 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.Authorizati
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredRequestResolver
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredTransaction
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestResolver
@@ -502,6 +505,35 @@ class IssueService(
      * @return credential response
      */
     /** The credential request. See [IssueServiceInterface.requestCredential]. */
+    /**
+     * Asks the issuer for a credential it deferred (section 9).
+     *
+     * Returns the same [CredentialOutcome] as [requestCredential]: section 9.2 makes the Deferred
+     * Credential Response the Credential Response, and says it "MAY itself be deferred again" --
+     * which arrives back as [CredentialOutcome.Deferred] with a fresh handle and the issuer's
+     * `interval`. A caller polls until it stops being Deferred, and stops for good on Failed.
+     *
+     * Replaces `processDeferredCredentialRequest` and `processDeferredCredentialRequestV2`, which
+     * the caller chose between using a stored version integer. [DeferredTransaction] carries that
+     * distinction instead.
+     */
+    override suspend fun requestDeferredCredential(
+        session: IssuanceSession,
+        token: TokenResponse,
+        transaction: DeferredTransaction,
+        attestation: WalletAttestation?,
+        encryption: CredentialEncryption?,
+        dpopNonce: String?,
+        policy: DeferredRequestPolicy,
+    ): CredentialOutcome = DeferredRequestResolver(policy = policy).resolve(
+        session = session,
+        token = token,
+        transaction = transaction,
+        attestation = attestation,
+        encryption = encryption,
+        dpopNonce = dpopNonce,
+    )
+
     override suspend fun requestCredential(
         session: IssuanceSession,
         wallet: WalletIdentity,

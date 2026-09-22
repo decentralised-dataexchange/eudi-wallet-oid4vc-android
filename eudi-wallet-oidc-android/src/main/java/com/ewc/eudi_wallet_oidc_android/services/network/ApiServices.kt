@@ -122,6 +122,32 @@ interface ApiService {
         @Body body: RequestBody
     ): Response<ResponseBody>
 
+    /**
+     * The deferred credential endpoint, section 9. One declaration for both revisions and both
+     * content types: the four `getDifferedCredential*` overloads below predate `DeferredRequestResolver`
+     * and are kept only for the deprecated entry points.
+     */
+    @POST
+    suspend fun requestDeferredCredential(
+        @Url url: String,
+        @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    /**
+     * The notification endpoint, section 11. Returns `Response<ResponseBody>` rather than `Unit`
+     * so a 204 can be told from a 400 -- `sendNotificationRequest` below discards that.
+     */
+    @POST
+    suspend fun sendNotification(
+        @Url url: String,
+        @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
     @POST("")
     suspend fun getDifferedCredential(
         @Url url: String,

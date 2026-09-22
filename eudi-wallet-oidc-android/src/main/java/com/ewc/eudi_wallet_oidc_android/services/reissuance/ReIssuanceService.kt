@@ -4,30 +4,25 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
-import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequestEncryptionInfo
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
-import com.ewc.eudi_wallet_oidc_android.models.ProofV3
-import com.ewc.eudi_wallet_oidc_android.models.ProofsV3
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedCredentialResponse
+import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.Credential
+import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
-import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
-import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
-import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
-import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
-import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
-import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.KeyAttestationService
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWK
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 
 class ReIssuanceService : ReIssuanceServiceInterface {
     override suspend fun reIssueCredential(
@@ -48,147 +43,63 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         clientId: String?,
         preAuthorizedGrantAnonymousAccessSupported: Boolean?
     ): WrappedCredentialResponse? {
-        val dpopHeaderValue =
-            if (!issuerConfig?.credentialEndpoint.isNullOrEmpty() &&
-                dpopKey != null &&
-                accessToken?.accessToken != null
-            ) {
-                val athValue = DPoPProofService().computeAccessTokenHash(accessToken?.accessToken)
-
-                val claims = mapOf(
-                    "ath" to athValue,
-                )
-
-                DPoPProofService().generateDPoP(
-                    httpMethod = "POST",
-                    targetUri = issuerConfig?.credentialEndpoint ?: "",
-                    dpopKey = dpopKey,
-                    claims = claims
-                )
-            } else null
-
-        val authHeaderValue = if (dpopHeaderValue != null) {
-            "DPoP ${accessToken?.accessToken}"
-        } else {
-            "Bearer ${accessToken?.accessToken}"
-        }
-
-        val credentialEncryptionBuilder = CredentialEncryptionBuilder()
-        // ARF TS3 v1.5: the wallet-provider-issued KA travels in the proof's
-        // key_attestation header, bound to the same c_nonce as the proof.
-        val keyAttestation = KeyAttestationService.forProof(
-            keyAttestationJwt, attachKeyAttestation
+        // Re-issuance is a credential request with a fresh proof; only where the inputs come from
+        // differs -- a stored credential record rather than a live offer. It used to be a second
+        // copy of the whole leg: its own four-branch subject selection, its own plural-proofs
+        // trigger (a *third* condition, `encryptionRequired != null || interactiveAuthorizationEndpoint
+        // != null`, true even when encryption_required is false), its own SafeApiCall transport and
+        // its own response parsing. All of that now goes through the one implementation.
+        val session = IssuanceSession(
+            credentialOffer = credentialOffer,
+            issuerConfig = issuerConfig,
+            authConfig = AuthorisationServerWellKnownConfiguration().apply {
+                this.preAuthorizedGrantAnonymousAccessSupported =
+                    preAuthorizedGrantAnonymousAccessSupported
+            },
         )
+        val token = accessToken ?: TokenResponse()
+        val credential = credentialOffer?.credentials?.getOrNull(index)
+
         // Appendix F.1: iss is the original grant's client_id, omitted when that token was anonymous.
-        val issuer = ClientIdentity.proofIssuer(credentialOffer, preAuthorizedGrantAnonymousAccessSupported, clientId, did)
-        val jwt = ProofService().createProof(did, subJwk, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
-        if (jwt == null) {
-            Log.e("IssueService", "Failed to create proof for credential request")
-            return null
-        }
+        val issuer = ClientIdentity.proofIssuer(
+            credentialOffer, preAuthorizedGrantAnonymousAccessSupported, clientId, did,
+        )
 
-        val request: CredentialRequest =
-            if (authorizationDetail != null && authorizationDetail.type == "openid_credential" && !authorizationDetail.credentialIdentifiers.isNullOrEmpty()) {
+        val outcome = IssueService().requestCredential(
+            session = session,
+            wallet = WalletIdentity(did, subJwk),
+            token = token,
+            subject = authorizationDetail?.let {
+                CredentialSubject.of(session, token.apply { authorizationDetails = arrayListOf(it) }, credential)
+            } ?: CredentialSubject.of(session, token, credential),
+            issuer = issuer,
+            attestation = dpopKey?.let { WalletAttestation(null, null, it) },
+            // ARF TS3 v1.5: the wallet-provider-issued KA travels in the proof's key_attestation
+            // header, bound to the same c_nonce as the proof.
+            keyAttestation = KeyAttestationService.forProof(keyAttestationJwt, attachKeyAttestation),
+            encryption = CredentialEncryption(ecKeyWithAlgEnc, credentialRequestEncryptionInfo),
+            nonce = nonce,
+        )
 
-                CredentialRequest(
-                    credentialIdentifier = authorizationDetail.credentialIdentifiers.firstOrNull(),
-                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
+        return when (outcome) {
+            is CredentialOutcome.Issued -> WrappedCredentialResponse(
+                credentialResponse = CredentialResponse(
+                    credential = outcome.credentials.firstOrNull(),
+                    credentials = ArrayList(outcome.credentials.map { Credential(credential = it) }),
+                    notificationId = outcome.notificationId,
+                    cNonce = outcome.cNonce,
                 )
-            } else if (authorizationDetail != null && authorizationDetail.type == "openid_credential" &&
-                issuerConfig?.nonceEndpoint != null && !authorizationDetail.credentialConfigurationId.isNullOrBlank()
-            ) {
-                CredentialRequest(
-                    credentialConfigurationId = authorizationDetail.credentialConfigurationId,
-                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
-                )
-            } else if (accessToken?.cNonce == null && issuerConfig?.nonceEndpoint != null && accessToken?.authorizationDetails.isNullOrEmpty()) {
-
-                CredentialRequest(
-                    credentialConfigurationId = credentialOffer?.credentials?.get(index)?.types?.firstOrNull(),
-                    proof = ProofV3(jwt = jwt, proofType = "jwt"),
-                )
-            } else {
-
-                val doctype = IssueService().fetchDoctype(index, credentialOffer, issuerConfig)
-                var types: ArrayList<String> = ArrayList()
-                var format: String? = null
-                try {
-                    types = credentialOffer?.credentials?.get(index)?.types
-                        ?: credentialOffer?.credentials?.get(index)?.doctype?.let { arrayListOf(it) }
-                                ?: ArrayList()
-                    format = IssueService().getFormatFromIssuerConfig(
-                        issuerConfig,
-                        types.lastOrNull() ?: ""
-                    )
-                } catch (e: Exception) {
-                }
-                IssueService().buildCredentialRequest(
-                    credentialOffer = credentialOffer,
-                    issuerConfig = issuerConfig,
-                    format = format,
-                    doctype = doctype,
-                    jwt = jwt, index = index
-                )
-            }
-        if (credentialRequestEncryptionInfo?.encryptionRequired != null || interactiveAuthorizationEndpoint != null) {
-            request.proofs = ProofsV3(jwt = arrayListOf(jwt))
-            request.proof = null
-        }
-
-        request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
-
-        return try {
-            val result = SafeApiCall.safeApiCallResponse {
-                if (credentialRequestEncryptionInfo?.encryptionRequired == true) {
-                    if (credentialRequestEncryptionInfo.jwk != null) {
-                        val type = object : TypeToken<Map<String, Any?>>() {}.type
-                        val payload: Map<String, Any?> = Gson().fromJson(Gson().toJson(request), type)
-
-                        val encryptedJwe = JWEEncrypter().encrypt(
-                            payload = payload,
-                            jwk = credentialRequestEncryptionInfo.jwk
-                        )
-                        val requestBody = encryptedJwe
-                            .toRequestBody("application/jwt".toMediaType())
-
-                        ApiManager.api.getService()?.getCredentialEncrypted(
-                            issuerConfig?.credentialEndpoint ?: "",
-                            "application/jwt",
-                            authHeaderValue,
-                            dpopHeaderValue,
-                            requestBody
-                        )
-                    } else null
-                } else {
-                    ApiManager.api.getService()?.getCredential(
-                        issuerConfig?.credentialEndpoint ?: "",
-                        "application/json",
-                        authHeaderValue,
-                        dpopHeaderValue,
-                        request
-                    )
-                }
-            }
-
-            result.fold(
-                onSuccess = { response ->
-                    IssueService().parseCredentialResponse(
-                        response,
-                        ecKeyWithAlgEnc,
-                        credentialEncryptionBuilder
-                    )
-                },
-                onFailure = { error ->
-                    Log.e("IssueService", "Error reissuing credential: ${error.message}")
-                    WrappedCredentialResponse(
-                        credentialResponse = null,
-                        errorResponse = ErrorResponse(error = -1, errorDescription = error.message)
-                    )
-                }
             )
-        } catch (e: Exception) {
-            Log.e("IssueService", "Unexpected error while reissuing credential: ${e.message}")
-            null
+
+            is CredentialOutcome.Deferred -> WrappedCredentialResponse(
+                credentialResponse = CredentialResponse(
+                    transactionId = outcome.transactionId,
+                    acceptanceToken = outcome.transactionId,
+                    interval = outcome.interval,
+                )
+            )
+
+            is CredentialOutcome.Failed -> WrappedCredentialResponse(errorResponse = outcome.error)
         }
     }
 }

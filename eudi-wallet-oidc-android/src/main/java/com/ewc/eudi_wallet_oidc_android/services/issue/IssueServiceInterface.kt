@@ -6,6 +6,8 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.Authorizati
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredTransaction
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
@@ -270,12 +272,31 @@ interface IssueServiceInterface {
      *
      * @return Credential response
      */
+    /** @see com.ewc.eudi_wallet_oidc_android.services.issue.IssueService.requestDeferredCredential */
+    suspend fun requestDeferredCredential(
+        session: IssuanceSession,
+        token: TokenResponse,
+        transaction: DeferredTransaction,
+        attestation: WalletAttestation? = null,
+        encryption: CredentialEncryption? = null,
+        dpopNonce: String? = null,
+        policy: DeferredRequestPolicy = DeferredRequestPolicy.Default,
+    ): CredentialOutcome
+
+    @Deprecated(
+        "The draft acceptance_token form. Use requestDeferredCredential with DeferredTransaction.LegacyAcceptanceToken, which reports issuance_pending instead of returning null.",
+        ReplaceWith("requestDeferredCredential(session, token, transaction)"),
+    )
     suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse?
+    @Deprecated(
+        "Use requestDeferredCredential with DeferredTransaction.TransactionId, which tells issuance_pending from invalid_transaction_id and reports the issuer's interval.",
+        ReplaceWith("requestDeferredCredential(session, token, transaction)"),
+    )
     suspend fun processDeferredCredentialRequestV2(
         transactionId: String?,
         accessToken: String?,
