@@ -6,10 +6,41 @@ import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.NotificationRequest
 import com.ewc.eudi_wallet_oidc_android.models.v2.DeferredCredentialRequestV2
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationEvent
+import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 
 class NotificationService : NotificationServiceInterface {
+
+    /**
+     * Tells the issuer what happened to a credential (section 11).
+     *
+     * Returns a [NotificationOutcome] rather than nothing: [sendNotificationRequest] logged the
+     * result and returned `Unit`, so a caller could not tell an acknowledged notification from one
+     * the issuer refused -- section 11.2's 204 from a 400 naming `invalid_notification_id`.
+     */
+    override suspend fun notify(
+        session: IssuanceSession,
+        token: TokenResponse,
+        notificationId: String,
+        event: NotificationEvent,
+        eventDescription: String?,
+        attestation: WalletAttestation?,
+        dpopNonce: String?,
+    ): NotificationOutcome = NotificationRequestResolver().resolve(
+        session = session,
+        token = token,
+        notificationId = notificationId,
+        event = event,
+        eventDescription = eventDescription,
+        attestation = attestation,
+        dpopNonce = dpopNonce,
+    )
 
     /**
      * Sends a notification request to the Issuer's notification endpoint.
@@ -22,11 +53,15 @@ class NotificationService : NotificationServiceInterface {
      * @param notificationId received in the Credential/Deferred Response.
      * @param event The type of event being notified (accepted/deleted/failure)
      */
+    @Deprecated(
+        "Returns Unit, so success and refusal are indistinguishable. Use notify, which returns a NotificationOutcome.",
+        ReplaceWith("notify(session, token, notificationId, event)"),
+    )
     override suspend fun sendNotificationRequest(
         notificationEndPoint: String?,
         accessToken: String?,
         notificationId: String?,
-        event: NotificationEventType
+        event: NotificationEvent
     ) {
         // Validate input values before making the API call
         if (notificationEndPoint.isNullOrEmpty() || accessToken.isNullOrEmpty() ||

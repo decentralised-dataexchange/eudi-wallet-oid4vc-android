@@ -2,14 +2,12 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.credential
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
-import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import okhttp3.ResponseBody
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof.CredentialProofFactory
-import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.nonceRequest.NonceService
@@ -167,7 +165,7 @@ class CredentialRequestResolver(
         val issuedDPoPNonce = response.headers()["DPoP-Nonce"]
 
         if (response.isSuccessful) {
-            return interpret(response, encryption)
+            return CredentialResponseReader.read(response, encryption)
         }
 
         val body = HttpCall.errorBody(response)
@@ -232,63 +230,6 @@ class CredentialRequestResolver(
         }
         return ApiManager.api.getService()
             ?.getCredential(endpoint, "application/json", authorization, dpop, request)
-    }
-
-    /** Reads a 2xx into an outcome. */
-    private fun interpret(
-        response: Response<ResponseBody>,
-        encryption: CredentialEncryption?,
-    ): CredentialOutcome {
-        val raw = response.body()?.string()
-        if (raw.isNullOrBlank()) {
-            return failed(
-                CredentialRequestException.Unusable("The issuer returned an empty credential response")
-            )
-        }
-
-        val json = if (response.headers()["Content-Type"].orEmpty()
-                .contains("application/jwt", ignoreCase = true)
-        ) {
-            val ecKey = encryption?.responseKey?.ecKey
-                ?: throw CredentialRequestException.Unusable(
-                    "The issuer encrypted the response but no decryption key was supplied"
-                )
-            CredentialEncryptionBuilder().decryptJWE(raw, ecKey)
-                ?: throw CredentialRequestException.Unusable(
-                    "The encrypted credential response could not be decrypted"
-                )
-        } else {
-            raw
-        }
-
-        val decrypted = runCatching { Gson().fromJson(json, CredentialResponse::class.java) }
-            .getOrNull()
-            ?: throw CredentialRequestException.Unusable("The credential response is not valid JSON")
-
-        // Draft issuers call the deferred handle `acceptance_token`; 1.0 calls it `transaction_id`.
-        val transactionId = decrypted.transactionId?.takeIf { it.isNotBlank() }
-            ?: decrypted.acceptanceToken?.takeIf { it.isNotBlank() }
-        if (transactionId != null) {
-            return CredentialOutcome.Deferred(transactionId, decrypted.interval)
-        }
-
-        // Section 8.3's `credentials` is an array. The previous implementation read index 0 and
-        // dropped the rest -- at six call sites in the wallet.
-        val credentials = buildList {
-            decrypted.credentials?.mapNotNull { it.credential }?.let { addAll(it) }
-            if (isEmpty()) decrypted.credential?.takeIf { it.isNotBlank() }?.let { add(it) }
-        }
-        if (credentials.isEmpty()) {
-            return failed(
-                CredentialRequestException.Unusable("The issuer returned neither a credential nor a transaction id")
-            )
-        }
-
-        return CredentialOutcome.Issued(
-            credentials = credentials,
-            notificationId = decrypted.notificationId,
-            cNonce = decrypted.cNonce,
-        )
     }
 
     /** The `c_nonce` an issuer may put in an error response, section 8.3.1. */
