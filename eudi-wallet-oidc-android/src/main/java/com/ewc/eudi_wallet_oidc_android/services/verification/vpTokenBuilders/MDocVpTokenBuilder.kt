@@ -112,7 +112,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
             val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
 
-            val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
+            val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest, docType)
 
             val deviceAuthBytes = buildDeviceAuthenticationBytes(
                 sessionTranscriptArray = sessionTranscript.first,
@@ -255,7 +255,7 @@ class MDocVpTokenBuilder : VpTokenBuilder {
                     ?: processPresentationDefinition?.docType ?: ""
 
                 val issuerAuth = CborUtils.processExtractIssuerAuth(singleList)
-                val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest)
+                val nameSpaces = CborUtils.processExtractNameSpaces(singleList, presentationRequest, docType)
 
                 val deviceAuthentication = buildDeviceAuthenticationBytes(
                     sessionTranscriptArray = sessionTranscript.first,
