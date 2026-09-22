@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
+import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
@@ -43,6 +44,10 @@ internal object CredentialProofFactory {
     private const val LIFETIME_SECONDS = 86_400L
 
     /**
+     * @param issuer the proof's `iss` -- the `client_id` the token was obtained with, or null to
+     *   omit the claim, which Appendix F.1 requires when the token came through anonymous access
+     *   (section 12.3's `pre-authorized_grant_anonymous_access_supported`). Compute it with
+     *   [ClientIdentity.proofIssuer]; passing the DID by reflex is the bug that rule exists to stop.
      * @param nonce the issuer's `c_nonce`. Required when [IssuanceSession] shows a nonce endpoint.
      * @param keyAttestation the wallet-provider attestation, when one is owed. Null attaches none.
      * @throws CredentialRequestException
@@ -50,6 +55,7 @@ internal object CredentialProofFactory {
     fun create(
         session: IssuanceSession,
         wallet: WalletIdentity,
+        issuer: String?,
         nonce: String?,
         subject: CredentialSubject,
         keyAttestation: String? = null,
@@ -72,7 +78,8 @@ internal object CredentialProofFactory {
             // 86.4 seconds after it was issued rather than the day the constant intends. A
             // multi-credential offer is issued sequentially and could outlive its own proof.
             .expirationTime(Date(System.currentTimeMillis() + LIFETIME_SECONDS * 1000))
-            .issuer(wallet.did)
+            // Appendix F.1: no `iss` at all when the access token was obtained anonymously.
+            .apply { issuer?.takeIf { it.isNotBlank() }?.let { issuer(it) } }
             .audience(session.issuerConfig?.credentialIssuer ?: "")
             .apply { nonce?.takeIf { it.isNotBlank() }?.let { claim("nonce", it) } }
             .build()
@@ -156,8 +163,9 @@ internal object CredentialProofFactory {
     }
 
     private fun keyIdFor(bindingMethod: String?, subJwk: JWK?, did: String?): String = when (bindingMethod) {
+        // A DID URL, not a bare DID: did:jwk defines exactly one verification method, #0.
         "did:jwk" -> subJwk?.toPublicJWK()?.toJSONString()
-            ?.let { "did:jwk:${Base64URL.encode(it)}" }.orEmpty()
+            ?.let { "did:jwk:${Base64URL.encode(it)}#0" }.orEmpty()
 
         // RFC 7638. This used to be `subJwk.keyID` on Android and a SHA-256 over the whole sorted
         // JWK on iOS -- two different values for the same binding method, neither of them the

@@ -51,6 +51,7 @@ class CredentialRequestResolver(
         wallet: WalletIdentity,
         token: TokenResponse,
         subject: CredentialSubject,
+        issuer: String?,
         attestation: WalletAttestation? = null,
         keyAttestation: String? = null,
         encryption: CredentialEncryption? = null,
@@ -69,6 +70,7 @@ class CredentialRequestResolver(
                 wallet = wallet,
                 token = token,
                 subject = subject,
+                issuer = issuer,
                 attestation = attestation,
                 keyAttestation = keyAttestation,
                 encryption = encryption,
@@ -111,6 +113,7 @@ class CredentialRequestResolver(
         wallet: WalletIdentity,
         token: TokenResponse,
         subject: CredentialSubject,
+        issuer: String?,
         attestation: WalletAttestation?,
         keyAttestation: String?,
         encryption: CredentialEncryption?,
@@ -121,6 +124,7 @@ class CredentialRequestResolver(
         val proof = CredentialProofFactory.create(
             session = session,
             wallet = wallet,
+            issuer = issuer,
             nonce = nonce,
             subject = subject,
             keyAttestation = keyAttestation,
@@ -176,7 +180,7 @@ class CredentialRequestResolver(
         ) {
             Logger.d(TAG, "credential endpoint asked for a DPoP nonce; retrying once")
             return send(
-                endpoint, session, wallet, token, subject, attestation, keyAttestation,
+                endpoint, session, wallet, token, subject, issuer, attestation, keyAttestation,
                 encryption, nonce, issuedDPoPNonce, allowRetry = false,
             )
         }
@@ -190,7 +194,7 @@ class CredentialRequestResolver(
         ) {
             Logger.d(TAG, "issuer rejected the proof and supplied a fresh nonce; retrying once")
             return send(
-                endpoint, session, wallet, token, subject, attestation, keyAttestation,
+                endpoint, session, wallet, token, subject, issuer, attestation, keyAttestation,
                 encryption, freshNonce, dpopNonce, allowRetry = false,
             )
         }
