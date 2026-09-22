@@ -21,7 +21,12 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutc
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
 import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredTransaction
+import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationEvent
+import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.notification.NotificationService
 import com.nimbusds.jose.jwk.ECKey
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -58,6 +63,12 @@ class MainViewModel : ViewModel() {
 
     /** The token step's answer, which the credential request needs in full. */
     private var token: TokenResponse? = null
+
+    /** Set when step 6 comes back deferred, so step 7 knows what to ask about. */
+    private var deferredTransaction: DeferredTransaction? = null
+
+    /** Set when step 6 or step 7 issues, so step 8 has something to acknowledge. */
+    private var notificationId: String? = null
     private var dpopNonce: String? = null
 
     /** The transaction code, when the offer asks for one. Bound two-way to the field in the UI. */
@@ -475,22 +486,29 @@ class MainViewModel : ViewModel() {
         """.trimIndent()
 
         when (outcome) {
-            is CredentialOutcome.Issued -> log(heading, """
+            is CredentialOutcome.Issued -> {
+                notificationId = outcome.notificationId
+                deferredTransaction = null
+                log(heading, """
                 $trace
                   outcome            issued
                   credentials        ${outcome.credentials.size}
                   notification_id    ${outcome.notificationId ?: "—"}
                   next c_nonce       ${outcome.cNonce ?: "—"}
                 ${outcome.credentials.joinToString("\n") { "      ${it.take(72)}…" }}
-            """.trimIndent())
+                """.trimIndent())
+            }
 
-            is CredentialOutcome.Deferred -> log(heading, """
+            is CredentialOutcome.Deferred -> {
+                deferredTransaction = DeferredTransaction.TransactionId(outcome.transactionId)
+                log(heading, """
                 $trace
                   outcome            deferred — the issuer will have it later
                   transaction_id     ${outcome.transactionId}
                   interval           ${outcome.interval?.let { "$it s" } ?: "—"}
-                  next               the deferred endpoint, which is the next step to build
-            """.trimIndent())
+                  next               run step 7, which asks the deferred endpoint for it
+                """.trimIndent())
+            }
 
             is CredentialOutcome.Failed -> log(heading, """
                 $trace
@@ -502,6 +520,144 @@ class MainViewModel : ViewModel() {
             """.trimIndent())
         }
     }
+
+    /**
+     * Step 7 — `IssueService.requestDeferredCredential`.
+     *
+     * Polls until the issuer stops deferring, waiting the `interval` it names (section 9.3: "the
+     * minimum number of seconds the Wallet MUST wait"). It stops on a failure rather than polling
+     * a dead transaction, which is what `issuance_pending` being distinguishable buys.
+     */
+    fun requestDeferredCredential() = run("7 · Request deferred credential") {
+        val heading = "7 · Request deferred credential"
+        val issuedToken = token
+        var transaction = deferredTransaction
+        if (issuedToken?.accessToken == null) {
+            log(heading, "Run step 5 for an access token first")
+            return@run
+        }
+        if (transaction == null) {
+            log(heading, "Nothing is deferred — run step 6, and this lights up if it comes back deferred")
+            return@run
+        }
+
+        val session = IssuanceSession(offer, issuerConfig, authConfig)
+        val identity = walletIdentity()
+        var attempt = 0
+
+        while (attempt < MAX_DEFERRED_ATTEMPTS) {
+            attempt++
+            val outcome = IssueService().requestDeferredCredential(
+                session = session,
+                token = issuedToken,
+                transaction = transaction!!,
+                attestation = WalletAttestation(null, null, identity.jwk as? ECKey),
+                dpopNonce = dpopNonce,
+            )
+
+            val trace = """
+                  endpoint           ${issuerConfig?.deferredCredentialEndpoint ?: "—"}
+                  transaction_id     ${transaction!!.value}
+                  attempt            $attempt of $MAX_DEFERRED_ATTEMPTS
+            """.trimIndent()
+
+            when (outcome) {
+                is CredentialOutcome.Issued -> {
+                    notificationId = outcome.notificationId
+                    deferredTransaction = null
+                    log(heading, """
+                    $trace
+                      outcome            issued
+                      credentials        ${outcome.credentials.size}
+                      notification_id    ${outcome.notificationId ?: "—"}
+                    ${outcome.credentials.joinToString("\n") { "      ${it.take(72)}…" }}
+                    """.trimIndent())
+                    return@run
+                }
+
+                is CredentialOutcome.Deferred -> {
+                    // Section 9.2: still not ready, and it may name a fresh handle.
+                    transaction = DeferredTransaction.TransactionId(outcome.transactionId)
+                    deferredTransaction = transaction
+                    val wait = outcome.interval?.coerceAtMost(MAX_DEFERRED_WAIT_SECONDS)
+                    log(heading, """
+                    $trace
+                      outcome            still pending
+                      next transaction   ${outcome.transactionId}
+                      interval           ${outcome.interval?.let { "$it s" } ?: "— (none given)"}
+                      waiting            ${wait ?: DEFAULT_DEFERRED_WAIT_SECONDS} s
+                    """.trimIndent())
+                    delay(((wait ?: DEFAULT_DEFERRED_WAIT_SECONDS) * 1000).toLong())
+                }
+
+                is CredentialOutcome.Failed -> {
+                    log(heading, """
+                    $trace
+                      outcome            FAILED — polling stops here
+                      error              ${outcome.error.errorCode ?: "—"}
+                      description        ${outcome.error.errorDescription ?: "no reason given"}
+                      http status        ${outcome.error.httpStatus ?: "—"}
+                    """.trimIndent())
+                    return@run
+                }
+            }
+        }
+
+        log(heading, "Gave up after $MAX_DEFERRED_ATTEMPTS attempts; the issuer is still deferring")
+    }
+
+    /**
+     * Step 8 — `NotificationService.notify`.
+     *
+     * Section 11. Tells the issuer the credential was stored. The harness stores nothing, so this
+     * is the honest thing to report only because the credential did arrive; a real wallet sends
+     * `CREDENTIAL_FAILURE` when its own storage refused it.
+     */
+    fun sendNotification(event: NotificationEvent = NotificationEvent.CREDENTIAL_ACCEPTED) =
+        run("8 · Notify the issuer") {
+            val heading = "8 · Notify the issuer"
+            val issuedToken = token
+            val id = notificationId
+            if (issuedToken?.accessToken == null) {
+                log(heading, "Run step 5 for an access token first")
+                return@run
+            }
+            if (id == null) {
+                log(heading, "No notification_id yet — the issuer sends one with the credential, so run step 6")
+                return@run
+            }
+
+            val identity = walletIdentity()
+            val outcome = NotificationService().notify(
+                session = IssuanceSession(offer, issuerConfig, authConfig),
+                token = issuedToken,
+                notificationId = id,
+                event = event,
+                attestation = WalletAttestation(null, null, identity.jwk as? ECKey),
+                dpopNonce = dpopNonce,
+            )
+
+            val trace = """
+                  endpoint           ${issuerConfig?.notificationEndpoint ?: "— (section 11 is optional)"}
+                  notification_id    $id
+                  event              ${event.value}
+            """.trimIndent()
+
+            when (outcome) {
+                is NotificationOutcome.Acknowledged -> log(heading, """
+                $trace
+                  outcome            acknowledged
+                """.trimIndent())
+
+                is NotificationOutcome.Failed -> log(heading, """
+                $trace
+                  outcome            FAILED
+                  error              ${outcome.error.errorCode ?: "—"}
+                  description        ${outcome.error.errorDescription ?: "no reason given"}
+                  http status        ${outcome.error.httpStatus ?: "—"}
+                """.trimIndent())
+            }
+        }
 
     private fun describe(subject: CredentialSubject) = when (subject) {
         is CredentialSubject.ByIdentifier -> "credential_identifier=${subject.credentialIdentifier}"
@@ -571,5 +727,14 @@ class MainViewModel : ViewModel() {
 
     private companion object {
         const val NOTHING_SCANNED = "Nothing scanned yet"
+
+        /** The harness polls a handful of times rather than forever; a wallet schedules instead. */
+        const val MAX_DEFERRED_ATTEMPTS = 5
+
+        /** Used when the issuer names no interval. */
+        const val DEFAULT_DEFERRED_WAIT_SECONDS = 5
+
+        /** So a hostile or mistaken interval cannot hang the harness. */
+        const val MAX_DEFERRED_WAIT_SECONDS = 30
     }
 }
