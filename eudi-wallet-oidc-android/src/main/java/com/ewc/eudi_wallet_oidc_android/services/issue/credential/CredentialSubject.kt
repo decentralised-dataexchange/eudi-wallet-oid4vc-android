@@ -71,6 +71,18 @@ sealed class CredentialSubject {
         override val offerCredential: Credentials? = null,
     ) : CredentialSubject()
 
+    /**
+     * The key this credential is filed under in `credential_configurations_supported`.
+     *
+     * The offer entry's own type is preferred over the configuration id a [ByIdentifier] carries:
+     * a credential identifier names an *instance* the issuer allocated, not a configuration, so it
+     * is not a metadata key at all. Mirrors `metadataKey` in the iOS SDK.
+     */
+    val metadataKey: String?
+        get() = offerCredential?.types?.firstOrNull()
+            ?: offerCredential?.doctype
+            ?: (this as? ByConfiguration)?.credentialConfigurationId
+
     companion object {
 
         /**
