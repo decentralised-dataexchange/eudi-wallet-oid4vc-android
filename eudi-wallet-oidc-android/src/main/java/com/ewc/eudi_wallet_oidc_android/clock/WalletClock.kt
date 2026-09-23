@@ -8,7 +8,7 @@ import java.util.Date
  * Wallets sign short-lived tokens — DPoP proofs, client-attestation PoPs, key-attestation PoPs,
  * credential proofs, KB-JWTs, VP tokens — whose `iat`/`nbf` are checked by a remote server against
  * *its* clock. Two machines never agree exactly, and a server with little or no forward tolerance
- * rejects anything it sees in its own future. BankID's authorization server does this: a PoP one
+ * rejects anything it sees in its own future. Some authorization servers do this: a PoP one
  * second old is refused with `INVALID_ISSUED_AT` (confirmed on device, 2026-08-20 — backdating
  * fixes it, removing the backdate reproduces the failure).
  *
