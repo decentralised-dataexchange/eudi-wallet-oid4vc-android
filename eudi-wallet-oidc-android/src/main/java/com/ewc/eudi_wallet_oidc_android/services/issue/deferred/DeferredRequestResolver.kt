@@ -123,7 +123,9 @@ class DeferredRequestResolver(
         }
 
         if (response.isSuccessful) {
-            return CredentialResponseReader.read(response, encryption)
+            return CredentialResponseReader.read(
+                response, encryption, fallbackTransactionId = transaction.value,
+            )
         }
 
         val body = HttpCall.errorBody(response)

@@ -62,6 +62,20 @@ class CredentialRequestResolverTest {
         )
     }
 
+    /**
+     * The deferred leg reuses the handle it is polling with when an issuer defers without naming
+     * one. The credential leg must not: this is the *first* request, so there is no prior handle,
+     * and inventing one would start polling something that was never allocated.
+     */
+    @Test
+    fun `a 200 carrying only an interval is a failure on the credential leg`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"interval":7}"""))
+
+        val outcome = resolve()
+
+        assertTrue("expected Failed, got $outcome", outcome is CredentialOutcome.Failed)
+    }
+
     @Test
     fun `a credential is returned`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"credential":"vc-1"}"""))
