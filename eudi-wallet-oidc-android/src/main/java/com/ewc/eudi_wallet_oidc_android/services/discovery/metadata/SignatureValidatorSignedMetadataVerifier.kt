@@ -118,7 +118,18 @@ class SignatureValidatorSignedMetadataVerifier(
     private val clockSkewSeconds: Long = 60,
 ) : SignedMetadataVerifier {
 
-    override val supportsSignedMetadata: Boolean = true
+    /**
+     * **Temporarily false.** This verifier can check a signed document -- that is what the rest of
+     * this class does -- but the flag also decides what `Accept` asks for, and asking for
+     * `application/jwt` is what an issuer met in the field answers with a JWT whose header carries
+     * `kid` and `alg` and **no `typ`**. Section 12.2.3 makes `typ` REQUIRED, so the document is
+     * rejected and discovery fails. Left false so `Accept` is `application/json` alone --
+     * section 12.2.2's way of saying "do not send me signed metadata" -- until that is fixed.
+     *
+     * A JWT that arrives anyway is still verified: this only changes what is requested, never what
+     * is trusted.
+     */
+    override val supportsSignedMetadata: Boolean = false
 
     override suspend fun verify(jwt: String, expectedIssuerIdentifier: String): String {
         val signed = parse(jwt)

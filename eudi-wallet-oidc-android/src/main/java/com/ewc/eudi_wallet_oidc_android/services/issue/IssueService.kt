@@ -639,7 +639,7 @@ class IssueService(
             // OpenID4VCI 1.0 (issuer publishes a nonce endpoint): the request
             // carries credential_configuration_id, never format+vct. The old
             // extra gate on cNonce==null dropped issuers that return a c_nonce
-            // in the token response AS WELL (BankID), and they rejected the
+            // in the token response AS WELL, and those servers rejected the
             // legacy format+vct body with "Invalid request format".
             Log.d(TAG,"entered third condition")
             CredentialRequest(

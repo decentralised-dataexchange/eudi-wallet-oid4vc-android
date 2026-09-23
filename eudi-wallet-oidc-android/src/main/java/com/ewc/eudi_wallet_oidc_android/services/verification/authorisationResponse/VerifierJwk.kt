@@ -39,7 +39,7 @@ object VerifierJwk {
                 .filter { k -> k.get("crv")?.takeIf { !it.isJsonNull }?.asString == "P-256" }
             // The response is ENCRYPTED to this key, so the encryption key must
             // be chosen: 'use: enc' first, then a key that declares no use.
-            // A 'sig' key is never acceptable — verifiers (e.g. BankID) publish
+            // A 'sig' key is never acceptable — some verifiers publish
             // both in one set, and the first P-256 key may be the signing key.
             val matchedKey = p256Keys.firstOrNull { k ->
                 k.get("use")?.takeIf { !it.isJsonNull }?.asString == "enc"
