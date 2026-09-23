@@ -269,8 +269,22 @@ class IssuerMetadataResolverTest {
 
         server.shutdown(); server = MockWebServer(); server.start()
         serve(insertionPath to json(v1Metadata()))
-        resolve()
+        resolve(verifier = object : SignedMetadataVerifier by RejectingSignedMetadataVerifier() {
+            override val supportsSignedMetadata = true
+        })
         assertEquals("application/json, application/jwt", server.takeRequest().getHeader("Accept"))
+    }
+
+    /**
+     * The shipped default is temporarily false: asking for `application/jwt` is what breaks
+     * an issuer whose signed metadata carries no `typ`. Pinned so that turning it back
+     * on is a deliberate act with a test to update, not a silent change.
+     */
+    @Test
+    fun `the production default does not ask for signed metadata`() {
+        serve(insertionPath to json(v1Metadata()))
+        resolve()
+        assertEquals("application/json", server.takeRequest().getHeader("Accept"))
     }
 
     @Test

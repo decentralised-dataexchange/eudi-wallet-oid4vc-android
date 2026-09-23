@@ -94,12 +94,12 @@ class InAppAuthorizationTest {
 
     @Test
     fun `a redirect away from our own redirect_uri is somewhere the user has to go`() {
-        redirect("https://bankid.example.com/start?session=1")
+        redirect("https://interactive-as.example.com/start?session=1")
 
         val result = resolve()
 
         assertEquals(AuthorizationOutcome.OPEN_IN_BROWSER, result.outcome)
-        assertTrue(result.url!!.startsWith("https://bankid"))
+        assertTrue(result.url!!.startsWith("https://interactive-as"))
     }
 
     /** Used to be a bare `return null` the caller could not tell from anything else. */

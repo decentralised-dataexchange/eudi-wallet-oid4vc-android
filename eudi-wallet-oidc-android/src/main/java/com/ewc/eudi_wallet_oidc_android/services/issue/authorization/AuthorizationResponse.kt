@@ -52,7 +52,7 @@ data class AuthorizationResponse(
      *   the authorization server's session cookie lands in the browser.
      *   Example: `"https://issuer.example/authorize?client_id=...&request_uri=urn:..."`.
      * - [AuthorizationOutcome.PRESENTATION_REQUIRED] -- an OpenID4VP request the issuer wants
-     *   satisfied before it will authorize (the BankID SUA case). Pass unchanged to
+     *   satisfied before it will authorize (the wallet-mediated authorization case). Pass unchanged to
      *   `VerificationService.processAuthorisationRequest`.
      * - [AuthorizationOutcome.ID_TOKEN_REQUIRED] -- the request to answer, carrying
      *   `response_type=id_token` and the `redirect_uri` to post to. Pass to
