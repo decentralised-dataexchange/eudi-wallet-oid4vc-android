@@ -11,9 +11,9 @@ import retrofit2.Response
  *
  * Extracted from `CredentialRequestResolver` because section 9.2 makes the **Deferred** Credential
  * Response the same shape as the Credential Response -- "the Deferred Credential Response ... MAY
- * itself be deferred again" -- so the credential leg, the deferred leg and re-issuance all read the
- * same body. Three copies of this is how the plural `credentials` array came to be honoured in one
- * place and dropped in the others.
+ * itself be deferred again" -- so the credential leg and the deferred leg read the same body, and
+ * re-issuance reaches it through the credential leg. Three copies of this is how the plural
+ * `credentials` array came to be honoured in one place and dropped in the others.
  *
  * Section 8.3 and 9.2.
  */
@@ -21,17 +21,21 @@ internal object CredentialResponseReader {
 
     /**
      * @param encryption the response key, when the issuer encrypted the body (section 10).
+     * @param fallbackTransactionId the handle the caller is already polling with, reused when the
+     *   issuer defers without naming one. Only the deferred leg passes it: on a first credential
+     *   request there is no prior handle, so there is nothing to fall back to.
      * @throws CredentialRequestException.Unusable when the body cannot be read at all.
      */
     fun read(
         response: Response<ResponseBody>,
         encryption: CredentialEncryption?,
+        fallbackTransactionId: String? = null,
     ): CredentialOutcome {
         val raw = response.body()?.string()
         if (raw.isNullOrBlank()) {
             throw CredentialRequestException.Unusable("The issuer returned an empty credential response")
         }
-        return readBody(raw, response.headers()["Content-Type"], encryption)
+        return readBody(raw, response.headers()["Content-Type"], encryption, fallbackTransactionId)
     }
 
     /** As [read], for a body already in hand. */
@@ -39,6 +43,7 @@ internal object CredentialResponseReader {
         raw: String,
         contentType: String?,
         encryption: CredentialEncryption?,
+        fallbackTransactionId: String? = null,
     ): CredentialOutcome {
         val json = if (contentType.orEmpty().contains("application/jwt", ignoreCase = true)) {
             val ecKey = encryption?.responseKey?.ecKey
@@ -72,6 +77,14 @@ internal object CredentialResponseReader {
             if (isEmpty()) decoded.credential?.takeIf { it.isNotBlank() }?.let { add(it) }
         }
         if (credentials.isEmpty()) {
+            // Some issuers signal "still pending" with 200 + interval instead of section 9.3's
+            // 400 + issuance_pending, and name no transaction id in the body either. The interval
+            // is the only positive evidence that this means "come back later" rather than
+            // "something went wrong", so it gates the fallback: reuse the handle the caller is
+            // already polling with, and polling continues instead of failing outright.
+            if (decoded.interval != null && fallbackTransactionId != null) {
+                return CredentialOutcome.Deferred(fallbackTransactionId, decoded.interval)
+            }
             throw CredentialRequestException.Unusable(
                 "The issuer returned neither a credential nor a transaction id"
             )

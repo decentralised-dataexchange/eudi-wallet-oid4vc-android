@@ -191,6 +191,39 @@ class DeferredRequestResolverTest {
         assertEquals(5, outcome.interval)
     }
 
+    /**
+     * Some issuers answer a still-pending poll with 200 and an `interval`, naming no transaction id
+     * at all, rather than section 9.3's 400 + `issuance_pending`. Read strictly that is "neither a
+     * credential nor a transaction id" and the polling stops; the handle we are already polling
+     * with is the one the issuer still means, so it is reused.
+     */
+    @Test
+    fun `a 200 carrying only an interval keeps polling with the handle we already hold`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"interval":7}"""))
+
+        val outcome = resolve()
+
+        assertTrue("expected Deferred, got $outcome", outcome is CredentialOutcome.Deferred)
+        outcome as CredentialOutcome.Deferred
+        assertEquals("txn-1", outcome.transactionId)
+        assertEquals(7, outcome.interval)
+    }
+
+    /** The interval is what distinguishes "come back later" from a malformed body. Without it the
+     * response really is unreadable, and saying so beats polling something that will never arrive. */
+    @Test
+    fun `a 200 with no interval and no ids is still a failure`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{}"""))
+
+        val outcome = resolve()
+
+        assertTrue(outcome is CredentialOutcome.Failed)
+        assertTrue(
+            (outcome as CredentialOutcome.Failed).error.errorDescription
+                ?.contains("neither a credential nor a transaction id") == true
+        )
+    }
+
     @Test
     fun `a DPoP nonce challenge is answered once`() {
         server.enqueue(
