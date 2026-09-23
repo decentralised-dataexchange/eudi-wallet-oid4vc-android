@@ -124,7 +124,11 @@ class DeferredRequestResolver(
 
         if (response.isSuccessful) {
             return CredentialResponseReader.read(
-                response, encryption, fallbackTransactionId = transaction.value,
+                response,
+                encryption,
+                // Only offered when the policy allows it; see acceptIntervalOnlyAsPending.
+                fallbackTransactionId = transaction.value
+                    .takeIf { policy.acceptIntervalOnlyAsPending },
             )
         }
 

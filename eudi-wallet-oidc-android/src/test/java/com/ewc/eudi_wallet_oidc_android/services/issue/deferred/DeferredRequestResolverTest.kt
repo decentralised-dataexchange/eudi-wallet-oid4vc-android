@@ -209,6 +209,16 @@ class DeferredRequestResolverTest {
         assertEquals(7, outcome.interval)
     }
 
+    /** The accommodation is opt-out: an issuer can be held to section 9.3 instead. */
+    @Test
+    fun `Strict refuses the interval-only response the specification does not define`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"interval":7}"""))
+
+        val outcome = resolve(policy = DeferredRequestPolicy.Strict)
+
+        assertTrue("expected Failed, got $outcome", outcome is CredentialOutcome.Failed)
+    }
+
     /** The interval is what distinguishes "come back later" from a malformed body. Without it the
      * response really is unreadable, and saying so beats polling something that will never arrive. */
     @Test
