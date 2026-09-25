@@ -32,7 +32,7 @@ import com.nimbusds.jose.util.Base64URL
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.security.interfaces.ECPrivateKey
+import java.security.PrivateKey
 import java.security.interfaces.ECPublicKey
 
 class MDocVpTokenBuilder : VpTokenBuilder {
@@ -103,7 +103,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
 
 
         // ---- Private Key ----
-        val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
+        // A PrivateKey, not an ECPrivateKey: a Keystore key only exposes a handle.
+        val privateKey: PrivateKey = ecJwk.toPrivateKey()
         // The device private key is never logged: hex PKCS#8 in logcat is a usable key.
         credentialList?.forEach { credential ->
             val singleList = listOf(credential)
@@ -248,7 +249,8 @@ class MDocVpTokenBuilder : VpTokenBuilder {
             credentialList.forEachIndexed { index, credentialJwt ->
                 val credentialJwk = jwkList?.getOrNull(index) ?: jwk
                 val ecJwk = credentialJwk?.toECKey()
-                val privateKey = ecJwk?.toPrivateKey() as? ECPrivateKey
+                // A PrivateKey, not an ECPrivateKey: a Keystore key only exposes a handle.
+                val privateKey: PrivateKey? = ecJwk?.toPrivateKey()
 
                 val singleList = listOf(credentialJwt)
                 val docType = CborUtils.extractDocTypeFromIssuerAuth(singleList)
