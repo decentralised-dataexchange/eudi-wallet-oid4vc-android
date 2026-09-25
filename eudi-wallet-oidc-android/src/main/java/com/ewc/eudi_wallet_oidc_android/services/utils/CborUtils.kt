@@ -16,6 +16,10 @@ import co.nstant.`in`.cbor.model.ByteString as CborByteString
 import co.nstant.`in`.cbor.model.Map as CborMap
 import co.nstant.`in`.cbor.model.UnicodeString as CborUnicodeString
 import co.nstant.`in`.cbor.model.UnsignedInteger
+import co.nstant.`in`.cbor.model.NegativeInteger
+import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
+import com.nimbusds.jose.util.Base64URL
 import com.ewc.eudi_wallet_oidc_android.models.IssuerSigned
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.VpToken
@@ -673,6 +677,36 @@ class CborUtils {
                 println("validityInfo not found in the CBOR map.")
             }
             return null
+        }
+
+        /**
+         * The device key an mdoc is bound to: `deviceKeyInfo.deviceKey` of the MSO (ISO/IEC 18013-5
+         * §9.1.2.4), read from the issuerAuth payload of a base64url IssuerSigned. Null when it is
+         * missing or is not an EC2 P-256 COSE_Key (RFC 9053 §7.1.1).
+         */
+        @OptIn(ExperimentalEncodingApi::class)
+        fun extractDeviceKeyFromIssuerSigned(credential: String?): ECKey? {
+            if (credential.isNullOrBlank()) return null
+            return try {
+                val cborInBytes = kotlin.io.encoding.Base64.UrlSafe.decode(padBase64Url(credential))
+                val issuerSigned = CborDecoder(ByteArrayInputStream(cborInBytes)).decode().firstOrNull()
+                // COSE_Sign1: [protected, unprotected, payload, signature]; the payload is the
+                // Tag 24 encoded MSO (read untagged too).
+                val payload = issuerSigned?.get("issuerAuth")?.get(2) as? CborByteString ?: return null
+                val mso = when (val item = CborDecoder(ByteArrayInputStream(payload.bytes)).decode().firstOrNull()) {
+                    is CborByteString -> CborDecoder(ByteArrayInputStream(item.bytes)).decode().firstOrNull()
+                    else -> item
+                } ?: return null
+                val deviceKey = mso["deviceKeyInfo"]?.get("deviceKey") as? CborMap ?: return null
+                val kty = (deviceKey[UnsignedInteger(1)] as? UnsignedInteger)?.value?.toInt()
+                val crv = (deviceKey[NegativeInteger(-1)] as? UnsignedInteger)?.value?.toInt()
+                if (kty != 2 || crv != 1) return null
+                val x = (deviceKey[NegativeInteger(-2)] as? CborByteString)?.bytes ?: return null
+                val y = (deviceKey[NegativeInteger(-3)] as? CborByteString)?.bytes ?: return null
+                ECKey.Builder(Curve.P_256, Base64URL.encode(x), Base64URL.encode(y)).build()
+            } catch (e: Exception) {
+                null
+            }
         }
 
 

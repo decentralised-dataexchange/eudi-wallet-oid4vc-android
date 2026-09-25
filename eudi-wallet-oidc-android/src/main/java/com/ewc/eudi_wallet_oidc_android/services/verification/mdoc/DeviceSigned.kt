@@ -7,7 +7,7 @@ import co.nstant.`in`.cbor.model.Map
 import co.nstant.`in`.cbor.model.UnicodeString
 import com.ewc.eudi_wallet_oidc_android.models.DeviceSigned
 import com.nimbusds.jose.jwk.JWK
-import java.security.interfaces.ECPrivateKey
+import java.security.PrivateKey
 import java.security.interfaces.ECPublicKey
 
 fun ByteArray.toHex(): String =
@@ -34,7 +34,8 @@ fun createDeviceSigned(jwk: JWK?, sessionTranscriptCbor: Array): DeviceSigned {
 
 
         // ---- Private Key ----
-        val privateKey = ecJwk.toPrivateKey() as ECPrivateKey
+        // A PrivateKey, not an ECPrivateKey: a Keystore key only exposes a handle.
+        val privateKey: PrivateKey = ecJwk.toPrivateKey()
         // The device private key is never logged: hex PKCS#8 in logcat is a usable key.
 
         val deviceSignature = createDeviceSignedCose(privateKey, sessionTranscriptCbor, emptyNamespaces)
