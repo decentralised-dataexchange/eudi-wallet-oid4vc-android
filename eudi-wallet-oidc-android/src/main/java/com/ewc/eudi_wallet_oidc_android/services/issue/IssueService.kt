@@ -14,6 +14,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialResponse
 import com.ewc.eudi_wallet_oidc_android.models.CredentialTypeDefinition
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.ECKeyWithAlgEnc
+import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.Jwt
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
@@ -957,7 +958,8 @@ class IssueService : IssueServiceInterface {
         dpopKey: ECKey?,
         attachKeyAttestation: Boolean,
         keyAttestationJwt: String?,
-        clientId: String?
+        clientId: String?,
+        additionalProofKeys: List<ECKey>?
     ): WrappedCredentialResponse? {
         val TAG = "processCredentialRequestKeyAttestation"
 
@@ -1053,6 +1055,14 @@ class IssueService : IssueServiceInterface {
             ((issuerConfig.credentialsSupported as Map<*, *>).values.firstOrNull() as Map<*, *>).containsKey("credential_metadata")
         ) {
             request.proofs = ProofsV3(jwt = arrayListOf(jwt))
+            request.proof = null
+        }
+        if (!additionalProofKeys.isNullOrEmpty()) {
+            val extraProofs = additionalProofKeys.map { key ->
+                ProofService().createProof(DIDService().createDID(key), key, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
+                    ?: return null
+            }
+            request.proofs = ProofsV3(jwt = listOf(jwt) + extraProofs)
             request.proof = null
         }
 

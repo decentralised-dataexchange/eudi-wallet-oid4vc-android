@@ -127,7 +127,12 @@ interface IssueServiceInterface {
         attachKeyAttestation: Boolean = false,
         keyAttestationJwt: String? = null,
         /** The client_id the token request used, for the proof's `iss`. Null keeps `did`. */
-        clientId: String? = null
+        clientId: String? = null,
+        /**
+         * Batch issuance (OpenID4VCI 1.0 §8.2): one more `jwt` proof per key, sent together in
+         * `proofs.jwt`. Leave null when a key attestation covers the batch.
+         */
+        additionalProofKeys: List<ECKey>? = null
     ): WrappedCredentialResponse?
 
     /**
