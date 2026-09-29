@@ -29,7 +29,9 @@ data class ProofV3(
 )
 data class ProofsV3(
     @SerializedName("proof_type") var proofType: String? = null,
-    @SerializedName("jwt") var jwt: List<String>? = null
+    @SerializedName("jwt") var jwt: List<String>? = null,
+    /** ARF TS3 §2.2.2 `attestation` proof type: the Wallet Provider-signed key attestation itself. */
+    @SerializedName("attestation") var attestation: ArrayList<String>? = null
 
 )
 data class CredentialResponsEncryption(
