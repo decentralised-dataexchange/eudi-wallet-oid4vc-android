@@ -42,7 +42,7 @@ object KeyAttestationService {
     private const val KEY_POP_TYP = "key-pop+jwt"
 
     /**
-     * Reads proof_types_supported.jwt.key_attestations_required for the
+     * Reads proof_types_supported.(jwt|attestation).key_attestations_required for the
      * credential configuration matching the given type, from the raw issuer
      * metadata. Null when the issuer does not require a key attestation.
      */
@@ -60,12 +60,62 @@ object KeyAttestationService {
                 else -> null
             }
             val proofTypes = matching?.get("proof_types_supported") as? Map<*, *> ?: return null
-            val jwtProof = proofTypes["jwt"] as? Map<*, *> ?: return null
+            // ARF TS3 §2.2.2: an attestation-only issuer lists `attestation` without `jwt`;
+            // its requirement lives under the attestation proof type.
+            val proof = (proofTypes["jwt"] ?: proofTypes["attestation"]) as? Map<*, *> ?: return null
             @Suppress("UNCHECKED_CAST")
-            jwtProof["key_attestations_required"] as? Map<String, Any>
+            proof["key_attestations_required"] as? Map<String, Any>
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read key_attestations_required: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * The credential configuration with the given id from the raw issuer metadata.
+     * When [configId] is unknown (null/empty) the first entry is returned, as before.
+     */
+    fun findCredentialConfiguration(
+        issuerConfig: IssuerWellKnownConfiguration?,
+        configId: String?
+    ): Map<*, *>? {
+        return when (val supported = issuerConfig?.credentialsSupported) {
+            is Map<*, *> ->
+                if (configId.isNullOrEmpty()) supported.values.firstOrNull() as? Map<*, *>
+                else supported[configId] as? Map<*, *>
+            is List<*> -> {
+                val entries = supported.filterIsInstance<Map<*, *>>()
+                if (configId.isNullOrEmpty()) entries.firstOrNull()
+                else entries.find { it["id"] == configId }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * True when the configuration lists `attestation` but not `jwt` in
+     * proof_types_supported (ARF TS3 §2.2.2): the request must then carry the
+     * key attestation as an `attestation` proof, with no proof of possession.
+     */
+    fun isAttestationOnly(credentialConfiguration: Map<*, *>?): Boolean {
+        val proofTypes = credentialConfiguration?.get("proof_types_supported") as? Map<*, *>
+            ?: return false
+        return proofTypes.containsKey("attestation") && !proofTypes.containsKey("jwt")
+    }
+
+    /**
+     * For an `attestation` proof the issuer's c_nonce lives inside the KA
+     * (TS3 §2.2.2, OID4VCI F.3). Checks the KA's `nonce` (or `c_nonce`) claim
+     * equals [nonce]. A null [nonce] cannot be checked and passes.
+     */
+    fun carriesNonce(keyAttestation: String, nonce: String?): Boolean {
+        if (nonce == null) return true
+        return try {
+            val claims = SignedJWT.parse(keyAttestation).jwtClaimsSet
+            (claims.getClaim("nonce") ?: claims.getClaim("c_nonce")) == nonce
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read nonce from key attestation: ${e.message}")
+            false
         }
     }
 

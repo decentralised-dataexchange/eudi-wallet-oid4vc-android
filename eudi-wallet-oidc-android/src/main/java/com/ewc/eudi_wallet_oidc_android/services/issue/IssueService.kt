@@ -998,8 +998,32 @@ class IssueService : IssueServiceInterface {
         Log.d("KaWatch", "credential request: attachKA=$attachKeyAttestation preMintedKA=${keyAttestationJwt != null} kaOnProof=${keyAttestation != null} cNonce=$nonce auth=${if (dpopHeaderValue != null) "DPoP" else "Bearer"} endpoint=${issuerConfig?.credentialEndpoint}")
         // Appendix F.1: iss is the client_id the token request sent, omitted when that was anonymous.
         val issuer = ClientIdentity.proofIssuer(credentialOffer, authConfig?.preAuthorizedGrantAnonymousAccessSupported, clientId, did)
-        val jwt = ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation, issuer)
-        if (jwt == null) {
+        // ARF TS3 §2.2.2: resolve the requested configuration by id and read its proof types.
+        val requestedConfigId = authorizationDetail?.credentialConfigurationId?.takeIf { it.isNotBlank() }
+            ?: credentialOffer?.credentials?.getOrNull(index)?.types?.firstOrNull()
+        val credentialConfiguration =
+            KeyAttestationService.findCredentialConfiguration(issuerConfig, requestedConfigId)
+        val attestationOnly = KeyAttestationService.isAttestationOnly(credentialConfiguration)
+        if (attestationOnly) {
+            // No proof of possession: the KA is the proof and must carry the issuer's c_nonce.
+            // Fail here, before any network call.
+            if (keyAttestation == null) {
+                Log.e(TAG, "Issuer supports only the attestation proof type but no key attestation is available")
+                return WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError("Key attestation required for the attestation proof type")
+                )
+            }
+            if (!KeyAttestationService.carriesNonce(keyAttestation, nonce)) {
+                Log.e(TAG, "Key attestation does not carry the issuer's current c_nonce")
+                return WrappedCredentialResponse(
+                    errorResponse = ErrorHandler.processError("Key attestation does not contain the issuer c_nonce")
+                )
+            }
+        }
+
+        val jwt = if (attestationOnly) null
+        else ProofService().createProof(did, subJwk, nonce , issuerConfig,credentialOffer,index, keyAttestation, issuer)
+        if (!attestationOnly && jwt == null) {
             Log.e("IssueService", "Failed to create proof for credential request")
             return null
         }
@@ -1050,20 +1074,24 @@ class IssueService : IssueServiceInterface {
                 jwt = jwt, index = index
             )
         }
-        if ((issuerConfig?.credentialsSupported is Map<*, *>) &&
-            ((issuerConfig.credentialsSupported as Map<*, *>).values.firstOrNull() is Map<*, *>) &&
-            ((issuerConfig.credentialsSupported as Map<*, *>).values.firstOrNull() as Map<*, *>).containsKey("credential_metadata")
-        ) {
-            request.proofs = ProofsV3(jwt = arrayListOf(jwt))
+        if (attestationOnly && keyAttestation != null) {
+            // TS3 §3.1: proofs.attestation holds the Wallet Provider-signed KA itself.
+            // Batch keys are already inside the KA, so no extra proofs are added.
+            request.proofs = ProofsV3(attestation = arrayListOf(keyAttestation))
             request.proof = null
-        }
-        if (!additionalProofKeys.isNullOrEmpty()) {
-            val extraProofs = additionalProofKeys.map { key ->
-                ProofService().createProof(DIDService().createDID(key), key, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
-                    ?: return null
+        } else if (jwt != null) {
+            if (credentialConfiguration?.containsKey("credential_metadata") == true) {
+                request.proofs = ProofsV3(jwt = arrayListOf(jwt))
+                request.proof = null
             }
-            request.proofs = ProofsV3(jwt = listOf(jwt) + extraProofs)
-            request.proof = null
+            if (!additionalProofKeys.isNullOrEmpty()) {
+                val extraProofs = additionalProofKeys.map { key ->
+                    ProofService().createProof(DIDService().createDID(key), key, nonce, issuerConfig, credentialOffer, index, keyAttestation, issuer)
+                        ?: return null
+                }
+                request.proofs = ProofsV3(jwt = listOf(jwt) + extraProofs)
+                request.proof = null
+            }
         }
 
         request.credentialResponseEncryption = credentialEncryptionBuilder.build(ecKeyWithAlgEnc)
@@ -1307,7 +1335,7 @@ class IssueService : IssueServiceInterface {
         credentialOffer: CredentialOffer?,
         issuerConfig: IssuerWellKnownConfiguration?,
         format: String?,
-        jwt: String,
+        jwt: String?,
         doctype: String?,
         index: Int
     ): CredentialRequest {
