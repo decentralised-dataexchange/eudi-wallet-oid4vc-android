@@ -3,6 +3,8 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.services.issue.ClientIdentity
+import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.KeyAttestationService
 import com.ewc.eudi_wallet_oidc_android.services.issue.IssueService
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
@@ -52,6 +54,61 @@ internal object CredentialProofFactory {
      * @param keyAttestation the wallet-provider attestation, when one is owed. Null attaches none.
      * @throws CredentialRequestException
      */
+    /**
+     * Every proof a request should carry.
+     *
+     * When the issuer's `proof_types_supported` offers **only** `attestation`, there is no jwt
+     * proof: the key attestation is the proof, and Appendix F.3 requires it to carry the issuer's
+     * `c_nonce`. Both conditions fail here, before any network call.
+     *
+     * [additionalKeys] makes it a **batch**: one further proof per key, same `nonce`, `aud` and
+     * `iss`, each signed by and naming its own key. The additional proofs carry no key attestation
+     * -- a batch covered by one attestation sends it on the first proof only.
+     */
+    fun createAll(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        additionalKeys: List<ECKey> = emptyList(),
+        issuer: String?,
+        nonce: String?,
+        subject: CredentialSubject,
+        keyAttestation: String? = null,
+    ): CredentialProofs {
+        val configuration = KeyAttestationService.findCredentialConfiguration(
+            session.issuerConfig, subject.metadataKey,
+        )
+        if (KeyAttestationService.isAttestationOnly(configuration)) {
+            if (keyAttestation.isNullOrBlank()) {
+                throw CredentialRequestException.ProofFailed(
+                    "This issuer accepts only the attestation proof type and no key attestation is available"
+                )
+            }
+            if (!KeyAttestationService.carriesNonce(keyAttestation, nonce)) {
+                throw CredentialRequestException.ProofFailed(
+                    "The key attestation does not carry this issuer's current c_nonce"
+                )
+            }
+            return CredentialProofs.Attestation(keyAttestation)
+        }
+
+        val proofs = buildList {
+            add(create(session, wallet, issuer, nonce, subject, keyAttestation))
+            additionalKeys.forEach { key ->
+                add(
+                    create(
+                        session = session,
+                        wallet = WalletIdentity(DIDService().createDID(key), key),
+                        issuer = issuer,
+                        nonce = nonce,
+                        subject = subject,
+                        keyAttestation = null,
+                    )
+                )
+            }
+        }
+        return CredentialProofs.Jwt(proofs)
+    }
+
     fun create(
         session: IssuanceSession,
         wallet: WalletIdentity,

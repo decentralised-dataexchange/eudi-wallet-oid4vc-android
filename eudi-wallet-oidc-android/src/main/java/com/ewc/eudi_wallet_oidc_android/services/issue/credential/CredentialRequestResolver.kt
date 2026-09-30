@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue.credential
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
+import com.nimbusds.jose.jwk.ECKey
 import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import okhttp3.ResponseBody
 import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
@@ -50,6 +51,7 @@ class CredentialRequestResolver(
         token: TokenResponse,
         subject: CredentialSubject,
         issuer: String?,
+        additionalProofKeys: List<ECKey> = emptyList(),
         attestation: WalletAttestation? = null,
         keyAttestation: String? = null,
         encryption: CredentialEncryption? = null,
@@ -69,6 +71,7 @@ class CredentialRequestResolver(
                 token = token,
                 subject = subject,
                 issuer = issuer,
+                additionalProofKeys = additionalProofKeys,
                 attestation = attestation,
                 keyAttestation = keyAttestation,
                 encryption = encryption,
@@ -112,6 +115,7 @@ class CredentialRequestResolver(
         token: TokenResponse,
         subject: CredentialSubject,
         issuer: String?,
+        additionalProofKeys: List<ECKey>,
         attestation: WalletAttestation?,
         keyAttestation: String?,
         encryption: CredentialEncryption?,
@@ -119,9 +123,10 @@ class CredentialRequestResolver(
         dpopNonce: String?,
         allowRetry: Boolean,
     ): CredentialOutcome {
-        val proof = CredentialProofFactory.create(
+        val proofs = CredentialProofFactory.createAll(
             session = session,
             wallet = wallet,
+            additionalKeys = additionalProofKeys,
             issuer = issuer,
             nonce = nonce,
             subject = subject,
@@ -130,7 +135,7 @@ class CredentialRequestResolver(
 
         val request = CredentialRequestParameters.build(
             subject = subject,
-            proof = proof,
+            proofs = proofs,
             session = session,
             encryption = encryption,
             policy = policy,
@@ -178,7 +183,8 @@ class CredentialRequestResolver(
         ) {
             Logger.d(TAG, "credential endpoint asked for a DPoP nonce; retrying once")
             return send(
-                endpoint, session, wallet, token, subject, issuer, attestation, keyAttestation,
+                endpoint, session, wallet, token, subject, issuer, additionalProofKeys,
+                attestation, keyAttestation,
                 encryption, nonce, issuedDPoPNonce, allowRetry = false,
             )
         }
@@ -192,7 +198,8 @@ class CredentialRequestResolver(
         ) {
             Logger.d(TAG, "issuer rejected the proof and supplied a fresh nonce; retrying once")
             return send(
-                endpoint, session, wallet, token, subject, issuer, attestation, keyAttestation,
+                endpoint, session, wallet, token, subject, issuer, additionalProofKeys,
+                attestation, keyAttestation,
                 encryption, freshNonce, dpopNonce, allowRetry = false,
             )
         }

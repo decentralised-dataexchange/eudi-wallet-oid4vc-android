@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.CredentialRequest
 import com.ewc.eudi_wallet_oidc_android.models.ProofV3
 import com.ewc.eudi_wallet_oidc_android.models.ProofsV3
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof.CredentialProofs
 import com.ewc.eudi_wallet_oidc_android.services.issue.credentialResponseEncryption.CredentialEncryptionBuilder
 import com.google.gson.Gson
 import org.json.JSONObject
@@ -22,7 +23,7 @@ internal object CredentialRequestParameters {
 
     fun build(
         subject: CredentialSubject,
-        proof: String,
+        proofs: CredentialProofs,
         session: IssuanceSession,
         encryption: CredentialEncryption?,
         policy: CredentialRequestPolicy,
@@ -49,10 +50,24 @@ internal object CredentialRequestParameters {
         // metadata." Both platforms previously keyed this off whether an arbitrary configuration
         // carried a `credential_metadata` member, which is unrelated to whether the issuer wants
         // the plural form.
-        if (policy.usePluralProofs && declaresProofTypes(session, subject)) {
-            request.proofs = ProofsV3(jwt = listOf(proof))
-        } else {
-            request.proof = ProofV3(proofType = PROOF_TYPE_JWT, jwt = proof)
+        when (proofs) {
+            // Section 8.2: the attestation proof type carries the KA itself, and the issuer's
+            // c_nonce lives inside it. There is no jwt proof to send.
+            is CredentialProofs.Attestation ->
+                request.proofs = ProofsV3(attestation = arrayListOf(proofs.keyAttestation))
+
+            is CredentialProofs.Jwt -> {
+                // A batch is more than one entry; section 8.2's `proofs` is an array either way.
+                // The singular `proof` is the pre-1.0 shape and cannot express a batch at all, so a
+                // batch always takes the plural form whatever the metadata declares.
+                val plural = policy.usePluralProofs &&
+                    (declaresProofTypes(session, subject) || proofs.proofs.size > 1)
+                if (plural) {
+                    request.proofs = ProofsV3(jwt = proofs.proofs)
+                } else {
+                    request.proof = ProofV3(proofType = PROOF_TYPE_JWT, jwt = proofs.proofs.firstOrNull())
+                }
+            }
         }
 
         request.credentialResponseEncryption =

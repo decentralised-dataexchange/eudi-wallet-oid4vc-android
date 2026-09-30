@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.credential
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof.CredentialProofs
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,13 +27,42 @@ class CredentialRequestParametersTest {
         subject: CredentialSubject,
         session: IssuanceSession = session(),
         policy: CredentialRequestPolicy = CredentialRequestPolicy.Default,
+        proofs: CredentialProofs = CredentialProofs.Jwt(listOf("the.proof.jwt")),
     ) = CredentialRequestParameters.build(
         subject = subject,
-        proof = "the.proof.jwt",
+        proofs = proofs,
         session = session,
         encryption = null,
         policy = policy,
     )
+
+    /**
+     * Section 8.2's `proofs` is an array. A batch is more than one entry, and it takes the plural
+     * form whatever the metadata declares -- the singular `proof` cannot express a batch at all.
+     */
+    @Test
+    fun `a batch sends every proof in the plural form`() {
+        val body = body(
+            CredentialSubject.ByConfiguration("PidSdJwt"),
+            proofs = CredentialProofs.Jwt(listOf("proof.one", "proof.two", "proof.three")),
+        )
+
+        assertEquals(listOf("proof.one", "proof.two", "proof.three"), body.proofs?.jwt)
+        assertNull(body.proof)
+    }
+
+    /** The attestation proof type sends the key attestation and no jwt proof at all. */
+    @Test
+    fun `the attestation proof type sends the key attestation instead of a jwt`() {
+        val body = body(
+            CredentialSubject.ByConfiguration("PidSdJwt"),
+            proofs = CredentialProofs.Attestation("the.key.attestation"),
+        )
+
+        assertEquals(listOf("the.key.attestation"), body.proofs?.attestation)
+        assertNull(body.proofs?.jwt)
+        assertNull(body.proof)
+    }
 
     /**
      * Section 8.2: `credential_identifier` "MUST NOT be used" alongside
