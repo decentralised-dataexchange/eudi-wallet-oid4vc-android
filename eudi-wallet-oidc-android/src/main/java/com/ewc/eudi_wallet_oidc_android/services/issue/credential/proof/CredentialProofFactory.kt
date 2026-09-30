@@ -46,24 +46,22 @@ internal object CredentialProofFactory {
     private const val LIFETIME_SECONDS = 86_400L
 
     /**
-     * @param issuer the proof's `iss` -- the `client_id` the token was obtained with, or null to
-     *   omit the claim, which Appendix F.1 requires when the token came through anonymous access
-     *   (section 12.3's `pre-authorized_grant_anonymous_access_supported`). Compute it with
-     *   [ClientIdentity.proofIssuer]; passing the DID by reflex is the bug that rule exists to stop.
-     * @param nonce the issuer's `c_nonce`. Required when [IssuanceSession] shows a nonce endpoint.
-     * @param keyAttestation the wallet-provider attestation, when one is owed. Null attaches none.
-     * @throws CredentialRequestException
-     */
-    /**
-     * Every proof a request should carry.
+     * Every proof a request should carry, and which of section 8.2's two shapes to send.
      *
-     * When the issuer's `proof_types_supported` offers **only** `attestation`, there is no jwt
-     * proof: the key attestation is the proof, and Appendix F.3 requires it to carry the issuer's
-     * `c_nonce`. Both conditions fail here, before any network call.
+     * The issuer's `proof_types_supported` decides which shape is legal, and the rule is **`jwt`
+     * whenever `jwt` is offered** -- including when `attestation` is offered alongside it.
+     * `attestation` is sent only when the issuer accepts nothing else, because a proof of
+     * possession signed by the binding key proves more than an attestation the wallet was handed.
+     *
+     * When only `attestation` is offered there is no jwt proof at all: the key attestation *is* the
+     * proof, and Appendix F.3 requires it to carry the issuer's `c_nonce`. A missing attestation and
+     * one carrying the wrong nonce both fail here, before any network call.
      *
      * [additionalKeys] makes it a **batch**: one further proof per key, same `nonce`, `aud` and
      * `iss`, each signed by and naming its own key. The additional proofs carry no key attestation
      * -- a batch covered by one attestation sends it on the first proof only.
+     *
+     * @throws CredentialRequestException
      */
     fun createAll(
         session: IssuanceSession,
@@ -109,6 +107,17 @@ internal object CredentialProofFactory {
         return CredentialProofs.Jwt(proofs)
     }
 
+    /**
+     * Builds one `openid4vci-proof+jwt`, signed by the wallet's binding key.
+     *
+     * @param issuer the proof's `iss` -- the `client_id` the token was obtained with, or null to
+     *   omit the claim, which Appendix F.1 requires when the token came through anonymous access
+     *   (section 12.3's `pre-authorized_grant_anonymous_access_supported`). Compute it with
+     *   [ClientIdentity.proofIssuer]; passing the DID by reflex is the bug that rule exists to stop.
+     * @param nonce the issuer's `c_nonce`. Required when [IssuanceSession] shows a nonce endpoint.
+     * @param keyAttestation the wallet-provider attestation, when one is owed. Null attaches none.
+     * @throws CredentialRequestException
+     */
     fun create(
         session: IssuanceSession,
         wallet: WalletIdentity,
