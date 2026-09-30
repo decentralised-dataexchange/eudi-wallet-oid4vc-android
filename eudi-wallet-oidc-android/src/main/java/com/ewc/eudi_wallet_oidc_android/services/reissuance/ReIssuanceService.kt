@@ -75,6 +75,7 @@ class ReIssuanceService : ReIssuanceServiceInterface {
             } ?: CredentialSubject.of(session, token, credential),
             issuer = issuer,
             // Section 8.2 batch: one proof per additional key, built inside the proof factory.
+            additionalProofKeys = additionalProofKeys.orEmpty(),
             attestation = dpopKey?.let { WalletAttestation(null, null, it) },
             // ARF TS3 v1.5: the wallet-provider-issued KA travels in the proof's key_attestation
             // header, bound to the same c_nonce as the proof.

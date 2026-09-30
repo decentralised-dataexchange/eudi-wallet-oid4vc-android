@@ -262,6 +262,7 @@ interface IssueServiceInterface {
         token: TokenResponse,
         subject: CredentialSubject,
         issuer: String?,
+        additionalProofKeys: List<ECKey> = emptyList(),
         attestation: WalletAttestation? = null,
         keyAttestation: String? = null,
         encryption: CredentialEncryption? = null,
