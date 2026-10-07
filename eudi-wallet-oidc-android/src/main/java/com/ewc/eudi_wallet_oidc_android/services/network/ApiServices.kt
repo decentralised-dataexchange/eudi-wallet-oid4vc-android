@@ -189,7 +189,7 @@ interface ApiService {
     suspend fun getRefreshTokenFromCode(
         @Url url: String,
         @FieldMap map: Map<String, String?>,
-        // @HeaderMap headers: Map<String, String> = emptyMap()
+        @HeaderMap headers: Map<String, String> = emptyMap()
     ): Response<RefreshTokenResponse>
     @POST("")
     suspend fun sendNotificationRequest(

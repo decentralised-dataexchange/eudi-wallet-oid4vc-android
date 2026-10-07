@@ -7,5 +7,7 @@ interface TokenRefreshInterface {
     suspend fun refreshToken(
         tokenEndPoint: String?,
         refreshToken: String?,
+        walletUnitAttestationJWT: String? = null,
+        walletUnitProofOfPossession: String? = null,
     ): WrappedRefreshTokenResponse?
 }
