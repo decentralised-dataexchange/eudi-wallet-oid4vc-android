@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 
 class TokenRefreshService : TokenRefreshInterface {
 
@@ -12,6 +13,11 @@ class TokenRefreshService : TokenRefreshInterface {
 
     @param tokenEndPoint The OAuth 2.0 token endpoint URL where the refresh request will be sent
     @param refreshToken The refresh token to be used for obtaining a new access token
+    @param walletUnitAttestationJWT Wallet unit attestation (client attestation) when the token
+    endpoint uses attestation-based client authentication; null otherwise. RFC 6749 section 6:
+    a client with authentication requirements MUST authenticate on a refresh request exactly as
+    it does at the token endpoint (section 3.2.1).
+    @param walletUnitProofOfPossession Fresh PoP for the attestation, one per request
     @return WrappedRefreshTokenResponse? which contains either:
     - A successful token response with new access token and related data
     - An error response if the refresh operation fails
@@ -19,7 +25,9 @@ class TokenRefreshService : TokenRefreshInterface {
      */
     override suspend fun refreshToken(
         tokenEndPoint: String?,
-        refreshToken: String?
+        refreshToken: String?,
+        walletUnitAttestationJWT: String?,
+        walletUnitProofOfPossession: String?
     ): WrappedRefreshTokenResponse? {
 
         val requestBody = if (refreshToken != null) {
@@ -35,10 +43,17 @@ class TokenRefreshService : TokenRefreshInterface {
             )
         }
 
+        // Same header pair as the token request (OAuth-Client-Attestation / -PoP).
+        val headers = WalletUnitAttestationHeaders.build(
+            walletUnitAttestationJWT,
+            walletUnitProofOfPossession
+        )
+
         val result = SafeApiCall.safeApiCallResponse {
             ApiManager.api.getService()?.getRefreshTokenFromCode(
                 tokenEndPoint ?: "",
-                requestBody
+                requestBody,
+                headers
             )
         }
 
