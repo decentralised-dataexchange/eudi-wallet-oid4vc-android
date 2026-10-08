@@ -195,7 +195,8 @@ interface ApiService {
     suspend fun sendNotificationRequest(
         @Url url: String,
         @Header("Authorization") authorization: String,
-        @Body body: NotificationRequest
+        @Body body: NotificationRequest,
+        @Header("DPoP") dpop: String? = null
     ): Response<ResponseBody>
     @GET
     fun getVerifiableCredentialStatusList(

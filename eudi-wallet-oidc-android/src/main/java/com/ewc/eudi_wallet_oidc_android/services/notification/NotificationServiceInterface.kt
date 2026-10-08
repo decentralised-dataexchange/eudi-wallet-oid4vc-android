@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.notification
 
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
+import com.nimbusds.jose.jwk.ECKey
 
 interface NotificationServiceInterface {
 
@@ -8,6 +9,7 @@ interface NotificationServiceInterface {
         notificationEndPoint: String?,
         accessToken: String?,
         notificationId: String?,
-        event: NotificationEventType
+        event: NotificationEventType,
+        dpopKey: ECKey? = null
     )
 }
