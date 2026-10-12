@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.utils
 
 import android.util.Log
+import com.ewc.eudi_wallet_oidc_android.models.ErrorCodes
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import org.json.JSONArray
 import org.json.JSONException
@@ -26,12 +27,12 @@ object ErrorHandler {
                 "Invalid Proof JWT: iss doesn't match the expected client_id",
                 true
             ) == true -> {
-                ErrorResponse(error = 1, errorDescription = "DID is invalid")
+                ErrorResponse(error = ErrorCodes.INVALID_DID, errorDescription = "DID is invalid")
             }
 
             jsonObject?.has("error_description") == true -> {
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = jsonObject.getString("error_description")
                 )
             }
@@ -51,14 +52,14 @@ object ErrorHandler {
                         else -> errorsValue.toString()
                     }
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = errorDescription
                 )
             }
 
             jsonObject?.has("error") == true -> {
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = jsonObject.getString("error")
                 )
             }
@@ -75,32 +76,32 @@ object ErrorHandler {
                         else -> detailJson.toString()
                     }
                     ErrorResponse(
-                        error = -1,
+                        error = ErrorCodes.UNCLASSIFIED,
                         errorDescription = description
                     )
                 } else {
                     // If "detail" is a string or something else
                     ErrorResponse(
-                        error = -1,
+                        error = ErrorCodes.UNCLASSIFIED,
                         errorDescription = detailValue.toString()
                     )
                 }
             }
             err?.contains("<html", ignoreCase = true) == true -> {
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = "Unexpected error, please try again."
                 )
             }
 //            jsonObject?.has("detail") == true -> {
 //                ErrorResponse(
-//                    error = -1,
+//                    error = ErrorCodes.UNCLASSIFIED,
 //                    errorDescription = jsonObject.getString("detail")
 //                )
 //            }
             jsonObject?.has("message") == true -> {
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = jsonObject.getString("message")
                 )
             }
@@ -112,12 +113,12 @@ object ErrorHandler {
                     is JSONArray -> "$firstKey: ${firstValue.optString(0)}"
                     else -> "$firstKey: $firstValue"
                 }
-                ErrorResponse(error = -1, errorDescription = description)
+                ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = description)
             }
 
             else -> {
                 ErrorResponse(
-                    error = -1,
+                    error = ErrorCodes.UNCLASSIFIED,
                     errorDescription = err
                 )
             }
@@ -125,14 +126,14 @@ object ErrorHandler {
             errorResponse
     } catch (e: JSONException) {
             Log.e("ErrorHandler", "Failed to parse error body: $err", e)
-            ErrorResponse(error = -1, errorDescription = err)
+            ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)
     } catch (e: NoSuchElementException) {
             Log.e("ErrorHandler", "Failed to parse error body: $err", e)
-            ErrorResponse(error = -1, errorDescription = err)
+            ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)
     } catch (e: Exception) {
             Log.e("ErrorHandler", "Error processing error response: ${e.message}")
             // Fallback: if any parsing step throws unexpectedly, return raw string
-            ErrorResponse(error = -1, errorDescription = err)
+            ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)
         }
     }
 }

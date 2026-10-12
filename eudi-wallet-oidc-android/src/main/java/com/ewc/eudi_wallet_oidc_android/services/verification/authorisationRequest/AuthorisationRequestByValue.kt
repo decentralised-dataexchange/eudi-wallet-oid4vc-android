@@ -48,9 +48,15 @@ class AuthorisationRequestByValue : AuthorisationRequestHandler {
         }
         val request = uri.getQueryParameter("request")
         val dcqlQueryJson = uri.getQueryParameter("dcql_query")
-        val dcqlQuery: DCQL? = dcqlQueryJson
-            ?.takeIf { it.isNotBlank() }
-            ?.let { gson.fromJson(it, DCQL::class.java) }
+        val dcqlQuery: DCQL? = try {
+            dcqlQueryJson
+                ?.takeIf { it.isNotBlank() }
+                ?.let { gson.fromJson(it, DCQL::class.java) }
+        } catch (e: Exception) {
+            // Malformed JSON, or a member of the wrong type (for example "credentials" as an
+            // object): refuse it the same way as a structurally invalid query.
+            return ProcessPresentationRequestWithUris.invalidDcqlQuery(e.message)
+        }
 
         val presentationRequest = PresentationRequest(
             clientId = clientId,
