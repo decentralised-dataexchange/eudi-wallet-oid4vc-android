@@ -136,6 +136,19 @@ interface ApiService {
     @GET
     suspend fun getPresentationDefinitionFromRequestUri(@Url url: String): Response<ResponseBody>
 
+    /**
+     * OpenID4VP 1.0 section 5.10: fetches the request object with `request_uri_method=post`.
+     * The form carries `wallet_metadata` and `wallet_nonce`; the response is the request object
+     * JWT (`application/oauth-authz-req+jwt`).
+     */
+    @FormUrlEncoded
+    @POST
+    suspend fun postPresentationRequestToRequestUri(
+        @Url url: String,
+        @FieldMap map: Map<String, String>,
+        @Header("Accept") accept: String
+    ): Response<ResponseBody>
+
     @GET
     suspend fun resolveUrl(@Url url: String): Response<ResponseBody>
 

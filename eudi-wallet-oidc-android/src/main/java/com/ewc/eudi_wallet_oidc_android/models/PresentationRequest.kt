@@ -28,6 +28,8 @@ data class PresentationRequest(
     @SerializedName("client_id_scheme") var clientIdScheme: String? = null,
     @SerializedName("transaction_data") var transactionDdata: ArrayList<String>? = null,
     @SerializedName("request") var request: String? = null,
+    /** OpenID4VP 1.0 section 5.10: the nonce the wallet sent when it fetched the request object by POST. */
+    @SerializedName("wallet_nonce") var walletNonce: String? = null,
     @SerializedName("dcql_query") var dcqlQuery: DCQL? = null,
     @SerializedName("auth_session") var authSession: String? =null,
     @SerializedName("status") var status: String? =null,

@@ -1,6 +1,5 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest
 
-import android.net.Uri
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
@@ -40,22 +39,51 @@ class AuthorisationRequestByReferenceWithRequestUri : AuthorisationRequestHandle
             ?: ClientIdParser.getClientIdScheme(request.clientId ?: "")
         return scheme == ClientIdScheme.REDIRECT_URI
     }
+    private fun walletNonceMismatch() = WrappedPresentationRequest(
+        presentationRequest = null,
+        errorResponse = ErrorResponse(
+            error = null,
+            errorDescription = "Request validation failed"
+        )
+    )
+
     override suspend fun processAuthorisationRequest(
         authorisationRequestData: String
     ): WrappedPresentationRequest {
-        val uri = Uri.parse(authorisationRequestData)
         val gson = Gson()
-        val requestUri = uri.getQueryParameter("request_uri")
+        val requestUri = RequestUriMethod.requestUri(authorisationRequestData)
+        // OpenID4VP 1.0 section 5.10: `request_uri_method=post` fetches the request object with a
+        // form POST carrying the wallet metadata and a fresh nonce that the verifier has to echo
+        // back in the request object. Anything else is the plain GET of RFC 9101.
+        val walletNonce = if (RequestUriMethod.isPost(authorisationRequestData)) RequestUriMethod.newWalletNonce() else null
+        val encryptionKey = if (walletNonce != null) RequestUriMethod.newEncryptionKey() else null
 
         return try {
             val result = safeApiCallResponse {
-                ApiManager.api.getService()
-                    ?.getPresentationDefinitionFromRequestUri(requestUri ?: "")
+                val service = ApiManager.api.getService()
+                if (walletNonce != null) {
+                    service?.postPresentationRequestToRequestUri(
+                        requestUri ?: "",
+                        mapOf(
+                            RequestUriMethod.WALLET_METADATA to RequestUriMethod.walletMetadata(encryptionKey),
+                            RequestUriMethod.WALLET_NONCE to walletNonce
+                        ),
+                        RequestUriMethod.REQUEST_OBJECT_MEDIA_TYPE
+                    )
+                } else {
+                    service?.getPresentationDefinitionFromRequestUri(requestUri ?: "")
+                }
             }
 
             result.fold(
                 onSuccess = { response ->
-                    val responseString = response.body()?.string()
+                    val rawBody = response.body()?.string()
+                    // A verifier given our key may answer with an encrypted request object; open
+                    // it here so the rest of the handling sees the signed request JWT as usual.
+                    val responseString = if (rawBody != null && encryptionKey != null) {
+                        RequestUriMethod.unwrapEncrypted(rawBody, encryptionKey)
+                            ?: return walletNonceMismatch()
+                    } else rawBody
 
                     if (responseString.isNullOrBlank()) {
                         return WrappedPresentationRequest(
@@ -75,12 +103,20 @@ class AuthorisationRequestByReferenceWithRequestUri : AuthorisationRequestHandle
                     }
 
                     if (json != null) {
+                        if (!RequestUriMethod.nonceAccepted(walletNonce, json.walletNonce)) {
+                            return walletNonceMismatch()
+                        }
                         processPresentationRequest(json)
                     } else {
                         if (isValidJWT(responseString)) {
                             val payload = parseJWTForPayload(responseString)
                             val jwtJson = gson.fromJson(payload, PresentationRequest::class.java)
                             jwtJson.request = jwtJson.request ?: responseString
+                            // Section 5.10: a request object fetched by POST MUST carry the
+                            // wallet_nonce it was asked for; without it the request is dropped.
+                            if (!RequestUriMethod.nonceAccepted(walletNonce, jwtJson.walletNonce)) {
+                                return walletNonceMismatch()
+                            }
                             // OpenID4VP 1.0: a redirect_uri request MUST NOT be signed, so an unsigned
                             // request object (alg none) is the normal shape for that scheme and is
                             // accepted as it is. For every other scheme the signature is what
