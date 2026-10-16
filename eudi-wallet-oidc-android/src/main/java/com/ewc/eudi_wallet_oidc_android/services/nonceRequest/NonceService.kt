@@ -24,8 +24,10 @@ class NonceService : NonceServiceInterface {
             if (response.isSuccessful) {
                 val responseBody = response.body()?.string()
                 if (!responseBody.isNullOrEmpty()) {
-                    val nonceResponse = Gson().fromJson(responseBody, NonceResponse::class.java)
-                    nonce = nonceResponse.cNonce
+                    // A non-JSON 200 is "no nonce", not an exception for the caller to explain.
+                    nonce = runCatching { Gson().fromJson(responseBody, NonceResponse::class.java)?.cNonce }
+                        .onFailure { println("Error: nonce endpoint returned no JSON: ${it.message}") }
+                        .getOrNull()
                 }
             } else {
                 println("Error: ${response.code()} - ${response.errorBody()?.string()}")

@@ -147,6 +147,22 @@ class CredentialOfferValidatorTest {
         validate(draft, CredentialOfferSpecVersion.Draft)
     }
 
+    /** A draft mdoc entry carries `doctype` and no type chain; main accepted it. */
+    @Test
+    fun `draft mdoc offers named only by doctype are accepted`() {
+        val draft = CredentialOffer(
+            credentialIssuer = "https://issuer.example",
+            credentials = arrayListOf(Credentials(format = "mso_mdoc", doctype = "org.iso.18013.5.1.mDL")),
+        )
+        validate(draft, CredentialOfferSpecVersion.Draft)
+    }
+
+    /** java.net.URI gives such a host as null; the authority is what makes the URL absolute. */
+    @Test
+    fun `an issuer host with an underscore is accepted`() {
+        validate(offer(issuer = "http://issuer_service:8080/tenant"))
+    }
+
     @Test
     fun `draft offers are not rejected for repeating a type across the chain`() {
         val draft = CredentialOffer(

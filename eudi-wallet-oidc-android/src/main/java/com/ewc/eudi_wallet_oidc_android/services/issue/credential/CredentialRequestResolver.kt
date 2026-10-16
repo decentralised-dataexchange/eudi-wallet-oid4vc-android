@@ -205,7 +205,7 @@ class CredentialRequestResolver(
                 return send(
                     endpoint, session, wallet, token, subject, issuer, additionalProofKeys,
                     attestation, keyAttestation,
-                    encryption, freshNonce, dpopNonce, allowRetry = false,
+                    encryption, freshNonce, issuedDPoPNonce ?: dpopNonce, allowRetry = false,
                 )
             }
         }
@@ -214,7 +214,7 @@ class CredentialRequestResolver(
         // Bodies are only logged at debug; the proof and any key attestation are sent to this
         // issuer anyway, and neither is a wallet secret.
         Logger.e(TAG, "credential endpoint ${response.code()} error=${error?.errorCode ?: error?.errorDescription}")
-        Logger.e(TAG, "credential endpoint ${response.code()} body=${body ?: "<empty>"}")
+        Logger.e(TAG, "credential endpoint ${response.code()} body=${HttpCall.summary(body) ?: "<empty>"}")
         Logger.d(TAG, "the request it refused: ${Gson().toJson(request)}")
         return CredentialOutcome.Failed(
             error ?: CredentialRequestException.Rejected(response.code(), body).toErrorResponse()

@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.authorization
 
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 
 /**
  * Wraps a transport failure as this leg's own exception type.
@@ -58,7 +59,7 @@ internal sealed class AuthorizationException(
                 val parsed = detail?.takeIf { it.isNotBlank() }
                     ?.let { ErrorHandler.processError(it, status) }
                 val message = parsed?.errorDescription?.takeIf { it.isNotBlank() }
-                    ?: detail?.takeIf { it.isNotBlank() }
+                    ?: HttpCall.summary(detail)?.takeIf { it.isNotBlank() }
                     ?: "The authorization request was refused${status?.let { " (HTTP $it)" }.orEmpty()}"
                 return Rejected(message, parsed?.errorCode, status, detail)
             }

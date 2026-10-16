@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferPoli
 import com.ewc.eudi_wallet_oidc_android.services.issue.offer.OfferUri
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 
 /**
  * The link points at the offer: `?credential_offer_uri=<https URL>`.
@@ -64,8 +65,12 @@ class RemoteCredentialOfferSource : CredentialOfferSource {
             },
             onFailure = { error ->
                 // SafeApiCall has already turned any 4xx/5xx into a failure carrying the response
-                // body, so the HTTP status is not recoverable here.
-                throw CredentialOfferException.FetchFailed(httpStatus = null, detail = error.message)
+                // body, so the HTTP status is not recoverable here. The body is an OAuth error
+                // object or an HTML page; ErrorHandler reduces either to something a user can read.
+                val detail = ErrorHandler.processError(error.message)?.errorDescription
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error.message
+                throw CredentialOfferException.FetchFailed(httpStatus = null, detail = detail)
             },
         )
     }

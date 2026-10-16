@@ -1,5 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue.token
 
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestParameters
+
 /**
  * Which grant the token request uses, and the values that grant needs.
  *
@@ -22,12 +24,13 @@ sealed class TokenGrant {
      *
      * @param redirectUri **must be the value the authorization request actually sent** -- read it
      *   from `AuthorizationResponse.request.redirectUri` rather than re-deriving it. RFC 6749
-     *   section 4.1.3 requires the two to be identical.
+     *   section 4.1.3 requires the two to be identical. The default is the authorization request's
+     *   own default, so the two agree when neither side was given one. Null omits the parameter.
      */
     data class AuthorizationCode(
         val code: String,
         val codeVerifier: String?,
-        val redirectUri: String? = null,
+        val redirectUri: String? = AuthorizationRequestParameters.DEFAULT_REDIRECT_URI,
     ) : TokenGrant() {
         override val grantType = AUTHORIZATION_CODE
     }

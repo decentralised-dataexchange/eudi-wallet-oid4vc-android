@@ -104,6 +104,25 @@ class TokenRequestResolverTest {
         assertNull(result.tokenResponse?.accessToken)
     }
 
+    /**
+     * RFC 6749 section 5.2: the error body is one JSON object, and it is parsed whole. Cutting it
+     * first turned a verbose `error_description` into unparsable text and lost the `error` code.
+     */
+    @Test
+    fun `a long error body still yields the oauth code`() {
+        val description = "x".repeat(700)
+        server.enqueue(
+            MockResponse().setResponseCode(400).setBody(
+                """{"error":"invalid_grant","error_description":"$description"}"""
+            )
+        )
+
+        val result = resolve()
+
+        assertEquals("invalid_grant", result.errorResponse?.errorCode)
+        assertEquals(description, result.errorResponse?.errorDescription)
+    }
+
     /** RFC 9449 section 8: 400 + use_dpop_nonce + a DPoP-Nonce header. Exactly once. */
     @Test
     fun `a dpop nonce challenge is retried once with the nonce`() {

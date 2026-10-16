@@ -70,8 +70,10 @@ class ReIssuanceService : ReIssuanceServiceInterface {
             session = session,
             wallet = WalletIdentity(did, subJwk),
             token = token,
+            // A copy: the caller's token is the wallet's stored one, and narrowing its
+            // authorization_details in place would lose the other credentials' entries.
             subject = authorizationDetail?.let {
-                CredentialSubject.of(session, token.apply { authorizationDetails = arrayListOf(it) }, credential)
+                CredentialSubject.of(session, token.copy(authorizationDetails = listOf(it)), credential)
             } ?: CredentialSubject.of(session, token, credential),
             issuer = issuer,
             // Section 8.2 batch: one proof per additional key, built inside the proof factory.

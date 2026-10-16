@@ -33,7 +33,8 @@ class CredentialOfferValidator {
         val identifiers = credentials.mapNotNull { credential ->
             when (specVersion) {
                 CredentialOfferSpecVersion.V1_0 -> credential.types?.firstOrNull()
-                CredentialOfferSpecVersion.Draft -> credential.types?.lastOrNull()
+                // A draft mdoc entry names itself by `doctype` alone, with no type chain.
+                CredentialOfferSpecVersion.Draft -> credential.types?.lastOrNull() ?: credential.doctype
             }?.takeIf { it.isNotBlank() }
         }
         if (identifiers.isEmpty()) {
@@ -82,7 +83,9 @@ class CredentialOfferValidator {
 
     private fun isAbsoluteUrl(value: String): Boolean = try {
         val uri = URI(value)
-        uri.isAbsolute && !uri.host.isNullOrBlank()
+        // `authority`, not `host`: java.net.URI leaves `host` null for a hostname with an
+        // underscore, which local and container issuers commonly have.
+        uri.isAbsolute && !uri.authority.isNullOrBlank()
     } catch (e: Exception) {
         false
     }

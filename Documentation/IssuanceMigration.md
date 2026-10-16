@@ -17,11 +17,15 @@ sections below list what can still break, ordered by how likely a host is to hit
 | API | Before | Now |
 |---|---|---|
 | `IssueService.resolveCredentialOffer` | `WrappedCredentialOffer?`, `null` on several failures | `WrappedCredentialOffer`, never `null`. A failure sets `errorResponse` |
-| `DiscoveryService.getIssuerConfig` | `null` for a `null` input and some fetch failures | Always a wrapper. A failure sets `errorResponse` |
-| `DiscoveryService.getAuthConfig` | `null` on some failures | Always a wrapper. A failure sets `errorResponse` |
+| `DiscoveryService.getIssuerConfig` | `null` for a `null` or blank input; fetch failures already returned a wrapper | Always a wrapper. A failure sets `errorResponse` |
+| `DiscoveryService.getAuthConfig` | Already a wrapper on every failure | Unchanged |
 
-**Action:** check `errorResponse != null` rather than `== null`. A `== null` branch still compiles
-and never runs, so its error handling stops firing.
+Only the classes were narrowed. `IssueServiceInterface` and `DiscoveryServiceInterface` still
+declare the nullable return types, so a host that holds an interface-typed reference sees no
+change in its signatures.
+
+**Action:** check `errorResponse != null` rather than `== null`. A `== null` branch on the class
+still compiles and never runs, so its error handling stops firing.
 
 ### Interfaces have new abstract members
 
@@ -59,7 +63,9 @@ code" still works.
 | Offer resolution | Offers that violate 1.0 are rejected with a reason: both `credential_offer` and `credential_offer_uri`, duplicate `credential_configuration_ids`, an empty object, a signed offer, a `file:`, `ftp:` or `jar:` URI. Configurable through `IssueService(offerPolicy = ...)` |
 | Offer version | Derived from the document shape. A `version` field sent by the issuer is ignored |
 | Signed metadata | A signed issuer metadata document is now verified before use. A document that fails verification fails discovery rather than being decoded unchecked. Discovery asks for `application/json` only, so this applies only to an issuer that returns a JWT anyway |
-| Error messages | Offer, discovery, token and credential failures carry the issuer's `error_description` where there is one, instead of an empty string or a generic message |
+| Error messages | Token and credential failures carry the issuer's `error_description` where there is one. Offer and discovery failures carry the SDK's own reason, where they used to be `null` or an empty string |
+| Credential request shape | Decided by one check, `IssuanceSession.isDraftIssuer`. 1.0 is the default: `credential_configuration_id` (or `credential_identifier` when the token names one) with `proofs`. The draft body (`format` plus the revision's type field, singular `proof`) is sent only when the offer or the metadata had a draft shape, or the token carried `c_nonce` with no nonce endpoint. A 1.0 issuer without a nonce endpoint used to get the draft body; it now gets the 1.0 one. A draft issuer that returns no `c_nonce` is treated as 1.0; to step it back by hand, pass a `CredentialSubject.LegacyFormat` and `CredentialRequestPolicy.Legacy` |
+| Persisted issuer metadata | `IssuerWellKnownConfiguration` gains a `version` field (1 for draft metadata, 2 for 1.0), set by the SDK and serialised by Gson. A configuration stored before this field reads back `null` and the SDK falls back to the shape of `credentials_supported` |
 | Token refresh | `TokenRefreshService` reports `ErrorResponse.error = -1` on an exception, where it used to be `null` |
 | `NotificationEventType` | Now a deprecated `typealias` of `services.issue.notification.NotificationEvent`. Source compatible. A host built against an older binary must be recompiled |
 
@@ -67,17 +73,18 @@ code" still works.
 
 ## Deprecated entry points and their replacements
 
-The old methods keep working and are implemented on top of the new ones. They will be removed in a
-later release.
+The old methods keep working and will be removed in a later release. Three of them are now thin
+wrappers over the new code; the other three keep their old bodies, so a host still calling them
+gets none of the request-shape fixes above until it moves.
 
-| Deprecated | Replacement | What the replacement adds |
-|---|---|---|
-| `processAuthorisationRequest` | `requestAuthorization` | A typed `AuthorizationResponse` instead of a URL with six meanings |
-| `processTokenRequest` | `requestToken` with a `TokenGrant` | Invalid grant and `tx_code` combinations cannot be expressed |
-| `processCredentialRequest` | `requestCredential` with a `CredentialSubject` | A `CredentialOutcome`: issued, deferred or failed |
-| `processDeferredCredentialRequest` | `requestDeferredCredential` with `DeferredTransaction.LegacyAcceptanceToken` | Reports `issuance_pending` instead of `null` |
-| `processDeferredCredentialRequestV2` | `requestDeferredCredential` with `DeferredTransaction.TransactionId` | Separates `issuance_pending` from `invalid_transaction_id`, returns the issuer's `interval` |
-| `NotificationService.sendNotificationRequest` | `notify` | A `NotificationOutcome`, so success and refusal can be told apart |
+| Deprecated | Replacement | Wrapper? | Deprecation warning shown on |
+|---|---|---|---|
+| `processAuthorisationRequest` | `requestAuthorization`, returns a typed `AuthorizationResponse` | Yes | `IssueService` only |
+| `processTokenRequest` | `requestToken` with a `TokenGrant` | Yes | `IssueService` only |
+| `processCredentialRequest` | `requestCredential` with a `CredentialSubject`, returns a `CredentialOutcome` | **No**, old body kept | Both |
+| `processDeferredCredentialRequest` | `requestDeferredCredential` with `DeferredTransaction.LegacyAcceptanceToken` | **No**, old body kept | `IssueServiceInterface` only |
+| `processDeferredCredentialRequestV2` | `requestDeferredCredential` with `DeferredTransaction.TransactionId` | **No**, old body kept | `IssueServiceInterface` only |
+| `NotificationService.sendNotificationRequest` | `notify`, returns a `NotificationOutcome` | Yes | Both |
 
 The sample app (`app/`) drives every step through the new API and is the reference for wiring it up.
 
@@ -85,9 +92,11 @@ The sample app (`app/`) drives every step through the new API and is the referen
 
 ## New configuration points
 
-All of them default to behaviour that works with the issuers the SDK is used against today. Where a
-`Strict` variant exists it is OpenID4VCI 1.0 as written and is meant for conformance testing.
-`CredentialRequestPolicy.Legacy` steps back to the draft request shape instead.
+All of them default to behaviour that works with the issuers the SDK is used against today. The
+offer, discovery, authorization, token and deferred policies have a `Strict` variant, which is
+OpenID4VCI 1.0 as written and is meant for conformance testing. `CredentialRequestPolicy` and
+`DeferredRequestPolicy` have a `Legacy` variant that steps the request back towards the drafts;
+`CredentialRequestPolicy.Legacy` changes the proof form only.
 
 | Policy | Passed to | Controls |
 |---|---|---|

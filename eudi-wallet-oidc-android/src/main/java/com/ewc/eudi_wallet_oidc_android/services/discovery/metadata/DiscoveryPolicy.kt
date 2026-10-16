@@ -47,8 +47,8 @@ data class DiscoveryPolicy(
      * OpenID4VCI 1.0 section 12.2.4: if the values are not identical "the data contained in the
      * response MUST NOT be used".
      *
-     * **Off by default**, because real deployments do not satisfy it yet. The iGrant issuers serve
-     * their metadata at both `<base>/service` and `<base>/service/version-01` while always
+     * **Off by default**, because real deployments do not satisfy it yet. Issuers met in the field
+     * serve their metadata at both `<base>/service` and `<base>/service/version-01` while always
      * declaring the latter, and the wallet asks using the former, so enforcing this rejects a
      * working production issuer. A mismatch is logged either way, so the gap stays visible.
      *

@@ -10,10 +10,12 @@ data class CredentialRequestPolicy(
 
     /**
      * Send the plural `proofs` object unless the issuer is positively identified as a pre-1.0
-     * draft (see `CredentialRequestParameters.isDraftIssuer`).
+     * draft (see `IssuanceSession.isDraftIssuer`).
      *
      * Section 8.2 of 1.0 defines only `proofs`; the singular `proof` exists in the drafts alone.
-     * On by default, because that is the rule. Off sends the singular `proof` to every issuer.
+     * On by default, because that is the rule. Off sends the singular `proof` to every issuer; it
+     * changes the proof form only, so a caller stepping a draft issuer back by hand also passes a
+     * `CredentialSubject.LegacyFormat` so the body stays one revision throughout.
      */
     val usePluralProofs: Boolean = true,
 

@@ -40,7 +40,8 @@ data class IssuanceSession(
      *    moved `c_nonce` out of the token response, so this is how drafts 13 and 14 hand it out.
      *
      * A draft 13 or 14 issuer that returns no `c_nonce` shows none of these and is treated as
-     * 1.0; `CredentialRequestPolicy.Legacy` covers that case by hand.
+     * 1.0. Stepping such an issuer back by hand takes both a `CredentialSubject.LegacyFormat` for
+     * the name and `CredentialRequestPolicy.Legacy` for the proof form.
      */
     fun isDraftIssuer(token: TokenResponse?): Boolean =
         offerVersion == DRAFT_VERSION ||

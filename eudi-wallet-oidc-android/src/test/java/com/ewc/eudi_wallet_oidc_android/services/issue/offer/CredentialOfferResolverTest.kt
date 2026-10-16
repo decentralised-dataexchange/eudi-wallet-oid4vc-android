@@ -107,6 +107,18 @@ class CredentialOfferResolverTest {
         assertNotNull(result.errorResponse)
     }
 
+    /** The issuer's `error_description` is what the user sees, not the JSON it came in. */
+    @Test
+    fun `an oauth error body is reduced to its description`() {
+        server.enqueue(
+            jsonResponse("""{"error":"invalid_request","error_description":"Offer expired"}""", code = 400)
+        )
+
+        val result = runBlocking { resolver.resolve(uriLink()) }
+
+        assertEquals("Offer expired", result.errorResponse?.errorDescription)
+    }
+
     @Test
     fun `a 500 is reported`() {
         server.enqueue(MockResponse().setResponseCode(500).setBody("upstream failure"))

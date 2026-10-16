@@ -51,18 +51,21 @@ internal object HttpCall {
     }
 
     /**
-     * The error body, truncated rather than discarded.
+     * The whole error body, or null when there is none.
      *
-     * This used to return null for anything over [MAX_DETAIL], so a verbose server error yielded
-     * *less* information than a terse one and the caller fell back to "the request was refused".
-     * A prefix is always more useful than nothing: the OAuth `error` and `error_description` are at
-     * the front of any well-formed error body.
+     * Whole, because it is parsed next: RFC 6749 section 5.2 makes the body a JSON object, and
+     * cutting it first turned any body over a few hundred characters into unparsable text, which
+     * lost the `error` code and with it every retry keyed on one. Cut it with [summary] only where
+     * it is logged or shown.
      */
     fun errorBody(response: Response<*>): String? = runCatching {
-        response.errorBody()?.string()?.takeIf { it.isNotBlank() }?.let { body ->
-            if (body.length <= MAX_DETAIL) body else body.take(MAX_DETAIL) + TRUNCATED
-        }
+        response.errorBody()?.string()?.takeIf { it.isNotBlank() }
     }.getOrNull()
+
+    /** [body] cut down for a log line or a user-facing fallback. Parse the whole body first. */
+    fun summary(body: String?): String? = body?.let {
+        if (it.length <= MAX_DETAIL) it else it.take(MAX_DETAIL) + TRUNCATED
+    }
 
     private const val MAX_DETAIL = 512
     private const val TRUNCATED = "... (truncated)"

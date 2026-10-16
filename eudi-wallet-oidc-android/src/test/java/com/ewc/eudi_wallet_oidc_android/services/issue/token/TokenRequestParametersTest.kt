@@ -94,6 +94,17 @@ class TokenRequestParametersTest {
         assertNull(body["pre-authorized_code"])
     }
 
+    /**
+     * RFC 6749 section 4.1.3: `redirect_uri` is REQUIRED and identical to the authorization
+     * request's. That request defaults to `openid://callback`, so the grant defaults to the same.
+     */
+    @Test
+    fun `the redirect defaults to the authorization request's default`() {
+        val body = build(session(preAuthorized = false), TokenGrant.AuthorizationCode("abc", "verifier"))
+
+        assertEquals("openid://callback", body["redirect_uri"])
+    }
+
     /** The old implementation sent `code_verifier=` and `redirect_uri=` rather than omitting them. */
     @Test
     fun `blank values are omitted rather than sent empty`() {
