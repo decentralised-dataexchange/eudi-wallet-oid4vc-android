@@ -153,7 +153,7 @@ class CredentialRequestParametersTest {
     /** Draft offers (EBSI, EWC) predate `proofs`. */
     @Test
     fun `a draft offer gets the singular proof`() {
-        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), session(offerVersion = 1)))
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc", types = listOf("VerifiableCredential", "PidSdJwt")), session(offerVersion = 1)))
     }
 
     /**
@@ -164,10 +164,25 @@ class CredentialRequestParametersTest {
     @Test
     fun `draft metadata gets the singular proof`() {
         val recorded = session().apply { issuerConfig?.version = 1 }
-        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), recorded))
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc", types = listOf("VerifiableCredential", "PidSdJwt")), recorded))
 
         val arrayShaped = session(credentialsSupported = listOf(mapOf("format" to "jwt_vc")))
-        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), arrayShaped))
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc", types = listOf("VerifiableCredential", "PidSdJwt")), arrayShaped))
+    }
+
+    /**
+     * A 1.0 issuer that gave nothing to name the credential by (no offer entry, no
+     * authorization_details) must not receive a draft `format` next to 1.0 `proofs`. The body is
+     * refused before it is built, whatever the revision: a `format` alone asks for nothing.
+     */
+    @Test
+    fun `a subject that names no credential is refused rather than sent as a mixed body`() {
+        val unnamed = CredentialSubject.of(session(), TokenResponse(accessToken = "at-1"), credential = null)
+        assertTrue("got $unnamed", unnamed is CredentialSubject.LegacyFormat && unnamed.namesNothing)
+
+        val refused = runCatching { body(unnamed) }.exceptionOrNull()
+        assertTrue("got $refused", refused is CredentialRequestException.Unusable)
+        assertTrue(refused!!.message!!.contains("names no credential"))
     }
 
     /**
@@ -205,7 +220,7 @@ class CredentialRequestParametersTest {
     @Test
     fun `a batch to a draft issuer still takes the plural form`() {
         val body = body(
-            CredentialSubject.LegacyFormat(format = "jwt_vc"),
+            CredentialSubject.LegacyFormat(format = "jwt_vc", types = listOf("VerifiableCredential", "PidSdJwt")),
             session(offerVersion = 1),
             proofs = CredentialProofs.Jwt(listOf("proof.one", "proof.two")),
         )

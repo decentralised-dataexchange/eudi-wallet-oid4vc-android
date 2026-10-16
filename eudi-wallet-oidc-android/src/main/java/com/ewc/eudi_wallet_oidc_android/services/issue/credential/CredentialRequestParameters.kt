@@ -35,14 +35,26 @@ internal object CredentialRequestParameters {
             is CredentialSubject.ByConfiguration ->
                 CredentialRequest(credentialConfigurationId = subject.credentialConfigurationId)
 
-            is CredentialSubject.LegacyFormat -> CredentialRequest(
-                format = subject.format,
-                types = subject.types?.let { ArrayList(it) },
-                credentialDefinition = subject.credentialDefinitionTypes
-                    ?.let { CredentialDefinition(type = ArrayList(it)) },
-                vct = subject.vct,
-                doctype = subject.docType,
-            )
+            is CredentialSubject.LegacyFormat -> {
+                // A body that names no credential cannot be satisfied by any issuer of any
+                // revision. It is what `CredentialSubject.of` falls through to when a 1.0 issuer
+                // gave nothing to name the credential by (no offer entry, no authorization_details),
+                // and sending it would put a draft `format` next to 1.0 `proofs`.
+                if (subject.namesNothing) {
+                    throw CredentialRequestException.Unusable(
+                        "The credential request names no credential: the offer entry and the " +
+                            "token's authorization_details gave no configuration id or type"
+                    )
+                }
+                CredentialRequest(
+                    format = subject.format,
+                    types = subject.types?.let { ArrayList(it) },
+                    credentialDefinition = subject.credentialDefinitionTypes
+                        ?.let { CredentialDefinition(type = ArrayList(it)) },
+                    vct = subject.vct,
+                    doctype = subject.docType,
+                )
+            }
         }
 
         // Section 8.2 of 1.0 defines only the plural `proofs`; the singular `proof` belongs to the

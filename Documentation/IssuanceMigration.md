@@ -73,15 +73,15 @@ code" still works.
 
 ## Deprecated entry points and their replacements
 
-The old methods keep working and will be removed in a later release. Three of them are now thin
-wrappers over the new code; the other three keep their old bodies, so a host still calling them
-gets none of the request-shape fixes above until it moves.
+The old methods keep working and will be removed in a later release. Four of them are now thin
+wrappers over the new code, so a host still calling them gets the request shape, retries and
+error reporting described above. The two deferred ones keep their old bodies.
 
 | Deprecated | Replacement | Wrapper? | Deprecation warning shown on |
 |---|---|---|---|
 | `processAuthorisationRequest` | `requestAuthorization`, returns a typed `AuthorizationResponse` | Yes | `IssueService` only |
 | `processTokenRequest` | `requestToken` with a `TokenGrant` | Yes | `IssueService` only |
-| `processCredentialRequest` | `requestCredential` with a `CredentialSubject`, returns a `CredentialOutcome` | **No**, old body kept | Both |
+| `processCredentialRequest` (fourteen parameters) | `requestCredential` with a `CredentialSubject`, returns a `CredentialOutcome` | Yes. The response carries the credentials in `credentials` only, never in the singular `credential` | Both |
 | `processDeferredCredentialRequest` | `requestDeferredCredential` with `DeferredTransaction.LegacyAcceptanceToken` | **No**, old body kept | `IssueServiceInterface` only |
 | `processDeferredCredentialRequestV2` | `requestDeferredCredential` with `DeferredTransaction.TransactionId` | **No**, old body kept | `IssueServiceInterface` only |
 | `NotificationService.sendNotificationRequest` | `notify`, returns a `NotificationOutcome` | Yes | Both |

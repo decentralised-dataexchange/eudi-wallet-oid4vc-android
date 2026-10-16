@@ -89,7 +89,7 @@ class ReIssuanceService : ReIssuanceServiceInterface {
         return when (outcome) {
             is CredentialOutcome.Issued -> WrappedCredentialResponse(
                 credentialResponse = CredentialResponse(
-                    credential = outcome.credentials.firstOrNull(),
+                    // Only `credentials`: wallets join `credential` with it, so setting both returns the first copy twice.
                     credentials = ArrayList(outcome.credentials.map { Credential(credential = it) }),
                     notificationId = outcome.notificationId,
                     cNonce = outcome.cNonce,

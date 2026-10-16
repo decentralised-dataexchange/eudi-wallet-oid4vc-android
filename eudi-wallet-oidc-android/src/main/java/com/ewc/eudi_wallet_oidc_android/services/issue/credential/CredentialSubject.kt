@@ -69,7 +69,12 @@ sealed class CredentialSubject {
         val vct: String? = null,
         val docType: String? = null,
         override val offerCredential: Credentials? = null,
-    ) : CredentialSubject()
+    ) : CredentialSubject() {
+        /** True when no field names a credential: a `format` alone asks for nothing. */
+        val namesNothing: Boolean
+            get() = types.isNullOrEmpty() && credentialDefinitionTypes.isNullOrEmpty() &&
+                vct.isNullOrBlank() && docType.isNullOrBlank()
+    }
 
     /**
      * The key this credential is filed under in `credential_configurations_supported`.
