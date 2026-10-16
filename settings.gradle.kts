@@ -33,5 +33,9 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "eudi-wallet-oidc-android"
-include(":app")
+// The sample app depends on the private QR scanner artifact, so it is only part of the build when
+// credentials for it are available. CI and JitPack have none and build the SDK alone.
+val hasGitHubPackagesCredentials =
+    (githubProperties.getProperty("gpr.key") ?: System.getenv("GPR_API_KEY")).isNullOrBlank().not()
+if (hasGitHubPackagesCredentials) include(":app")
 include(":eudi-wallet-oidc-android")

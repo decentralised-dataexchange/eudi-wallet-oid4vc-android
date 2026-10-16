@@ -1,7 +1,9 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue.credential
 
+import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.Credentials
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
 import com.ewc.eudi_wallet_oidc_android.services.issue.credential.proof.CredentialProofs
 import com.google.gson.Gson
@@ -14,11 +16,17 @@ import org.junit.Test
 /** The credential request body: what each subject puts on the wire, and what it must not. */
 class CredentialRequestParametersTest {
 
-    private fun session(configuration: Map<String, Any> = emptyMap()) = IssuanceSession(
-        credentialOffer = null,
+    private fun session(
+        configuration: Map<String, Any> = emptyMap(),
+        nonceEndpoint: String? = null,
+        offerVersion: Int? = null,
+        credentialsSupported: Any = mapOf("PidSdJwt" to configuration),
+    ) = IssuanceSession(
+        credentialOffer = offerVersion?.let { CredentialOffer(version = it) },
         issuerConfig = IssuerWellKnownConfiguration(
             credentialIssuer = "https://issuer.example.com",
-            credentialsSupported = mapOf("PidSdJwt" to configuration),
+            credentialsSupported = credentialsSupported,
+            nonceEndpoint = nonceEndpoint,
         ),
         authConfig = null,
     )
@@ -28,13 +36,26 @@ class CredentialRequestParametersTest {
         session: IssuanceSession = session(),
         policy: CredentialRequestPolicy = CredentialRequestPolicy.Default,
         proofs: CredentialProofs = CredentialProofs.Jwt(listOf("the.proof.jwt")),
+        token: TokenResponse? = null,
     ) = CredentialRequestParameters.build(
         subject = subject,
         proofs = proofs,
         session = session,
+        token = token,
         encryption = null,
         policy = policy,
     )
+
+    private fun assertPlural(request: com.ewc.eudi_wallet_oidc_android.models.CredentialRequest) {
+        assertEquals(listOf("the.proof.jwt"), request.proofs?.jwt)
+        assertNull(request.proof)
+    }
+
+    private fun assertSingular(request: com.ewc.eudi_wallet_oidc_android.models.CredentialRequest) {
+        assertEquals("the.proof.jwt", request.proof?.jwt)
+        assertEquals("jwt", request.proof?.proofType)
+        assertNull(request.proofs)
+    }
 
     /**
      * Section 8.2's `proofs` is an array. A batch is more than one entry, and it takes the plural
@@ -100,22 +121,97 @@ class CredentialRequestParametersTest {
     }
 
     /**
-     * Section 8.2: "The `proofs` parameter MUST be present if the `proof_types_supported` parameter
-     * is present in the `credential_configurations_supported` parameter of the Issuer metadata."
+     * Section 8.2 of 1.0 defines only `proofs`, so it is the default. Neither a nonce endpoint nor
+     * `proof_types_supported` is required of a 1.0 issuer, so their absence must not demote it.
      */
     @Test
-    fun `plural proofs follow proof_types_supported, not credential_metadata`() {
-        val declares = session(mapOf("proof_types_supported" to mapOf("jwt" to emptyMap<String, Any>())))
-        val plural = body(CredentialSubject.ByConfiguration("PidSdJwt"), declares)
-        assertEquals(listOf("the.proof.jwt"), plural.proofs?.jwt)
-        assertNull(plural.proof)
+    fun `a 1_0 issuer gets plural proofs without a nonce endpoint or proof_types_supported`() {
+        assertPlural(body(CredentialSubject.ByConfiguration("PidSdJwt")))
+        assertPlural(body(CredentialSubject.ByConfiguration("PidSdJwt"), session(nonceEndpoint = "https://issuer.example.com/nonce")))
+    }
 
-        // The trigger both SDKs used to key off. On its own it must now change nothing.
-        val onlyMetadata = session(mapOf("credential_metadata" to mapOf("x" to 1)))
-        val singular = body(CredentialSubject.ByConfiguration("PidSdJwt"), onlyMetadata)
-        assertEquals("the.proof.jwt", singular.proof?.jwt)
-        assertEquals("jwt", singular.proof?.proofType)
-        assertNull(singular.proofs)
+    /**
+     * A credential identifier is an instance id, not a metadata key. Looking the configuration up
+     * by it found nothing and sent the singular `proof` to 1.0 issuers.
+     */
+    @Test
+    fun `a credential identifier request gets plural proofs`() {
+        assertPlural(body(CredentialSubject.ByIdentifier("instance-1")))
+    }
+
+    /** The identifier is resolved through the offer entry it was issued for. */
+    @Test
+    fun `a credential identifier is looked up by its offer entry`() {
+        val subject = CredentialSubject.ByIdentifier(
+            "instance-1",
+            offerCredential = Credentials(types = arrayListOf("PidSdJwt")),
+        )
+
+        assertEquals("PidSdJwt", CredentialRequestParameters.configurationIdOf(subject))
+    }
+
+    /** Draft offers (EBSI, EWC) predate `proofs`. */
+    @Test
+    fun `a draft offer gets the singular proof`() {
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), session(offerVersion = 1)))
+    }
+
+    /**
+     * Discovery records the metadata revision on the configuration. A draft 12 object-shaped
+     * `credentials_supported` is indistinguishable from 1.0 after parsing, so this is the marker
+     * that catches it; the array check below covers configurations stored before the field existed.
+     */
+    @Test
+    fun `draft metadata gets the singular proof`() {
+        val recorded = session().apply { issuerConfig?.version = 1 }
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), recorded))
+
+        val arrayShaped = session(credentialsSupported = listOf(mapOf("format" to "jwt_vc")))
+        assertSingular(body(CredentialSubject.LegacyFormat(format = "jwt_vc"), arrayShaped))
+    }
+
+    /**
+     * A policy that forbids the plural form cannot carry a batch. Dropping to the first proof
+     * would issue one credential of the several asked for and report success.
+     */
+    @Test(expected = CredentialRequestException.Unusable::class)
+    fun `the legacy policy refuses a batch instead of sending one proof of many`() {
+        body(
+            CredentialSubject.ByConfiguration("PidSdJwt"),
+            policy = CredentialRequestPolicy.Legacy,
+            proofs = CredentialProofs.Jwt(listOf("proof.one", "proof.two")),
+        )
+    }
+
+    /**
+     * Draft 13 hands out `c_nonce` with the token and has no nonce endpoint. 1.0 removed `c_nonce`
+     * from the token response, so an issuer that also publishes a nonce endpoint is not a draft.
+     */
+    @Test
+    fun `a token c_nonce marks a draft only when there is no nonce endpoint`() {
+        val token = TokenResponse(cNonce = "token-nonce")
+
+        assertSingular(body(CredentialSubject.ByConfiguration("PidSdJwt"), token = token))
+        assertPlural(
+            body(
+                CredentialSubject.ByConfiguration("PidSdJwt"),
+                session(nonceEndpoint = "https://issuer.example.com/nonce"),
+                token = token,
+            ),
+        )
+    }
+
+    /** A batch can only be expressed in the plural form, so it overrides the draft rule. */
+    @Test
+    fun `a batch to a draft issuer still takes the plural form`() {
+        val body = body(
+            CredentialSubject.LegacyFormat(format = "jwt_vc"),
+            session(offerVersion = 1),
+            proofs = CredentialProofs.Jwt(listOf("proof.one", "proof.two")),
+        )
+
+        assertEquals(listOf("proof.one", "proof.two"), body.proofs?.jwt)
+        assertNull(body.proof)
     }
 
     /** The plural form is an object keyed by proof type; `proof_type` is not a member of it. */

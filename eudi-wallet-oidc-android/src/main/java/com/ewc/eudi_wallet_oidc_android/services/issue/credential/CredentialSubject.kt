@@ -97,11 +97,9 @@ sealed class CredentialSubject {
          *  - and drafts, which predate both, name the credential by `format` plus their own type
          *    field.
          *
-         * The 1.0-versus-draft test is whether the issuer publishes a nonce endpoint. That is a
-         * proxy rather than a version field, and a deliberate one: an earlier gate on "the token
-         * response carried no c_nonce" excluded issuers that publish a nonce endpoint *and* return
-         * a c_nonce with the token -- servers exist that do both -- and they reject the draft body with
-         * "Invalid request format".
+         * The 1.0-versus-draft test is [IssuanceSession.isDraftIssuer], shared with the proof form
+         * so one body never mixes the two revisions. 1.0 is the default there; an earlier gate on
+         * "no nonce endpoint" sent the draft body to 1.0 issuers that simply require no `c_nonce`.
          */
         fun of(
             session: IssuanceSession,
@@ -110,13 +108,16 @@ sealed class CredentialSubject {
         ): CredentialSubject {
             val details = token.authorizationDetails.orEmpty().filter { it.type == OPENID_CREDENTIAL }
 
-            // Only take a detail that names *this* credential. Falling back to the first one when
-            // nothing matched sends another credential's `credential_identifier`, which the issuer
-            // answers with an error or a 500 -- and only for the credentials after the first, so it
-            // looks like one bad credential rather than a bad rule. A single detail is unambiguous
-            // and is the one-credential case.
-            val detail = details.firstOrNull { matches(it, credential) } ?: details.singleOrNull()
-            if (detail == null && details.size > 1) {
+            // Only take a detail that names *this* credential. Borrowing one that names another
+            // sends that credential's `credential_identifier`, so the issuer hands out the first
+            // credential twice and the wallet stores the copy under the second's name. A single
+            // detail is still taken when it names no configuration at all, or when there is no
+            // offer entry to compare it with (reissuance without an offer).
+            val detail = details.firstOrNull { matches(it, credential) }
+                ?: details.singleOrNull()?.takeIf { sole ->
+                    credential == null || sole.credentialConfigurationId.isNullOrBlank()
+                }
+            if (detail == null && details.isNotEmpty()) {
                 Logger.d(
                     TAG,
                     "no authorization_details entry names ${credential?.types?.firstOrNull()}; " +
@@ -130,8 +131,7 @@ sealed class CredentialSubject {
                 return ByIdentifier(it, credential)
             }
 
-            val publishesNonceEndpoint = !session.issuerConfig?.nonceEndpoint.isNullOrBlank()
-            if (publishesNonceEndpoint) {
+            if (!session.isDraftIssuer(token)) {
                 val configurationId = detail?.credentialConfigurationId?.takeIf { it.isNotBlank() }
                     ?: credential?.types?.firstOrNull()?.takeIf { it.isNotBlank() }
                 if (configurationId != null) {

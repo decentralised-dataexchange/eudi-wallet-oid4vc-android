@@ -137,6 +137,7 @@ class CredentialRequestResolver(
             subject = subject,
             proofs = proofs,
             session = session,
+            token = token,
             encryption = encryption,
             policy = policy,
         )
@@ -189,19 +190,24 @@ class CredentialRequestResolver(
             )
         }
 
-        // Section 8.3.1: "The Credential Issuer MAY return a new `c_nonce` value in an error
-        // response" -- so a rejected proof is often recoverable by signing again with it.
-        val freshNonce = freshNonceFrom(body)
-        if (allowRetry && policy.retryOnStaleNonce &&
-            (error?.errorCode == INVALID_PROOF || error?.errorCode == INVALID_NONCE) &&
-            !freshNonce.isNullOrBlank()
-        ) {
-            Logger.d(TAG, "issuer rejected the proof and supplied a fresh nonce; retrying once")
-            return send(
-                endpoint, session, wallet, token, subject, issuer, additionalProofKeys,
-                attestation, keyAttestation,
-                encryption, freshNonce, dpopNonce, allowRetry = false,
-            )
+        // A rejected proof is often recoverable by signing again with a fresh nonce. Drafts return
+        // it in the error body ("The Credential Issuer MAY return a new `c_nonce` value in an error
+        // response"); 1.0 hands nonces out only at the Nonce Endpoint, so a bare `invalid_nonce`
+        // means "fetch another". Exactly once, and only if the nonce actually changed.
+        val staleProof = error?.errorCode == INVALID_PROOF || error?.errorCode == INVALID_NONCE
+        if (allowRetry && policy.retryOnStaleNonce && staleProof) {
+            val freshNonce = freshNonceFrom(body)
+                ?: session.issuerConfig?.nonceEndpoint?.takeIf { it.isNotBlank() }
+                    ?.let { NonceService().fetchNonce(token.accessToken, it) }
+                    ?.takeIf { it.isNotBlank() }
+            if (!freshNonce.isNullOrBlank() && freshNonce != nonce) {
+                Logger.d(TAG, "issuer rejected the proof; re-signing with a fresh nonce and retrying once")
+                return send(
+                    endpoint, session, wallet, token, subject, issuer, additionalProofKeys,
+                    attestation, keyAttestation,
+                    encryption, freshNonce, dpopNonce, allowRetry = false,
+                )
+            }
         }
 
         // A 500 rarely carries a usable body, so the request that produced it is the evidence.

@@ -162,6 +162,46 @@ class CredentialRequestResolverTest {
         assertEquals("nonce-2", nonceOfProofIn(server.takeRequest().body.readUtf8()))
     }
 
+    /**
+     * 1.0 issuers hand nonces out only at the Nonce Endpoint (section 7), so their `invalid_nonce`
+     * carries no `c_nonce`. The retry fetches a fresh one there instead of giving up.
+     */
+    @Test
+    fun `an invalid_nonce without a c_nonce in the body is retried with a nonce from the endpoint`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"c_nonce":"nonce-1"}"""))
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_nonce"}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"c_nonce":"nonce-2"}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"credential":"vc-1"}"""))
+
+        val outcome = resolve(
+            session = session(nonceEndpoint = server.url("/nonce").toString()),
+            token = TokenResponse(accessToken = "at-1", cNonce = null),
+        )
+
+        assertTrue("got $outcome", outcome is CredentialOutcome.Issued)
+        assertEquals(4, server.requestCount)
+        server.takeRequest() // first nonce fetch
+        assertEquals("nonce-1", nonceOfProofIn(server.takeRequest().body.readUtf8()))
+        server.takeRequest() // second nonce fetch
+        assertEquals("nonce-2", nonceOfProofIn(server.takeRequest().body.readUtf8()))
+    }
+
+    /** The endpoint handing back the same nonce would only repeat the failure, so it is not retried. */
+    @Test
+    fun `an invalid_nonce is not retried when the endpoint returns the same nonce`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"c_nonce":"nonce-1"}"""))
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_nonce"}"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"c_nonce":"nonce-1"}"""))
+
+        val outcome = resolve(
+            session = session(nonceEndpoint = server.url("/nonce").toString()),
+            token = TokenResponse(accessToken = "at-1", cNonce = null),
+        )
+
+        assertEquals("invalid_nonce", (outcome as CredentialOutcome.Failed).error.errorCode)
+        assertEquals(3, server.requestCount)
+    }
+
     @Test
     fun `a second rejection gives up rather than looping`() {
         repeat(2) {

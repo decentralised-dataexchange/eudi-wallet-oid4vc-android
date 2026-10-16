@@ -115,6 +115,8 @@ class IssuerMetadataResolverTest {
         assertNotNull(result.response.issuerConfig)
         assertEquals(WellKnownForm.Insertion, result.diagnostics.form)
         assertEquals(IssuerMetadataSpecVersion.V1_0, result.diagnostics.specVersion)
+        // The revision travels with the configuration, so the credential request can read it later.
+        assertEquals(2, result.response.issuerConfig?.version)
         assertFalse(result.diagnostics.usedSuffixFallback)
         assertEquals(insertionPath, server.takeRequest().path)
     }
@@ -129,6 +131,7 @@ class IssuerMetadataResolverTest {
         assertNotNull(result.response.issuerConfig)
         assertEquals(WellKnownForm.Suffix, result.diagnostics.form)
         assertEquals(IssuerMetadataSpecVersion.Draft, result.diagnostics.specVersion)
+        assertEquals(1, result.response.issuerConfig?.version)
         assertTrue(result.diagnostics.usedSuffixFallback)
         assertEquals(2, result.diagnostics.attemptedUrls.size)
     }

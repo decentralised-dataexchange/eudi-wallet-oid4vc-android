@@ -9,15 +9,11 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.credential
 data class CredentialRequestPolicy(
 
     /**
-     * Send the plural `proofs` object when the issuer declares `proof_types_supported` for the
-     * credential being requested.
+     * Send the plural `proofs` object unless the issuer is positively identified as a pre-1.0
+     * draft (see `CredentialRequestParameters.isDraftIssuer`).
      *
-     * Section 8.2: "The `proofs` parameter MUST be present if the `proof_types_supported` parameter
-     * is present in the `credential_configurations_supported` parameter of the Issuer metadata."
-     *
-     * On by default, because that is the rule. Both SDKs previously keyed this off whether the
-     * metadata contained a `credential_metadata` member -- an unrelated marker, read from an
-     * arbitrary configuration rather than the requested one.
+     * Section 8.2 of 1.0 defines only `proofs`; the singular `proof` exists in the drafts alone.
+     * On by default, because that is the rule. Off sends the singular `proof` to every issuer.
      */
     val usePluralProofs: Boolean = true,
 

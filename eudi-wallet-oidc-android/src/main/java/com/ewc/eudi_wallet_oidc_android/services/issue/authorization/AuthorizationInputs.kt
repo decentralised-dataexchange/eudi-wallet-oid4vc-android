@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.issue.authorization
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
 import com.ewc.eudi_wallet_oidc_android.models.IssuerWellKnownConfiguration
+import com.ewc.eudi_wallet_oidc_android.models.TokenResponse
 import com.nimbusds.jose.jwk.ECKey
 import org.json.JSONObject
 import java.util.Base64
@@ -22,6 +23,30 @@ data class IssuanceSession(
 ) {
     /** Which revision of the offer this is: 1 for pre-1.0 drafts, 2 for OpenID4VCI 1.0. */
     val offerVersion: Int? get() = credentialOffer?.version
+
+    /**
+     * Whether this issuer is positively identified as a pre-1.0 draft.
+     *
+     * The one answer that decides both how the credential request names the credential and which
+     * proof form it sends, so a request can never mix shapes from two revisions. 1.0 is the
+     * default: the absence of a 1.0 feature proves nothing, since a 1.0 issuer that needs no
+     * `c_nonce` publishes no nonce endpoint (section 12.2.4) and one that requires no key binding
+     * declares no `proof_types_supported`. Any one of these markers is enough:
+     *
+     *  - the offer had a draft shape (EBSI, EWC), recorded by the offer parser as version 1;
+     *  - the metadata had the draft `credentials_supported` shape, recorded by discovery as
+     *    version 1, or as an array for a configuration stored before that field existed;
+     *  - the token response carried `c_nonce` and the issuer publishes no nonce endpoint. 1.0
+     *    moved `c_nonce` out of the token response, so this is how drafts 13 and 14 hand it out.
+     *
+     * A draft 13 or 14 issuer that returns no `c_nonce` shows none of these and is treated as
+     * 1.0; `CredentialRequestPolicy.Legacy` covers that case by hand.
+     */
+    fun isDraftIssuer(token: TokenResponse?): Boolean =
+        offerVersion == DRAFT_VERSION ||
+            issuerConfig?.version == DRAFT_VERSION ||
+            issuerConfig?.credentialsSupported is List<*> ||
+            (issuerConfig?.nonceEndpoint.isNullOrBlank() && !token?.cNonce.isNullOrBlank())
 
     /**
      * The `issuer_state` the offer carried, or null.
@@ -44,6 +69,11 @@ data class IssuanceSession(
      */
     val requiresTransactionCode: Boolean
         get() = credentialOffer?.grants?.preAuthorizationCode?.transactionCode != null
+
+    private companion object {
+        /** The code the offer and metadata parsers record for a pre-1.0 draft shape. */
+        const val DRAFT_VERSION = 1
+    }
 }
 
 /** The wallet's own key identity. `jwk` signs the ID token when one is asked for. */
