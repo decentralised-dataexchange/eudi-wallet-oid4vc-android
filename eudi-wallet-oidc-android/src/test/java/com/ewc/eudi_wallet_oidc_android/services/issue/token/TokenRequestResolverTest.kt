@@ -204,4 +204,18 @@ class TokenRequestResolverTest {
         assertNotNull(result.errorResponse)
         assertEquals(302, result.errorResponse?.httpStatus)
     }
+
+    /**
+     * An empty error body used to parse to an error with no code and no description, which hid
+     * the "refused (HTTP n)" fallback: the user saw nothing at all for a bare 500.
+     */
+    @Test
+    fun `an empty error body still carries a reason and the status`() {
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        val result = resolve()
+
+        assertEquals(500, result.errorResponse?.httpStatus)
+        assertTrue("got ${result.errorResponse?.errorDescription}", result.errorResponse?.errorDescription?.contains("500") == true)
+    }
 }

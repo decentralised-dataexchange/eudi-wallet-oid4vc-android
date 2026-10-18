@@ -49,6 +49,7 @@ class CredentialRequestResolverTest {
         token: TokenResponse = TokenResponse(accessToken = "at-1", cNonce = "nonce-1"),
         withDpop: Boolean = false,
         policy: CredentialRequestPolicy = CredentialRequestPolicy.Default,
+        keyAttestation: String? = null,
     ) = runBlocking {
         CredentialRequestResolver(policy).resolve(
             session = session,
@@ -59,6 +60,7 @@ class CredentialRequestResolverTest {
             attestation = if (withDpop) {
                 WalletAttestation(null, null, ECKeyGenerator(Curve.P_256).keyID("d").generate())
             } else null,
+            keyAttestation = keyAttestation,
         )
     }
 
@@ -160,6 +162,40 @@ class CredentialRequestResolverTest {
         assertEquals(2, server.requestCount)
         assertEquals("nonce-1", nonceOfProofIn(server.takeRequest().body.readUtf8()))
         assertEquals("nonce-2", nonceOfProofIn(server.takeRequest().body.readUtf8()))
+    }
+
+    /**
+     * A key attestation is bound to the nonce the issuer just rejected and cannot be re-minted
+     * here, so a retry would fail on the attestation and report that in place of the issuer's
+     * first answer. The first answer is what the caller gets.
+     */
+    @Test
+    fun `a rejected proof is not retried when a key attestation travels with it`() {
+        server.enqueue(
+            MockResponse().setResponseCode(400)
+                .setBody("""{"error":"invalid_proof","c_nonce":"nonce-2"}""")
+        )
+
+        val outcome = resolve(keyAttestation = "the.key.attestation")
+
+        assertTrue(outcome is CredentialOutcome.Failed)
+        assertEquals("invalid_proof", (outcome as CredentialOutcome.Failed).error.errorCode)
+        assertEquals(1, server.requestCount)
+    }
+
+    /**
+     * An empty error body used to parse to an error with no code and no description, which hid
+     * the "refused (HTTP n)" fallback: the user saw nothing at all for a bare 500.
+     */
+    @Test
+    fun `an empty error body still carries a reason and the status`() {
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        val outcome = resolve()
+
+        val error = (outcome as CredentialOutcome.Failed).error
+        assertEquals(500, error.httpStatus)
+        assertTrue("got ${error.errorDescription}", !error.errorDescription.isNullOrBlank())
     }
 
     /**

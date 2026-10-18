@@ -133,7 +133,8 @@ class DeferredRequestResolver(
         }
 
         val body = HttpCall.errorBody(response)
-        val error = ErrorHandler.processError(body, response.code())
+        // No body, no parsed error, so the "refused (HTTP n)" fallback below stays reachable.
+        val error = body?.let { ErrorHandler.processError(it, response.code()) }
         val issuedDPoPNonce = response.headers()["DPoP-Nonce"]
 
         if (allowRetry && policy.retryOnDPoPNonce && dpopKey != null &&

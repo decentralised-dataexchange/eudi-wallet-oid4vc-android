@@ -5,15 +5,15 @@ import java.util.Date
 /**
  * The single time source for every JWT this SDK mints.
  *
- * Wallets sign short-lived tokens — DPoP proofs, client-attestation PoPs, key-attestation PoPs,
- * credential proofs, KB-JWTs, VP tokens — whose `iat`/`nbf` are checked by a remote server against
+ * Wallets sign short-lived tokens - DPoP proofs, client-attestation PoPs, key-attestation PoPs,
+ * credential proofs, KB-JWTs, VP tokens - whose `iat`/`nbf` are checked by a remote server against
  * *its* clock. Two machines never agree exactly, and a server with little or no forward tolerance
  * rejects anything it sees in its own future. Some authorization servers do this: a PoP one
- * second old is refused with `INVALID_ISSUED_AT` (confirmed on device, 2026-08-20 — backdating
+ * second old is refused with `INVALID_ISSUED_AT` (confirmed on device, 2026-08-20 - backdating
  * fixes it, removing the backdate reproduces the failure).
  *
  * So `iat` and `nbf` are stamped [skewBackdateMillis] in the past, while `exp` is measured from the
- * real [now] — the token's usable lifetime is unchanged, it is only declared to have started
+ * real [now] - the token's usable lifetime is unchanged, it is only declared to have started
  * slightly earlier.
  *
  * ```kotlin
@@ -42,7 +42,7 @@ object WalletClock {
      * Sets the skew allowance. Call once at startup, or from a developer-settings screen.
      *
      * @param skewBackdateMillis how far into the past to stamp `iat`/`nbf`. Negative values are
-     *   clamped to zero — post-dating a token would put it in *every* server's future.
+     *   clamped to zero - post-dating a token would put it in *every* server's future.
      */
     @JvmStatic
     fun configure(skewBackdateMillis: Long) {

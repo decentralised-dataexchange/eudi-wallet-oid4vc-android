@@ -12,7 +12,7 @@ import java.util.Base64
  * ARF TS3 requires the DPoP key to be the one the wallet attestation names in `cnf`.
  *
  * A mismatch is rejected by the authorization server as `invalid_client_attestation`, with nothing
- * in the response saying which of the three possible causes it was — which is why this is worth
+ * in the response saying which of the three possible causes it was - which is why this is worth
  * knowing before the request goes out.
  */
 class WalletAttestationTest {

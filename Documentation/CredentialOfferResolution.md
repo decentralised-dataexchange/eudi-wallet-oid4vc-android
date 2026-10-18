@@ -3,7 +3,7 @@
 How the SDK turns scanned data into a `CredentialOffer`, and how to extend or trim it.
 
 This is the first function in an ongoing quality pass over the issuance path. See
-[Status and next steps](#status-and-next-steps) at the end for where to pick up.
+[Status and next steps](#status-and-next-steps) at the end for how it fits the rest of the rework.
 
 ---
 
@@ -12,7 +12,7 @@ This is the first function in an ongoing quality pass over the issuance path. Se
 `IssueService.resolveCredentialOffer` was ~100 lines containing a four-attempt `try/catch` ladder
 with four silent `catch { null }` blocks. Three problems mattered:
 
-- **Five distinct failures collapsed into two indistinguishable return shapes** — a bare `null` or
+- **Five distinct failures collapsed into two indistinguishable return shapes** - a bare `null` or
   a `WrappedCredentialOffer(null, null)`. The wallet's handling is an `if / else if` with no
   `else`, so a malformed offer produced no error and never dismissed its progress spinner.
 - **A non-spec `version` field was read off the wire** and trusted, so an issuer could claim any
@@ -64,7 +64,7 @@ data ──► pick source ──► retrieve document ──► parse to JSON �
 ```
 
 Any failure becomes a `WrappedCredentialOffer` carrying an `errorResponse`. **Never a bare null,
-never an empty wrapper** — that contract is what makes the caller's error path reachable.
+never an empty wrapper** - that contract is what makes the caller's error path reachable.
 
 ### Adding a transfer mechanism
 
@@ -79,7 +79,7 @@ class MyOfferSource : CredentialOfferSource {
 ```
 
 Sources are consulted in order. If more than one matches and
-`CredentialOfferPolicy.rejectAmbiguousOffers` is set, the offer is rejected — the spec forbids
+`CredentialOfferPolicy.rejectAmbiguousOffers` is set, the offer is rejected - the spec forbids
 carrying both `credential_offer` and `credential_offer_uri`.
 
 ### Adding a spec revision
@@ -138,7 +138,7 @@ CredentialOfferPolicy(
 IssueService(offerPolicy = CredentialOfferPolicy.Strict)
 ```
 
-Note this also closes `file:`, `ftp:` and `jar:`, which the previous check accepted — the URI is
+Note this also closes `file:`, `ftp:` and `jar:`, which the previous check accepted - the URI is
 fetched with no host allowlist, so that was the real exposure.
 
 ---
@@ -158,7 +158,7 @@ fetched with no host allowlist, so that was the real exposure.
 | `tx_code.description` MUST NOT exceed 300 chars | truncated |
 | Empty `tx_code` object still requires a code | honoured |
 | Unrecognized parameters MUST be ignored | Gson ignores unknown keys |
-| **`grants` absent/empty → determine from AS metadata** | **not implemented** — see below |
+| **`grants` absent/empty → determine from AS metadata** | **not implemented** - see below |
 
 `interval` is **not** part of the pre-authorized-code grant in 1.0; it was removed after the early
 drafts. The `interval` the SDK reads elsewhere is the *deferred credential* interval, a different
@@ -209,21 +209,14 @@ which needs no production change because every endpoint is declared with an abso
 
 ## Status and next steps
 
-**Done:** offer resolution. 122 tests pass; the library and release AAR build.
+Offer resolution was the first step of the issuance rework (#726). The same pass has since been
+made over discovery, the authorization request, the token request, the credential request, and
+the deferred and notification requests, each with the pattern used here: keep the `IssueService`
+method as a thin delegation, move the work into a package beside it, put the spec rules in one
+validator, make policy explicit rather than implicit, and keep anything draft-era under `legacy/`.
 
-**Sequence** — one function at a time, each checked against OpenID4VCI 1.0:
-
-1. ~~`resolveCredentialOffer`~~ ✅
-2. `DiscoveryService.getIssuerConfig` / `getAuthConfig`
-3. `processAuthorisationRequest` — a four-branch monolith including the IAR path
-4. `processTokenRequest` — **`authorization_pending` / `slow_down` are unhandled anywhere in the
-   SDK** (zero occurrences), so a pre-auth issuer that defers authorization aborts the flow
-5. `processCredentialRequest`
-6. deferred, notification, refresh
-
-**Pattern to repeat:** keep the `IssueService` method as a thin delegation; move the work into a
-package beside it; put spec rules in one validator; make policy explicit rather than implicit;
-quarantine anything draft-era under `legacy/`.
+What changes for a host, and which old entry points are now wrappers, is in
+[IssuanceMigration.md](IssuanceMigration.md).
 
 ### Related work
 

@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  * A harness for the SDK's issuance functions, one at a time.
  *
  * One scan feeds every step; each button invokes exactly one SDK function and prints its result
- * plus **which internal path answered** — the source and spec revision that claimed the offer,
+ * plus **which internal path answered** - the source and spec revision that claimed the offer,
  * which of the two well-known URL layouts the issuer actually serves, whether a non-spec fallback
  * was taken. None of that is visible from the wrapped response the wallet reads, and it is the
  * difference between "this issuer is non-conformant here" and "something is broken".
@@ -93,7 +93,7 @@ class MainViewModel : ViewModel() {
         output.value = ""
     }
 
-    /** Step 1 — `IssueService.resolveCredentialOffer`. */
+    /** Step 1 - `IssueService.resolveCredentialOffer`. */
     fun resolveOffer(then: (() -> Unit)? = null) = run("1 · Resolve credential offer") {
         val data = scannedInput.value
         if (data.isNullOrBlank() || data == NOTHING_SCANNED) {
@@ -124,7 +124,7 @@ class MainViewModel : ViewModel() {
         then?.invoke()
     }
 
-    /** Step 2 — `DiscoveryService.getIssuerConfig`. */
+    /** Step 2 - `DiscoveryService.getIssuerConfig`. */
     fun discoverIssuer(then: (() -> Unit)? = null) = run("2 · Discover issuer metadata") {
         val issuer = offer?.credentialIssuer
         if (issuer.isNullOrBlank()) {
@@ -142,7 +142,7 @@ class MainViewModel : ViewModel() {
             appendLine("  answered by        ${diagnostics.resolvedUrl ?: "nothing"}")
             appendLine("  url layout         ${layoutOf(diagnostics.form, diagnostics.usedSuffixFallback)}")
             appendLine("  content type       ${diagnostics.contentType}")
-            append("  metadata shape     ${diagnostics.specVersion ?: "—"}")
+            append("  metadata shape     ${diagnostics.specVersion ?: "-"}")
         }
 
         val config = result.response.issuerConfig
@@ -157,16 +157,16 @@ class MainViewModel : ViewModel() {
             buildString {
                 appendLine(trace)
                 appendLine("  credential_endpoint  ${config.credentialEndpoint}")
-                appendLine("  nonce_endpoint       ${config.nonceEndpoint ?: "—"}")
-                appendLine("  deferred_endpoint    ${config.deferredCredentialEndpoint ?: "—"}")
-                appendLine("  authorization_server ${config.authorizationServer ?: "—"}")
-                append("  authorization_servers ${config.authorizationServers ?: "—"}")
+                appendLine("  nonce_endpoint       ${config.nonceEndpoint ?: "-"}")
+                appendLine("  deferred_endpoint    ${config.deferredCredentialEndpoint ?: "-"}")
+                appendLine("  authorization_server ${config.authorizationServer ?: "-"}")
+                append("  authorization_servers ${config.authorizationServers ?: "-"}")
             },
         )
         then?.invoke()
     }
 
-    /** Step 3 — `selectAuthorizationServer` then `DiscoveryService.getAuthConfig`. */
+    /** Step 3 - `selectAuthorizationServer` then `DiscoveryService.getAuthConfig`. */
     fun discoverAuthServer(then: (() -> Unit)? = null) = run("3 · Discover authorization server") {
         val config = issuerConfig
         if (config == null) {
@@ -206,9 +206,9 @@ class MainViewModel : ViewModel() {
             buildString {
                 appendLine(trace)
                 appendLine("  issuer               ${auth.issuer}")
-                appendLine("  authorization_endpoint ${auth.authorizationEndpoint ?: "—"}")
+                appendLine("  authorization_endpoint ${auth.authorizationEndpoint ?: "-"}")
                 appendLine("  token_endpoint         ${auth.tokenEndpoint}")
-                appendLine("  pushed_auth_endpoint   ${auth.pushedAuthorizationRequestEndpoint ?: "—"}")
+                appendLine("  pushed_auth_endpoint   ${auth.pushedAuthorizationRequestEndpoint ?: "-"}")
                 append("  grant_types            ${auth.grantTypesSupported}")
             },
         )
@@ -216,7 +216,7 @@ class MainViewModel : ViewModel() {
     }
 
 
-    /** Step 4 — `IssueService.requestAuthorization`. */
+    /** Step 4 - `IssueService.requestAuthorization`. */
     fun requestAuthorization() = run("4 · Request authorization") {
         val session = IssuanceSession(offer, issuerConfig, authConfig)
         if (session.authConfig == null) {
@@ -226,7 +226,7 @@ class MainViewModel : ViewModel() {
 
         // A pre-authorized offer has no authorization leg at all: the issuer has already decided
         // to issue and handed over the code. §4.1.1 puts `issuer_state` inside the
-        // authorization_code grant, so an offer without that grant has none to send — and a server
+        // authorization_code grant, so an offer without that grant has none to send - and a server
         // asked for one anyway answers "issuer state is not found". Step 5 is the next step here.
         val grants = offer?.grants
         if (grants?.authorizationCode == null && grants?.preAuthorizationCode != null) {
@@ -235,7 +235,7 @@ class MainViewModel : ViewModel() {
                   grants             pre-authorized_code
                   tx_code            ${txCodeOf(offer!!)}
                   why                a pre-authorized flow has no authorization leg and no
-                                     issuer_state to send — run step 5 instead
+                                     issuer_state to send - run step 5 instead
             """.trimIndent())
             return@run
         }
@@ -263,9 +263,9 @@ class MainViewModel : ViewModel() {
 
         val trace = """
               transport          ${request?.transport ?: "none"}
-              endpoint           ${request?.endpoint ?: "—"}
-              redirect_uri       ${request?.redirectUri ?: "—"}
-              state sent         ${request?.state ?: "—"}
+              endpoint           ${request?.endpoint ?: "-"}
+              redirect_uri       ${request?.redirectUri ?: "-"}
+              state sent         ${request?.state ?: "-"}
               wallet attestation ${if (request?.sentWalletAttestation == true) "sent" else "not sent"}
               mode               $authorizationMode
               did                ${identity.did}
@@ -280,7 +280,7 @@ class MainViewModel : ViewModel() {
                     $trace
                       outcome            authorization code
                       code               ${response.code}
-                      state returned     ${response.state ?: "—"}
+                      state returned     ${response.state ?: "-"}
                       state matches      ${response.state == request?.state}
                 """.trimIndent())
             }
@@ -288,15 +288,15 @@ class MainViewModel : ViewModel() {
             AuthorizationOutcome.OPEN_IN_BROWSER -> log(heading, """
                 $trace
                   outcome            open in browser
-                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "—"}
+                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "-"}
                   url                ${response.url}
             """.trimIndent())
 
             AuthorizationOutcome.PRESENTATION_REQUIRED -> log(heading, """
                 $trace
                   outcome            presentation required (IAR, or a redirect asking for one)
-                  auth_session       ${response.authSession ?: "—"}
-                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "—"}
+                  auth_session       ${response.authSession ?: "-"}
+                  expires_in         ${response.expiresIn?.let { "$it s" } ?: "-"}
                   url                ${response.url}
             """.trimIndent())
 
@@ -309,10 +309,10 @@ class MainViewModel : ViewModel() {
             AuthorizationOutcome.FAILED -> log(heading, """
                 $trace
                   outcome            FAILED
-                  error              ${response.error?.errorCode ?: "—"}
+                  error              ${response.error?.errorCode ?: "-"}
                   description        ${response.error?.errorDescription ?: "no reason given"}
-                  http status        ${response.error?.httpStatus ?: "—"}
-                  raw                ${response.error?.raw?.take(200) ?: "—"}
+                  http status        ${response.error?.httpStatus ?: "-"}
+                  raw                ${response.error?.raw?.take(200) ?: "-"}
             """.trimIndent())
         }
     }
@@ -343,10 +343,10 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * Step 5 — `IssueService.requestToken`.
+     * Step 5 - `IssueService.requestToken`.
      *
      * Takes whichever code the offer's grant provides: the pre-authorized code straight from the
-     * offer, or the authorization code step 4 produced. Which one is not a toggle here — the
+     * offer, or the authorization code step 4 produced. Which one is not a toggle here - the
      * offer's grants decide it, which is the point.
      */
     fun requestToken() = run("5 · Request token") {
@@ -361,7 +361,7 @@ class MainViewModel : ViewModel() {
         val isPreAuthorised = preAuthorized?.preAuthorizedCode != null && authorizationCode == null
         val code = if (isPreAuthorised) preAuthorized?.preAuthorizedCode else authorizationCode
         if (code.isNullOrBlank()) {
-            log(heading, "No code yet — run step 4 for an authorization-code offer")
+            log(heading, "No code yet - run step 4 for an authorization-code offer")
             return@run
         }
 
@@ -398,12 +398,12 @@ class MainViewModel : ViewModel() {
 
         val trace = """
               grant              ${grant.grantType}
-              endpoint           ${authServer.tokenEndpoint ?: "—"}
+              endpoint           ${authServer.tokenEndpoint ?: "-"}
               tx_code required   ${session.requiresTransactionCode}
               tx_code sent       ${if (pin != null) "yes" else "no"}
-              redirect_uri       ${sentRedirectUri ?: "—"}
+              redirect_uri       ${sentRedirectUri ?: "-"}
               dpop               ${if (wrapped.dpop != null) "sent" else "not sent"}
-              dpop nonce         ${wrapped.dpopNonce ?: "—"}
+              dpop nonce         ${wrapped.dpopNonce ?: "-"}
         """.trimIndent()
 
         val token = wrapped.tokenResponse
@@ -414,10 +414,10 @@ class MainViewModel : ViewModel() {
             token?.accessToken != null -> log(heading, """
                 $trace
                   outcome            access token
-                  token_type         ${token.tokenType ?: "—"}
-                  expires_in         ${token.expiresIn ?: "—"}
-                  c_nonce            ${token.cNonce ?: "— (1.0 uses the nonce endpoint)"}
-                  refresh_token      ${if (token.refreshToken != null) "present" else "—"}
+                  token_type         ${token.tokenType ?: "-"}
+                  expires_in         ${token.expiresIn ?: "-"}
+                  c_nonce            ${token.cNonce ?: "- (1.0 uses the nonce endpoint)"}
+                  refresh_token      ${if (token.refreshToken != null) "present" else "-"}
                   auth details       ${token.authorizationDetails?.size ?: 0}
             """.trimIndent())
 
@@ -425,22 +425,22 @@ class MainViewModel : ViewModel() {
                 $trace
                   outcome            FAILED
                   error              ${token.error}
-                  description        ${token.errorDescription ?: "—"}
+                  description        ${token.errorDescription ?: "-"}
             """.trimIndent())
 
             else -> log(heading, """
                 $trace
                   outcome            FAILED
-                  error              ${error?.errorCode ?: "—"}
+                  error              ${error?.errorCode ?: "-"}
                   description        ${error?.errorDescription ?: "no reason given"}
-                  http status        ${error?.httpStatus ?: "—"}
-                  raw                ${error?.raw?.take(200) ?: "—"}
+                  http status        ${error?.httpStatus ?: "-"}
+                  raw                ${error?.raw?.take(200) ?: "-"}
             """.trimIndent())
         }
     }
 
     /**
-     * Step 6 — `IssueService.requestCredential`.
+     * Step 6 - `IssueService.requestCredential`.
      *
      * Which form names the credential is section 8.2's rule, so `CredentialSubject.of` decides it
      * rather than the harness: identifiers from the token response, else a configuration id, else
@@ -480,9 +480,9 @@ class MainViewModel : ViewModel() {
         )
 
         val trace = """
-              endpoint           ${issuerConfig?.credentialEndpoint ?: "—"}
+              endpoint           ${issuerConfig?.credentialEndpoint ?: "-"}
               subject            ${describe(subject)}
-              nonce endpoint     ${issuerConfig?.nonceEndpoint ?: "— (c_nonce comes with the token)"}
+              nonce endpoint     ${issuerConfig?.nonceEndpoint ?: "- (c_nonce comes with the token)"}
         """.trimIndent()
 
         when (outcome) {
@@ -493,8 +493,8 @@ class MainViewModel : ViewModel() {
                 $trace
                   outcome            issued
                   credentials        ${outcome.credentials.size}
-                  notification_id    ${outcome.notificationId ?: "—"}
-                  next c_nonce       ${outcome.cNonce ?: "—"}
+                  notification_id    ${outcome.notificationId ?: "-"}
+                  next c_nonce       ${outcome.cNonce ?: "-"}
                 ${outcome.credentials.joinToString("\n") { "      ${it.take(72)}…" }}
                 """.trimIndent())
             }
@@ -503,9 +503,9 @@ class MainViewModel : ViewModel() {
                 deferredTransaction = DeferredTransaction.TransactionId(outcome.transactionId)
                 log(heading, """
                 $trace
-                  outcome            deferred — the issuer will have it later
+                  outcome            deferred - the issuer will have it later
                   transaction_id     ${outcome.transactionId}
-                  interval           ${outcome.interval?.let { "$it s" } ?: "—"}
+                  interval           ${outcome.interval?.let { "$it s" } ?: "-"}
                   next               run step 7, which asks the deferred endpoint for it
                 """.trimIndent())
             }
@@ -513,16 +513,16 @@ class MainViewModel : ViewModel() {
             is CredentialOutcome.Failed -> log(heading, """
                 $trace
                   outcome            FAILED
-                  error              ${outcome.error.errorCode ?: "—"}
+                  error              ${outcome.error.errorCode ?: "-"}
                   description        ${outcome.error.errorDescription ?: "no reason given"}
-                  http status        ${outcome.error.httpStatus ?: "—"}
-                  raw                ${outcome.error.raw?.take(200) ?: "—"}
+                  http status        ${outcome.error.httpStatus ?: "-"}
+                  raw                ${outcome.error.raw?.take(200) ?: "-"}
             """.trimIndent())
         }
     }
 
     /**
-     * Step 7 — `IssueService.requestDeferredCredential`.
+     * Step 7 - `IssueService.requestDeferredCredential`.
      *
      * Polls until the issuer stops deferring, waiting the `interval` it names (section 9.3: "the
      * minimum number of seconds the Wallet MUST wait"). It stops on a failure rather than polling
@@ -537,7 +537,7 @@ class MainViewModel : ViewModel() {
             return@run
         }
         if (transaction == null) {
-            log(heading, "Nothing is deferred — run step 6, and this lights up if it comes back deferred")
+            log(heading, "Nothing is deferred - run step 6, and this lights up if it comes back deferred")
             return@run
         }
 
@@ -556,7 +556,7 @@ class MainViewModel : ViewModel() {
             )
 
             val trace = """
-                  endpoint           ${issuerConfig?.deferredCredentialEndpoint ?: "—"}
+                  endpoint           ${issuerConfig?.deferredCredentialEndpoint ?: "-"}
                   transaction_id     ${transaction!!.value}
                   attempt            $attempt of $MAX_DEFERRED_ATTEMPTS
             """.trimIndent()
@@ -569,7 +569,7 @@ class MainViewModel : ViewModel() {
                     $trace
                       outcome            issued
                       credentials        ${outcome.credentials.size}
-                      notification_id    ${outcome.notificationId ?: "—"}
+                      notification_id    ${outcome.notificationId ?: "-"}
                     ${outcome.credentials.joinToString("\n") { "      ${it.take(72)}…" }}
                     """.trimIndent())
                     return@run
@@ -584,7 +584,7 @@ class MainViewModel : ViewModel() {
                     $trace
                       outcome            still pending
                       next transaction   ${outcome.transactionId}
-                      interval           ${outcome.interval?.let { "$it s" } ?: "— (none given)"}
+                      interval           ${outcome.interval?.let { "$it s" } ?: "- (none given)"}
                       waiting            ${wait ?: DEFAULT_DEFERRED_WAIT_SECONDS} s
                     """.trimIndent())
                     delay(((wait ?: DEFAULT_DEFERRED_WAIT_SECONDS) * 1000).toLong())
@@ -593,10 +593,10 @@ class MainViewModel : ViewModel() {
                 is CredentialOutcome.Failed -> {
                     log(heading, """
                     $trace
-                      outcome            FAILED — polling stops here
-                      error              ${outcome.error.errorCode ?: "—"}
+                      outcome            FAILED - polling stops here
+                      error              ${outcome.error.errorCode ?: "-"}
                       description        ${outcome.error.errorDescription ?: "no reason given"}
-                      http status        ${outcome.error.httpStatus ?: "—"}
+                      http status        ${outcome.error.httpStatus ?: "-"}
                     """.trimIndent())
                     return@run
                 }
@@ -607,7 +607,7 @@ class MainViewModel : ViewModel() {
     }
 
     /**
-     * Step 8 — `NotificationService.notify`.
+     * Step 8 - `NotificationService.notify`.
      *
      * Section 11. Tells the issuer the credential was stored. The harness stores nothing, so this
      * is the honest thing to report only because the credential did arrive; a real wallet sends
@@ -623,7 +623,7 @@ class MainViewModel : ViewModel() {
                 return@run
             }
             if (id == null) {
-                log(heading, "No notification_id yet — the issuer sends one with the credential, so run step 6")
+                log(heading, "No notification_id yet - the issuer sends one with the credential, so run step 6")
                 return@run
             }
 
@@ -638,7 +638,7 @@ class MainViewModel : ViewModel() {
             )
 
             val trace = """
-                  endpoint           ${issuerConfig?.notificationEndpoint ?: "— (section 11 is optional)"}
+                  endpoint           ${issuerConfig?.notificationEndpoint ?: "- (section 11 is optional)"}
                   notification_id    $id
                   event              ${event.value}
             """.trimIndent()
@@ -652,9 +652,9 @@ class MainViewModel : ViewModel() {
                 is NotificationOutcome.Failed -> log(heading, """
                 $trace
                   outcome            FAILED
-                  error              ${outcome.error.errorCode ?: "—"}
+                  error              ${outcome.error.errorCode ?: "-"}
                   description        ${outcome.error.errorDescription ?: "no reason given"}
-                  http status        ${outcome.error.httpStatus ?: "—"}
+                  http status        ${outcome.error.httpStatus ?: "-"}
                 """.trimIndent())
             }
         }
@@ -709,18 +709,18 @@ class MainViewModel : ViewModel() {
     }.ifEmpty { listOf("none declared") }
 
     private fun txCodeOf(offer: CredentialOffer): String {
-        val txCode = offer.grants?.preAuthorizationCode?.transactionCode ?: return "—"
+        val txCode = offer.grants?.preAuthorizationCode?.transactionCode ?: return "-"
         return "length=${txCode.length ?: "unspecified"} input_mode=${txCode.inputMode}"
     }
 
     private fun layoutOf(form: Any?, usedFallback: Boolean) = when {
-        form == null -> "—"
+        form == null -> "-"
         usedFallback -> "$form  ← non-spec fallback"
         else -> "$form  (spec form)"
     }
 
     private fun wellKnownOf(wellKnown: String?, usedFallback: Boolean) = when {
-        wellKnown == null -> "—"
+        wellKnown == null -> "-"
         usedFallback -> "$wellKnown  ← OpenID Connect Discovery fallback"
         else -> "$wellKnown  (the location OpenID4VCI names)"
     }

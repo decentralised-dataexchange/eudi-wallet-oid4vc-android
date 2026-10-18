@@ -14,6 +14,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,13 +48,17 @@ class IssueServiceCredentialWrapperTest {
     )
 
     @Suppress("DEPRECATION")
-    private fun request(token: TokenResponse = TokenResponse(accessToken = "at-1")) = runBlocking {
+    private fun request(
+        token: TokenResponse = TokenResponse(accessToken = "at-1"),
+        offer: CredentialOffer = this.offer,
+        issuerConfig: IssuerWellKnownConfiguration = issuerConfig(),
+    ) = runBlocking {
         IssueService().processCredentialRequest(
             did = "did:key:zabc",
             subJwk = ECKeyGenerator(Curve.P_256).keyID("k").generate(),
             nonce = "nonce-1",
             credentialOffer = offer,
-            issuerConfig = issuerConfig(),
+            issuerConfig = issuerConfig,
             accessToken = token,
             authorizationDetail = null,
             index = 0,
@@ -94,7 +99,11 @@ class IssueServiceCredentialWrapperTest {
         assertEquals("invalid_proof", result?.errorResponse?.errorCode)
     }
 
-    /** A deferral comes back as a transaction id the caller can poll with. */
+    /**
+     * A deferral comes back as a transaction id the caller can poll with, and nothing else:
+     * hosts pick the deferred polling call by `acceptanceToken != null`, so filling it for a 1.0
+     * issuer made them poll with the draft call until the transaction expired.
+     */
     @Test
     fun `a deferral is reported as a transaction id`() {
         server.enqueue(MockResponse().setResponseCode(202).setBody("""{"transaction_id":"tx-1","interval":5}"""))
@@ -103,5 +112,20 @@ class IssueServiceCredentialWrapperTest {
 
         assertEquals("tx-1", result?.credentialResponse?.transactionId)
         assertEquals(5, result?.credentialResponse?.interval)
+        assertNull(result?.credentialResponse?.acceptanceToken)
+    }
+
+    /** A draft issuer's deferral keeps the acceptance token, which is what its polling call sends. */
+    @Test
+    fun `a draft deferral is reported as an acceptance token`() {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"acceptance_token":"accept-1"}"""))
+
+        val result = request(
+            offer = offer.copy(version = 1),
+            issuerConfig = issuerConfig().copy(credentialsSupported = listOf(mapOf("format" to "jwt_vc")), version = 1),
+        )
+
+        assertEquals("accept-1", result?.credentialResponse?.acceptanceToken)
+        assertEquals("accept-1", result?.credentialResponse?.transactionId)
     }
 }

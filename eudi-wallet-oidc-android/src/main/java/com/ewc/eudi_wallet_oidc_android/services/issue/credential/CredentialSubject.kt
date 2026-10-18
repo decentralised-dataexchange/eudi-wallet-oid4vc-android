@@ -158,9 +158,15 @@ sealed class CredentialSubject {
             val format = service.getFormatFromIssuerConfig(issuerConfig, types.lastOrNull())
 
             if (format == MSO_MDOC) {
+                // The offer's own doctype first, then the one the metadata declares for this
+                // configuration, and the type string only as a last resort: a draft offer that
+                // names the mdoc by configuration id would otherwise send that id as `doctype`.
+                val declaredDocType = credential?.let {
+                    service.getDocType(issuerConfig?.credentialsSupported, arrayListOf(it))
+                }?.takeIf { it.isNotBlank() }
                 return LegacyFormat(
                     format = format,
-                    docType = credential?.doctype ?: types.lastOrNull(),
+                    docType = credential?.doctype ?: declaredDocType ?: types.lastOrNull(),
                     offerCredential = credential,
                 )
             }
@@ -172,18 +178,22 @@ sealed class CredentialSubject {
                 return LegacyFormat(format = format, types = types, offerCredential = credential)
             }
 
-            return when (
-                val declared = service.getTypesFromIssuerConfig(
-                    issuerConfig,
-                    type = types.lastOrNull() ?: "",
-                    version = session.offerVersion,
-                )
-            ) {
-                is String -> LegacyFormat(format = format, vct = declared, offerCredential = credential)
+            // A type the metadata does not declare comes back empty, not null. The offer's own
+            // types still name the credential, so they are the fallback: an empty list would be
+            // refused as naming nothing, which misreports a metadata miss.
+            val declared = service.getTypesFromIssuerConfig(
+                issuerConfig,
+                type = types.lastOrNull() ?: "",
+                version = session.offerVersion,
+            )
+            val declaredVct = (declared as? String)?.takeIf { it.isNotBlank() }
+            val declaredTypes = (declared as? List<*>)?.filterIsInstance<String>()?.ifEmpty { null }
+            return when {
+                declaredVct != null -> LegacyFormat(format = format, vct = declaredVct, offerCredential = credential)
 
-                is ArrayList<*> -> LegacyFormat(
+                declaredTypes != null -> LegacyFormat(
                     format = format,
-                    credentialDefinitionTypes = declared.filterIsInstance<String>(),
+                    credentialDefinitionTypes = declaredTypes,
                     offerCredential = credential,
                 )
 

@@ -48,7 +48,7 @@ class IssuerMetadataValidatorTest {
 
     /**
      * The default tolerates it. Deployed issuers publish one canonical identifier while answering
-     * at other paths -- the iGrant issuers serve at `<base>/service` and declare
+     * at other paths -- some deployed issuers serve at `<base>/service` and declare
      * `<base>/service/version-01` -- so enforcing this by default rejects a working issuer.
      */
     @Test

@@ -92,6 +92,19 @@ class ErrorHandlerTest {
         assertEquals("Unexpected error, please try again.", result?.errorDescription)
     }
 
+    /** A long plain-text body is shown cut down: a gateway's page is not a message for the user. */
+    @Test
+    fun `a long plain-text body is cut down for display`() {
+        val trace = "java.lang.IllegalStateException: " + "at frame\n".repeat(600)
+
+        val result = ErrorHandler.processError(trace, 502)
+
+        val description = result?.errorDescription.orEmpty()
+        assertEquals(true, description.startsWith("java.lang.IllegalStateException"))
+        assertEquals(true, description.endsWith("(truncated)"))
+        assertEquals(true, description.length < 600)
+    }
+
     @Test
     fun `message field is used when nothing more specific is present`() {
         val result = ErrorHandler.processError("""{"message":"Something went wrong"}""")
@@ -106,7 +119,7 @@ class ErrorHandlerTest {
         assertEquals("reason: unsupported_format", result?.errorDescription)
     }
     // The code and the description are two different fields and both have to survive. Before this,
-    // `error_description` won and the code — the only machine-readable half — was discarded.
+    // `error_description` won and the code - the only machine-readable half - was discarded.
 
     @Test
     fun `oauth error code survives alongside the description`() {

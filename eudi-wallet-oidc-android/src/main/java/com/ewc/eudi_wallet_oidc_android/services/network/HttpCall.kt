@@ -14,7 +14,7 @@ import java.net.UnknownHostException
  *
  * That mattered here. The previous implementation logged a rejected PAR together with the server's
  * `Date` header, specifically so a rejection could be compared against the proof-of-possession
- * `iat` when it looked like clock skew — but because SafeApiCall had already turned the 400 into a
+ * `iat` when it looked like clock skew - but because SafeApiCall had already turned the 400 into a
  * failure, that branch could only ever be reached for a 3xx. The diagnostics never fired for the
  * case they were written for.
  *

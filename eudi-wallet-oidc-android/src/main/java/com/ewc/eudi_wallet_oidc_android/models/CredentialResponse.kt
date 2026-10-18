@@ -7,7 +7,7 @@ import com.google.gson.annotations.SerializedName
  *
  * [error] is a **legacy sentinel**, not the protocol's error code: it only ever holds `1`
  * ("the DID is invalid") or `-1` ("read [errorDescription]"), which is why an `Int` was enough.
- * OAuth error codes are strings — `invalid_grant`, `invalid_proof`, `use_dpop_nonce` — so they
+ * OAuth error codes are strings - `invalid_grant`, `invalid_proof`, `use_dpop_nonce` - so they
  * could never fit here and were dropped on the floor. New code should branch on [errorCode] and
  * leave [error] to the callers that still switch on it.
  */
@@ -24,7 +24,7 @@ data class ErrorResponse(
      */
     var errorCode: String? = null,
 
-    /** RFC 6749 §5.2 `error_uri` — a page describing the error, when the server offers one. */
+    /** RFC 6749 §5.2 `error_uri` - a page describing the error, when the server offers one. */
     var errorUri: String? = null,
 
     /** The HTTP status the failure arrived with, when a response carried it. */

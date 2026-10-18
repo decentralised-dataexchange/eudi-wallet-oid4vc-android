@@ -1,5 +1,5 @@
 // GitHub Packages credentials for the private QR scanner artifact.
-// Values live in github.properties, which is gitignored — never inline them here, this file is
+// Values live in github.properties, which is gitignored - never inline them here, this file is
 // tracked. Falls back to GPR_USER / GPR_API_KEY so CI can supply them from secrets.
 val githubProperties = java.util.Properties().apply {
     val file = File(settingsDir, "github.properties")

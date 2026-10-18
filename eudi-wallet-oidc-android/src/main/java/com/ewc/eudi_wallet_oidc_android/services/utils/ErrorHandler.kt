@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.utils
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.ErrorCodes
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -12,7 +13,7 @@ object ErrorHandler {
     /**
      * Turns whatever a server sent into an [ErrorResponse].
      *
-     * The description logic below is unchanged and deliberately so — issuers send at least five
+     * The description logic below is unchanged and deliberately so - issuers send at least five
      * different shapes and each branch exists because one of them was met in the field. What is
      * new is that the OAuth `error` **code** now survives alongside the description instead of
      * being overwritten by it: a standard
@@ -137,17 +138,19 @@ object ErrorHandler {
                 ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = description)
             }
 
+            // Plain text, so it is shown as it is: cut down, since a gateway's HTML error page
+            // is not a message for the user.
             else -> {
                 ErrorResponse(
                     error = ErrorCodes.UNCLASSIFIED,
-                    errorDescription = err
+                    errorDescription = HttpCall.summary(err)
                 )
             }
         }
             errorResponse
     } catch (e: JSONException) {
             Log.e("ErrorHandler", "Failed to parse error body: $err", e)
-            ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)
+            ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = HttpCall.summary(err))
     } catch (e: NoSuchElementException) {
             Log.e("ErrorHandler", "Failed to parse error body: $err", e)
             ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)

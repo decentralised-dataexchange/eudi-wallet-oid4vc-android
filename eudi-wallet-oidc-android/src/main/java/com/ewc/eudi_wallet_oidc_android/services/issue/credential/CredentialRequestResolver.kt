@@ -175,7 +175,9 @@ class CredentialRequestResolver(
         }
 
         val body = HttpCall.errorBody(response)
-        val error = ErrorHandler.processError(body, response.code())
+        // No body, no parsed error: an empty body would otherwise parse to an error with neither
+        // code nor description and hide the "refused (HTTP n)" fallback below.
+        val error = body?.let { ErrorHandler.processError(it, response.code()) }
 
         // RFC 9449 section 8, the same challenge the token endpoint answers -- the credential
         // endpoint has never handled it.
@@ -194,8 +196,12 @@ class CredentialRequestResolver(
         // it in the error body ("The Credential Issuer MAY return a new `c_nonce` value in an error
         // response"); 1.0 hands nonces out only at the Nonce Endpoint, so a bare `invalid_nonce`
         // means "fetch another". Exactly once, and only if the nonce actually changed.
+        //
+        // Not when a key attestation travels with the proof: it is bound to the nonce the issuer
+        // just rejected and cannot be re-minted here, so the retry would fail on the attestation
+        // and report that failure in place of the issuer's first answer.
         val staleProof = error?.errorCode == INVALID_PROOF || error?.errorCode == INVALID_NONCE
-        if (allowRetry && policy.retryOnStaleNonce && staleProof) {
+        if (allowRetry && policy.retryOnStaleNonce && staleProof && keyAttestation == null) {
             val freshNonce = freshNonceFrom(body)
                 ?: session.issuerConfig?.nonceEndpoint?.takeIf { it.isNotBlank() }
                     ?.let { NonceService().fetchNonce(token.accessToken, it) }

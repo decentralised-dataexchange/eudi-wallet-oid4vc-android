@@ -613,10 +613,13 @@ class IssueService(
                 )
             )
 
+            // `acceptance_token` only for a draft issuer: hosts pick the deferred polling form by
+            // its presence, so setting it for a 1.0 deferral made them poll with the draft call
+            // until the transaction expired.
             is CredentialOutcome.Deferred -> WrappedCredentialResponse(
                 credentialResponse = CredentialResponse(
                     transactionId = outcome.transactionId,
-                    acceptanceToken = outcome.transactionId,
+                    acceptanceToken = outcome.transactionId.takeIf { session.isDraftIssuer(token) },
                     interval = outcome.interval,
                 )
             )

@@ -138,12 +138,56 @@ class CredentialSubjectTest {
         assertEquals("mso_mdoc", (subject as CredentialSubject.LegacyFormat).format)
         assertEquals("org.iso.18013.5.1.mDL", subject.docType)
     }
+
+    /**
+     * A draft offer may name an mdoc by its configuration id and leave the doctype to the
+     * metadata. Sending the id as `doctype` asks for a document type that does not exist.
+     */
+    @Test
+    fun `an mdoc named by configuration id takes its doctype from the metadata`() {
+        val mdoc = Credentials(types = arrayListOf("MdlConfig"))
+        val session = IssuanceSession(
+            credentialOffer = CredentialOffer(credentials = arrayListOf(mdoc), version = 1),
+            issuerConfig = IssuerWellKnownConfiguration(
+                credentialsSupported = mapOf(
+                    "MdlConfig" to mapOf("format" to "mso_mdoc", "doctype" to "org.iso.18013.5.1.mDL"),
+                ),
+            ),
+            authConfig = null,
+        )
+
+        val subject = CredentialSubject.of(session, token(), mdoc) as CredentialSubject.LegacyFormat
+
+        assertEquals("org.iso.18013.5.1.mDL", subject.docType)
+    }
+
+    /**
+     * Map-shaped draft metadata that does not declare the offered type yields an empty type list
+     * from the lookup. The offer's own types still name the credential, so they are sent rather
+     * than refusing the request as naming nothing.
+     */
+    @Test
+    fun `a type the draft metadata does not declare falls back to the offer's types`() {
+        val undeclared = Credentials(types = arrayListOf("VerifiableCredential", "NotInMetadata"))
+        val session = IssuanceSession(
+            credentialOffer = CredentialOffer(credentials = arrayListOf(undeclared), version = 1),
+            issuerConfig = IssuerWellKnownConfiguration(
+                credentialsSupported = mapOf("PidSdJwt" to mapOf("format" to "jwt_vc")),
+            ),
+            authConfig = null,
+        )
+
+        val subject = CredentialSubject.of(session, token(), undeclared) as CredentialSubject.LegacyFormat
+
+        assertEquals(listOf("VerifiableCredential", "NotInMetadata"), subject.credentialDefinitionTypes)
+        assertTrue(!subject.namesNothing)
+    }
     /**
      * With several authorization details, a credential that matches none must **not** borrow the
      * first one's identifier.
      *
      * That is a request naming a different credential, and only the entries after the first are
-     * affected — so it presents as one bad credential rather than a bad rule.
+     * affected - so it presents as one bad credential rather than a bad rule.
      */
     @Test
     fun `a credential that matches no authorization detail does not borrow another's identifier`() {
