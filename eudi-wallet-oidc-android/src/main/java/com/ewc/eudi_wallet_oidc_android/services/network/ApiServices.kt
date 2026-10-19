@@ -29,6 +29,7 @@ import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.HeaderMap
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.QueryMap
 import retrofit2.http.Url
@@ -38,11 +39,33 @@ interface ApiService {
     @GET
     suspend fun resolveCredentialOffer(@Url url: String): Response<ResponseBody>
 
+    /**
+     * OpenID4VCI 1.0 section 4.1: the credential offer is retrieved with a GET and the response
+     * media type is application/json. Prefer this over [resolveCredentialOffer], which sends no
+     * Accept header.
+     */
     @GET
-    suspend fun fetchIssuerConfig(@Url url: String): Response<ResponseBody>
+    @Headers("Accept: application/json")
+    suspend fun fetchCredentialOffer(@Url url: String): Response<ResponseBody>
+
+    /**
+     * OpenID4VCI 1.0 section 12.2.2: the wallet MUST use GET, and is RECOMMENDED to send an
+     * `Accept` header -- which also signals whether it supports signed metadata -- and an
+     * `Accept-Language` header for the issuer's `display` strings. Retrofit omits a null header.
+     */
+    @GET
+    suspend fun fetchIssuerConfig(
+        @Url url: String,
+        @Header("Accept") accept: String?,
+        @Header("Accept-Language") acceptLanguage: String?,
+    ): Response<ResponseBody>
 
     @GET
-    suspend fun fetchAuthConfig(@Url url: String): Response<ResponseBody>
+    suspend fun fetchAuthConfig(
+        @Url url: String,
+        @Header("Accept") accept: String?,
+        @Header("Accept-Language") acceptLanguage: String?,
+    ): Response<ResponseBody>
 
     @GET
     suspend fun processAuthorisationRequest(
@@ -96,6 +119,32 @@ interface ApiService {
     suspend fun getCredentialEncrypted(
         @Url url: String,
         @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    /**
+     * The deferred credential endpoint, section 9. One declaration for both revisions and both
+     * content types: the four `getDifferedCredential*` overloads below predate `DeferredRequestResolver`
+     * and are kept only for the deprecated entry points.
+     */
+    @POST
+    suspend fun requestDeferredCredential(
+        @Url url: String,
+        @Header("content-type") contentType: String,
+        @Header("Authorization") authorization: String,
+        @Header("DPoP") dpop: String?,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
+    /**
+     * The notification endpoint, section 11. Returns `Response<ResponseBody>` rather than `Unit`
+     * so a 204 can be told from a 400 -- `sendNotificationRequest` below discards that.
+     */
+    @POST
+    suspend fun sendNotification(
+        @Url url: String,
         @Header("Authorization") authorization: String,
         @Header("DPoP") dpop: String?,
         @Body body: RequestBody

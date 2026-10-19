@@ -1,5 +1,21 @@
 package com.ewc.eudi_wallet_oidc_android.services.issue
 
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationMode
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestInfo
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationResponse
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.CredentialSelection
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialEncryption
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredTransaction
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.credential.CredentialSubject
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.IssuanceSession
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenGrant
+import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.models.AuthorisationServerWellKnownConfiguration
 import com.ewc.eudi_wallet_oidc_android.models.AuthorizationDetail
 import com.ewc.eudi_wallet_oidc_android.models.CredentialOffer
@@ -52,6 +68,40 @@ interface IssueServiceInterface {
     ): String?
 
     /**
+     * The authorization request.
+     *
+     * Replaces [processAuthorisationRequest], whose `String?` meant six different things and left
+     * the caller re-parsing query parameters off a URL to work out which. Switch on
+     * [AuthorizationResponse.outcome].
+     *
+     * @param session the offer and the two metadata documents, from the offer and discovery steps
+     * @param wallet the DID and key this authorization is bound to
+     * @param attestation the wallet unit attestation and its proof of possession, when the issuer
+     *   requires them; null sends no `OAuth-Client-Attestation` headers
+     * @param codeVerifier PKCE (RFC 7636). Owned by the caller because the **token request needs the
+     *   same value**; the SDK only derives the challenge from it.
+     * @param selection overrides the format and doctype the session implies; both are derived when
+     *   left null
+     * @param redirectUri where the authorization server should send the user back to. Defaults to
+     *   `openid://callback`. Whatever is used is returned as
+     *   [AuthorizationRequestInfo.redirectUri] and **must be repeated verbatim in the token
+     *   request** (RFC 6749 section 4.1.3)
+     * @param mode [AuthorizationMode.Browser] for a scanned offer (RFC 8252), or
+     *   [AuthorizationMode.InApp] for first-party non-interactive flows such as the
+     *   wallet-provider attestation bootstrap
+     */
+    suspend fun requestAuthorization(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        codeVerifier: String,
+        selection: CredentialSelection = CredentialSelection(),
+        redirectUri: String? = null,
+        mode: AuthorizationMode = AuthorizationMode.Browser,
+        policy: AuthorizationRequestPolicy = AuthorizationRequestPolicy.Default,
+    ): AuthorizationResponse
+
+    /**
      * To process the token,
      *
      * @param did
@@ -69,6 +119,19 @@ interface IssueServiceInterface {
      *
      * @return Token response
      */
+    /**
+     * Answers an authorization server that asked for an ID token rather than authorizing directly.
+     *
+     * Was public on the implementation but missing here, so a host could reach it only by parsing
+     * the URL [processAuthorisationRequest] returned.
+     */
+    suspend fun processAuthorisationRequestUsingIdToken(
+        did: String?,
+        authorisationEndPoint: String?,
+        location: String?,
+        subJwk: JWK?
+    ): String?
+
     suspend fun processTokenRequest(
         did: String?,
         tokenEndPoint: String?,
@@ -83,6 +146,36 @@ interface IssueServiceInterface {
         dpopKey: ECKey?,
         preAuthorizedGrantAnonymousAccessSupported: Boolean? = null
     ): WrappedTokenResponse?
+
+    /**
+     * The token request.
+     *
+     * Replaces [processTokenRequest], whose loose `code` / `codeVerifier` /
+     * `isPreAuthorisedCodeFlow` / `userPin` parameters made illegal combinations expressible. The
+     * grant is a sealed [TokenGrant], so section 6.1's "`tx_code` MUST only be used if the
+     * grant_type is `urn:ietf:params:oauth:grant-type:pre-authorized_code`" cannot be broken.
+     *
+     * Whether a Transaction Code is *required* is read from the offer, not from whether one was
+     * supplied: section 6.1 obliges the wallet to send it "if a `tx_code` object was present in the
+     * Credential Offer (including if the object was empty)".
+     *
+     * @param grant [TokenGrant.PreAuthorized] or [TokenGrant.AuthorizationCode]; the offer decides
+     *   which. The latter's `redirectUri` must be the value the authorization request sent --
+     *   `AuthorizationResponse.request.redirectUri` (RFC 6749 section 4.1.3).
+     * @param attestation carries the wallet unit attestation, its proof of possession **and the
+     *   DPoP key**: ARF TS3 requires that key to be the one the attestation names in `cnf`, and
+     *   keeping the three together is what makes that checkable rather than a mismatch a caller can
+     *   make silently.
+     * @param dpopNonce a nonce from an earlier `DPoP-Nonce` header, when one has been seen.
+     */
+    suspend fun requestToken(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        grant: TokenGrant,
+        dpopNonce: String? = null,
+        policy: TokenRequestPolicy = TokenRequestPolicy.Default,
+    ): WrappedTokenResponse
 
     /**
      * To process the credential, credentials can be issued in two ways,
@@ -111,6 +204,10 @@ interface IssueServiceInterface {
         format: String
     ): WrappedCredentialResponse?
 
+    @Deprecated(
+        "Fourteen parameters, four of which pair up and two of which are dead. Use requestCredential, which takes a CredentialSubject and returns a CredentialOutcome.",
+        ReplaceWith("requestCredential(session, wallet, token, subject)"),
+    )
     suspend fun processCredentialRequest(
         did: String?,
         subJwk: JWK?,
@@ -136,18 +233,76 @@ interface IssueServiceInterface {
     ): WrappedCredentialResponse?
 
     /**
+     * The credential request.
+     *
+     * Replaces the fourteen-parameter form above. What each change buys:
+     *
+     *  - `credentialOffer` + `issuerConfig` + `authConfig` become one [IssuanceSession] -- and
+     *    `authConfig` was never read;
+     *  - `did` + `subJwk` become one [WalletIdentity], as in the authorization and token steps;
+     *  - `authorizationDetail` + `index` become one [CredentialSubject], which makes section 8.2's
+     *    "`credential_identifier` ... MUST NOT be present with `credential_configuration_id`"
+     *    unrepresentable rather than merely unwritten, and removes an unguarded `get(index)`;
+     *  - `ecKeyWithAlgEnc` + `credentialRequestEncryptionInfo` become one [CredentialEncryption],
+     *    since asking for an encrypted response over a plaintext request is not a thing to express;
+     *  - `attachKeyAttestation` + `keyAttestationJwt` become one nullable attestation -- the boolean
+     *    only chose between attaching one and logging that none arrived;
+     *  - the DPoP key travels inside [WalletAttestation], where ARF TS3's `cnf` rule is checkable.
+     *
+     * @param nonce overrides the `c_nonce`. Left null the SDK obtains one: from the Nonce Endpoint
+     *   when the issuer publishes one (section 7 -- it is unauthenticated), otherwise from the token
+     *   response. Callers used to do this themselves, which is why one nonce was reused for every
+     *   credential in a multi-credential offer.
+     * @param dpopNonce carry `WrappedTokenResponse.dpopNonce` here; RFC 9449 section 8.2 makes
+     *   using the most recent nonce a MUST.
+     */
+    suspend fun requestCredential(
+        session: IssuanceSession,
+        wallet: WalletIdentity,
+        token: TokenResponse,
+        subject: CredentialSubject,
+        issuer: String?,
+        additionalProofKeys: List<ECKey> = emptyList(),
+        attestation: WalletAttestation? = null,
+        keyAttestation: String? = null,
+        encryption: CredentialEncryption? = null,
+        nonce: String? = null,
+        dpopNonce: String? = null,
+        policy: CredentialRequestPolicy = CredentialRequestPolicy.Default,
+    ): CredentialOutcome
+
+    /**
      * For issuance of the deferred credential.
      * @param acceptanceToken - token which we got from credential request
      * @param deferredCredentialEndPoint - end point to call the deferred credential
      *
      * @return Credential response
      */
+    /** @see com.ewc.eudi_wallet_oidc_android.services.issue.IssueService.requestDeferredCredential */
+    suspend fun requestDeferredCredential(
+        session: IssuanceSession,
+        token: TokenResponse,
+        transaction: DeferredTransaction,
+        attestation: WalletAttestation? = null,
+        encryption: CredentialEncryption? = null,
+        dpopNonce: String? = null,
+        policy: DeferredRequestPolicy = DeferredRequestPolicy.Default,
+    ): CredentialOutcome
+
+    @Deprecated(
+        "The draft acceptance_token form. Use requestDeferredCredential with DeferredTransaction.LegacyAcceptanceToken, which reports issuance_pending instead of returning null.",
+        ReplaceWith("requestDeferredCredential(session, token, transaction)"),
+    )
     suspend fun processDeferredCredentialRequest(
         acceptanceToken: String?,
         deferredCredentialEndPoint: String?,
         ecKeyWithAlgEnc: ECKeyWithAlgEnc? = null,
         credentialRequestEncryptionInfo: CredentialRequestEncryptionInfo?
     ): WrappedCredentialResponse?
+    @Deprecated(
+        "Use requestDeferredCredential with DeferredTransaction.TransactionId, which tells issuance_pending from invalid_transaction_id and reports the issuer's interval.",
+        ReplaceWith("requestDeferredCredential(session, token, transaction)"),
+    )
     suspend fun processDeferredCredentialRequestV2(
         transactionId: String?,
         accessToken: String?,

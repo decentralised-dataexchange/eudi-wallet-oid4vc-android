@@ -20,6 +20,13 @@ data class IssuerWellKnownConfiguration(
     @SerializedName("credential_request_encryption") var credentialRequestEncryption: Any? = null,
     /** OpenID4VCI 1.0 §12.2.4: present when the issuer accepts several proofs per request. */
     @SerializedName("batch_credential_issuance") var batchCredentialIssuance: BatchCredentialIssuance? = null,
+    /**
+     * Which metadata shape this was parsed from, the same codes as `CredentialOffer.version`:
+     * 1 for the pre-1.0 `credentials_supported` drafts, 2 for `credential_configurations_supported`.
+     * Set by the constructors below, never read off the wire. Null on a configuration stored
+     * before this field existed.
+     */
+    @SerializedName("version") var version: Int? = null,
 ){
     constructor(issuerWellKnownConfigurationV1: IssuerWellKnownConfigurationV1) : this(
         issuer = issuerWellKnownConfigurationV1.issuer,
@@ -34,7 +41,8 @@ data class IssuerWellKnownConfiguration(
         nonceEndpoint = issuerWellKnownConfigurationV1.nonceEndpoint,
         credentialResponseEncryption = issuerWellKnownConfigurationV1.credentialResponseEncryption,
         credentialRequestEncryption = issuerWellKnownConfigurationV1.credentialRequestEncryption,
-        batchCredentialIssuance = issuerWellKnownConfigurationV1.batchCredentialIssuance
+        batchCredentialIssuance = issuerWellKnownConfigurationV1.batchCredentialIssuance,
+        version = 1
     )
     constructor(issuerWellKnownConfigurationV2:IssuerWellKnownConfigurationV2):this(
         issuer = issuerWellKnownConfigurationV2.issuer,
@@ -49,7 +57,8 @@ data class IssuerWellKnownConfiguration(
         nonceEndpoint = issuerWellKnownConfigurationV2.nonceEndpoint,
         credentialResponseEncryption = issuerWellKnownConfigurationV2.credentialResponseEncryption,
         credentialRequestEncryption = issuerWellKnownConfigurationV2.credentialRequestEncryption,
-        batchCredentialIssuance = issuerWellKnownConfigurationV2.batchCredentialIssuance
+        batchCredentialIssuance = issuerWellKnownConfigurationV2.batchCredentialIssuance,
+        version = 2
     )
 }
 

@@ -31,6 +31,11 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    testOptions {
+        // Without this, every android.util.Log call in a JVM unit test throws "not mocked".
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -41,6 +46,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.3.1")
     testImplementation("org.json:json:20220924")
+    // Pinned to the okhttp line already pulled in by logging-interceptor.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.3.1")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 

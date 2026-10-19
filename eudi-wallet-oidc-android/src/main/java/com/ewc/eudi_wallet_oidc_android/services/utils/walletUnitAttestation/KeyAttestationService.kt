@@ -23,14 +23,14 @@ import retrofit2.Response
 /**
  * ARF TS3 v1.5 Key Attestation (KA).
  *
- * TS3 §2.2.2.1: the KA SHALL be generated and signed by the Wallet Provider —
+ * TS3 §2.2.2.1: the KA SHALL be generated and signed by the Wallet Provider -
  * the wallet never mints a KA itself. [requestKeyAttestation] and
  * [requestBatchKeyAttestation] send the key evidence (Android Keystore chain
  * per key for the hardware tier, key PoPs for the software tier) to the
  * wallet-provider backend, which verifies it and signs the KA. The nonce is
  * the ISSUER's c_nonce for the credential request (TS3 §2.2.2): the wallet
  * passes it to the wallet provider, the evidence is bound to it, and the
- * issuer — not the wallet provider — validates its freshness against its own
+ * issuer - not the wallet provider - validates its freshness against its own
  * nonce endpoint.
  */
 object KeyAttestationService {
@@ -96,6 +96,9 @@ object KeyAttestationService {
      * True when the configuration lists `attestation` but not `jwt` in
      * proof_types_supported (ARF TS3 §2.2.2): the request must then carry the
      * key attestation as an `attestation` proof, with no proof of possession.
+     *
+     * When the configuration lists **both**, this is false and the request sends `jwt`: a proof of
+     * possession signed by the binding key is preferred wherever the issuer accepts one.
      */
     fun isAttestationOnly(credentialConfiguration: Map<*, *>?): Boolean {
         val proofTypes = credentialConfiguration?.get("proof_types_supported") as? Map<*, *>
@@ -126,7 +129,7 @@ object KeyAttestationService {
 
     /**
      * The KA that goes on a credential-request proof. Only a wallet-provider
-     * issued KA is accepted (TS3 §2.2.2.1) — there is no on-device fallback.
+     * issued KA is accepted (TS3 §2.2.2.1) - there is no on-device fallback.
      * Null when no KA is wanted, or when one was wanted but the wallet
      * provider did not deliver it (the issuer then rejects or warns).
      */
@@ -141,7 +144,7 @@ object KeyAttestationService {
         if (attach) {
             Log.e(
                 KA_WATCH,
-                "KA wanted but the wallet provider did not deliver one — " +
+                "KA wanted but the wallet provider did not deliver one - " +
                     "proof goes WITHOUT a KA (TS3: the wallet never self-mints)"
             )
         }
@@ -207,7 +210,7 @@ object KeyAttestationService {
      * one Keystore chain per key, index-aligned (all keys must come from the
      * same keystore security level; every leaf carries [nonce] as its
      * attestation challenge). Software tier: [keyPops] carries one proof per
-     * key. Keep the key count at or below the issuer's batch_size — a KA is
+     * key. Keep the key count at or below the issuer's batch_size - a KA is
      * single use, so extra keys are wasted.
      *
      * The HTTP status is preserved: a 400 invalid_key_evidence (chain count
