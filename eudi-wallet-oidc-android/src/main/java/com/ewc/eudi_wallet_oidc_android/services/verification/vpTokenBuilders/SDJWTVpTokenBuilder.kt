@@ -110,8 +110,9 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
             )
         }
         // SCA (EWC/TS12): response_mode + amr belong in the KB-JWT ONLY for TS12 SCA transaction_data
-        // types (payment / login_risk / account_access / emandate — URN or iGrant transaction-data-type
-        // URL). They must NOT be added for EWC `payment_data` (PWA) or QES/QESAC flows. The DC API path
+        // types (payment / login_risk / account_access / emandate, as a URN or as an HTTPS
+        // transaction-data-type URL). They must NOT be added for EWC `payment_data` (PWA) or QES/QESAC
+        // flows. The DC API path
         // forwards isScaFlow=false, so we also detect SCA from the transaction_data type itself.
         val scaFlow = isScaFlow ||
                 isTs12ScaTransactionData(presentationRequest?.transactionDdata?.getOrNull(0))
@@ -172,8 +173,8 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
     }
 
     // True only for TS12 SCA transaction_data types (payment / login_risk / account_access / emandate),
-    // in either URN form (urn:eudi:sca:*) or the iGrant transaction-data-type URL form. Deliberately
-    // returns false for EWC RFC-008 `payment_data` (PWA) and QES/QESAC — those are NOT SCA and must not
+    // in either URN form (urn:eudi:sca:*) or the HTTPS transaction-data-type URL form. Deliberately
+    // returns false for EWC RFC-008 `payment_data` (PWA) and QES/QESAC: those are NOT SCA and must not
     // carry response_mode/amr in the KB-JWT.
     private fun isTs12ScaTransactionData(transactionDataItem: String?): Boolean {
         return try {
