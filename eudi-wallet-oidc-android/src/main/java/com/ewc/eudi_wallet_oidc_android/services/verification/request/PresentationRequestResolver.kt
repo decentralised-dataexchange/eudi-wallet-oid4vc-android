@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.dcql.DcqlQueryValidator
 import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifierVerifier
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionData
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy.ClientMetadataUriResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy.PresentationDefinitionUriResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.source.InlinePresentationRequestSource
@@ -102,11 +103,19 @@ class PresentationRequestResolver(
         }
         // --- end legacy ---
 
+        // Section 8.4: a request whose transaction data the wallet cannot honour is refused now,
+        // before the user is asked anything.
+        val transactionData = try {
+            TransactionData.entries(request, policy.recognisedTransactionDataTypes)
+        } catch (e: TransactionData.InvalidTransactionData) {
+            throw PresentationRequestException.InvalidTransactionData(e.message)
+        }
+
         // Section 5.9: who the verifier is, by the rules of its client identifier prefix.
         val verifier = clientIdentifierVerifier.verify(request, policy)
 
         Logger.d(TAG, "Resolved a $specVersion presentation request from ${source.name}")
-        return PresentationRequestOutcome.Resolved(request, specVersion, source.name, verifier)
+        return PresentationRequestOutcome.Resolved(request, specVersion, source.name, verifier, transactionData)
     }
 
     private fun failure(e: PresentationRequestException): PresentationRequestOutcome.Failed {

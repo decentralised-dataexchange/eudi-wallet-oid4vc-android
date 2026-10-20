@@ -14,7 +14,9 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.Prese
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.PresentationInputs
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.legacy.PresentationSubmissionBuilder
-import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.LegacyTransactionData
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.StrongCustomerAuthentication
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionData
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionDataHashes
 
 /**
  * The response pipeline: response mode, response URI, the presentations, the submission, the id
@@ -51,7 +53,7 @@ class PresentationSubmitter(
                 selected = selected,
                 identity = identity,
                 authentication = authentication,
-                strongCustomerAuthentication = authentication != null || LegacyTransactionData.isStrongCustomerAuthentication(effective),
+                strongCustomerAuthentication = authentication != null || StrongCustomerAuthentication.requested(TransactionData.entriesLenient(effective)),
             )
             if (mode.deliveredByHost) {
                 PresentationOutcome.Delivered(fields)
@@ -96,13 +98,11 @@ class PresentationSubmitter(
         return encoder.encode(mode, response, request)
     }
 
-    /** Per entry id, the hashes of the transaction data entries that name it. The first-entry rule holds until the transaction data leg. */
-    private fun transactionDataHashes(request: PresentationRequest): Map<String, List<String>> {
-        val entries: List<Pair<String, Any>> = request.dcqlQuery?.credentials?.map { (it.id ?: "") to it }
-            ?: request.takeIf { it.presentationDefinition != null }?.let { r ->
-                PresentationDefinitionProcessor.processPresentationDefinition(r.presentationDefinition).inputDescriptors?.map { (it.id ?: "") to it }
-            }.orEmpty()
-        return entries.associate { (id, entry) -> id to LegacyTransactionData.hashesFor(entry, request) }
+    /** Per entry id, the hashes of every transaction data entry that names it (B.3.3.1). */
+    private fun transactionDataHashes(request: PresentationRequest): Map<String, TransactionDataHashes> = try {
+        TransactionData.hashesByEntry(TransactionData.entries(request))
+    } catch (e: TransactionData.InvalidTransactionData) {
+        throw SubmissionException.InvalidTransactionData(e.message)
     }
 
     private fun refused(message: String?, code: String): PresentationOutcome.Refused {

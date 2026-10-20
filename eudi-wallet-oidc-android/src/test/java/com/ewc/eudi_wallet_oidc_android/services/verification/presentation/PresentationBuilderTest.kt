@@ -17,6 +17,7 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationFixtur
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationFixtures.RESPONSE_URI
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.legacy.PresentationSubmissionBuilder
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionDataHashes
 import com.google.gson.JsonParser
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.crypto.ECDSAVerifier
@@ -52,7 +53,7 @@ class PresentationBuilderTest {
     private fun inputs(request: PresentationRequest, vararg extra: Pair<String, Any?>) = PresentationInputs(
         request = request,
         holder = holder,
-        transactionDataHashes = (extra.toMap()["hashes"] as? Map<String, List<String>>).orEmpty(),
+        transactionDataHashes = (extra.toMap()["hashes"] as? Map<String, List<String>>).orEmpty().mapValues { TransactionDataHashes("sha-256", it.value) },
         strongCustomerAuthentication = extra.toMap()["sca"] == true,
         authentication = extra.toMap()["auth"] as? AuthenticationMethods,
     )

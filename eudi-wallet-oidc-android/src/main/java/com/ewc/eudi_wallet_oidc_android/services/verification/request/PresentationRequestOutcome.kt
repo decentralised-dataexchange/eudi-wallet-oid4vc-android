@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.request
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.client.VerifierIdentity
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionDataEntry
 
 /**
  * What resolving scanned data into a presentation request produced.
@@ -27,6 +28,8 @@ sealed class PresentationRequestOutcome {
         val specVersion: PresentationRequestSpecVersion,
         val source: String,
         val verifier: VerifierIdentity,
+        /** The request's `transaction_data`, decoded and checked against the query. */
+        val transactionData: List<TransactionDataEntry> = emptyList(),
     ) : PresentationRequestOutcome()
 
     /** The data was not a presentation request, or was one the policy or the spec refuses. */

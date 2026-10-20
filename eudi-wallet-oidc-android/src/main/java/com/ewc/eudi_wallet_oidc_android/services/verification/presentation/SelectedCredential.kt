@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.presentation
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.nimbusds.jose.jwk.JWK
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionDataHashes
 
 /**
  * What the user picked for one query entry, with the key that binds the credential to this
@@ -71,7 +72,7 @@ data class Presentation(
 data class PresentationInputs(
     val request: PresentationRequest,
     val holder: WalletIdentity?,
-    val transactionDataHashes: Map<String, List<String>> = emptyMap(),
+    val transactionDataHashes: Map<String, TransactionDataHashes> = emptyMap(),
     val strongCustomerAuthentication: Boolean = false,
     val authentication: AuthenticationMethods? = null,
     val encryptionKeyThumbprint: ByteArray? = null,

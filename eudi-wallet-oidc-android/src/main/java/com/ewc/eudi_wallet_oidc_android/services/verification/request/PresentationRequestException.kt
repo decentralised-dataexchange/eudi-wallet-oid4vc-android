@@ -85,6 +85,12 @@ sealed class PresentationRequestException(
         oauthError = INVALID_REQUEST,
     )
 
+    /** Section 8.5 `invalid_transaction_data`. */
+    class InvalidTransactionData(detail: String?) : PresentationRequestException(
+        "The transaction data in the request is invalid: $detail",
+        oauthError = "invalid_transaction_data",
+    )
+
     /** A draft request arrived while [PresentationRequestPolicy.allowDraftRequests] is false. */
     class DraftNotAllowed : PresentationRequestException(
         "This presentation request uses a draft format that is not supported"

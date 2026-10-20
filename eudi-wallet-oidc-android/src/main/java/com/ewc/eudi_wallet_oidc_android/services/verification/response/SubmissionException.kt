@@ -15,5 +15,9 @@ sealed class SubmissionException(message: String, val oauthError: String = "inva
     /** Section 8.3: the verifier's key algorithm or content encryption is one this SDK does not support. */
     class EncryptionUnsupported(detail: String) : SubmissionException("The response cannot be encrypted: $detail")
 
+    /** Section 8.5 `invalid_transaction_data`. */
+    class InvalidTransactionData(detail: String?) :
+        SubmissionException("The transaction data in the request is invalid: $detail", oauthError = "invalid_transaction_data")
+
     class EncryptionFailed(cause: Throwable?) : SubmissionException("The response could not be encrypted", cause = cause)
 }

@@ -41,6 +41,16 @@ class InlinePresentationRequestSource : PresentationRequestSource {
             throw PresentationRequestException.InvalidDcqlQuery(e.message)
         }
 
+        // Section 5.1: a non-empty JSON array of base64url strings. Unreadable values are kept as
+        // they are so the transaction data check refuses them instead of them vanishing here.
+        val transactionData: ArrayList<String>? = param("transaction_data")?.takeIf { it.isNotBlank() }?.let { value ->
+            try {
+                ArrayList(JsonParser.parseString(value).asJsonArray.map { it.asString })
+            } catch (e: Exception) {
+                arrayListOf(value)
+            }
+        }
+
         return PresentationRequest(
             clientId = param("client_id"),
             state = param("state"),
@@ -58,6 +68,7 @@ class InlinePresentationRequestSource : PresentationRequestSource {
             clientIdScheme = param("client_id_scheme"),
             request = param("request"),
             dcqlQuery = dcqlQuery,
+            transactionDdata = transactionData,
         )
     }
 

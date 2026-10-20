@@ -9,7 +9,8 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.response.LegacySel
 import com.ewc.eudi_wallet_oidc_android.services.verification.response.PresentationSubmitter
 import com.ewc.eudi_wallet_oidc_android.services.verification.response.ResponseMode
 import com.ewc.eudi_wallet_oidc_android.services.verification.response.SubmissionException
-import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.LegacyTransactionData
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.StrongCustomerAuthentication
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionData
 import com.nimbusds.jose.jwk.JWK
 
 /**
@@ -65,7 +66,7 @@ class AuthorisationResponseHandler {
                 selected = selected,
                 identity = WalletIdentity(did, jwk),
                 authentication = AuthenticationMethods(amrInherenceFactor, amrKnowledgeFactor),
-                strongCustomerAuthentication = isScaFlow || LegacyTransactionData.isStrongCustomerAuthentication(presentationRequest),
+                strongCustomerAuthentication = isScaFlow || StrongCustomerAuthentication.requested(TransactionData.entriesLenient(presentationRequest)),
             )
         } catch (e: PresentationException) {
             Logger.w(TAG, "Nothing to send: ${e.message}")

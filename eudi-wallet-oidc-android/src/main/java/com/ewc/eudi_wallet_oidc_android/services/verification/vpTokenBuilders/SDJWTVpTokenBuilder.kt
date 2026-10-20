@@ -10,6 +10,8 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.Prese
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SdJwtVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
 import com.nimbusds.jose.jwk.JWK
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.StrongCustomerAuthentication
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionData
 
 /**
  * Previous API. Delegates to [SdJwtVpTokenBuilder] and keeps the old tolerance: a credential
@@ -43,7 +45,7 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         amrKnowledgeFactor: String?
     ): List<String?> {
         if (credentialList.isNullOrEmpty()) return emptyList()
-        val sca = isScaFlow || LegacyTransactionData.isStrongCustomerAuthentication(presentationRequest)
+        val sca = isScaFlow || StrongCustomerAuthentication.requested(TransactionData.entriesLenient(presentationRequest ?: PresentationRequest()))
         return credentialList.mapIndexed { index, credential ->
             present(credential, presentationRequest, did, jwkList?.getOrNull(index) ?: jwk, inputDescriptors, sca, AuthenticationMethods(amrInherenceFactor, amrKnowledgeFactor))
         }
@@ -62,7 +64,7 @@ class SDJWTVpTokenBuilder : VpTokenBuilder {
         val inputs = PresentationInputs(
             request = request ?: PresentationRequest(),
             holder = WalletIdentity(did, key),
-            transactionDataHashes = mapOf(entryId to LegacyTransactionData.hashesFor(entry, request)),
+            transactionDataHashes = request?.let { TransactionData.hashesByEntryLenient(it) }.orEmpty(),
             strongCustomerAuthentication = sca,
             authentication = authentication,
         )

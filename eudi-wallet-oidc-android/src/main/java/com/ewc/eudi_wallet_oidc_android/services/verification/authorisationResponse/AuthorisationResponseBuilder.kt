@@ -16,7 +16,8 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.presentationSubMis
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.JWTVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.MDocVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.SDJWTVpTokenBuilder
-import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.LegacyTransactionData
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.StrongCustomerAuthentication
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionData
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.AuthenticationMethods
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.PresentationBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.PresentationInputs
@@ -413,8 +414,8 @@ class AuthorisationResponseBuilder {
             val inputs = PresentationInputs(
                 request = presentationRequest,
                 holder = WalletIdentity(did, subJwk),
-                transactionDataHashes = descriptors.associate { (it.id ?: "") to LegacyTransactionData.hashesFor(it, presentationRequest) },
-                strongCustomerAuthentication = isScaFlow || LegacyTransactionData.isStrongCustomerAuthentication(presentationRequest),
+                transactionDataHashes = TransactionData.hashesByEntryLenient(presentationRequest),
+                strongCustomerAuthentication = isScaFlow || StrongCustomerAuthentication.requested(TransactionData.entriesLenient(presentationRequest)),
                 authentication = AuthenticationMethods(amrInherenceFactor, amrKnowledgeFactor),
                 encryptionKeyThumbprint = PresentationBuilder.encryptionKeyThumbprint(presentationRequest),
             )

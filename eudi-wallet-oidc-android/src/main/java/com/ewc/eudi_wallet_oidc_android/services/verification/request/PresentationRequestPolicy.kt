@@ -66,6 +66,13 @@ data class PresentationRequestPolicy(
      * section 5.9.3 as written.
      */
     val requireAnchoredClients: Boolean = false,
+
+    /**
+     * The `transaction_data` types the host can show the user. Section 5.1: "The Wallet MUST
+     * return an error if a request contains even one unrecognized transaction data type." Null
+     * accepts any type, because only the host knows which it can render.
+     */
+    val recognisedTransactionDataTypes: Set<String>? = null,
 ) {
     companion object {
 

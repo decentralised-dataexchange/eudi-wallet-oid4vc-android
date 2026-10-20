@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.presentation
 
 import com.ewc.eudi_wallet_oidc_android.services.sdjwt.SDJWTService
+import com.ewc.eudi_wallet_oidc_android.services.verification.transaction.TransactionDataHashes
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -25,7 +26,6 @@ import java.util.UUID
 object KeyBindingJwt {
 
     const val TYPE = "kb+jwt"
-    const val HASH_ALGORITHM = "sha-256"
 
     /**
      * @param presented the SD-JWT to bind, ending with `~`.
@@ -37,7 +37,7 @@ object KeyBindingJwt {
         key: JWK,
         audience: String?,
         nonce: String?,
-        transactionDataHashes: List<String>? = null,
+        transactionDataHashes: TransactionDataHashes? = null,
         scaResponseMode: String? = null,
         amr: List<Map<String, String>>? = null,
     ): String {
@@ -50,9 +50,9 @@ object KeyBindingJwt {
                 .claim("jti", UUID.randomUUID().toString())
             scaResponseMode?.let { claims.claim("response_mode", it) }
             amr?.let { claims.claim("amr", it) }
-            transactionDataHashes?.takeIf { it.isNotEmpty() }?.let {
-                claims.claim("transaction_data_hashes", it)
-                claims.claim("transaction_data_hashes_alg", HASH_ALGORITHM)
+            transactionDataHashes?.takeIf { it.hashes.isNotEmpty() }?.let {
+                claims.claim("transaction_data_hashes", it.hashes)
+                claims.claim("transaction_data_hashes_alg", it.algorithm)
             }
 
             val (algorithm, signer) = when (key) {

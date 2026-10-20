@@ -28,6 +28,9 @@ class TransactionDataCharacterisationTest {
 
     private val holder = key()
 
+    private suspend fun prepare(request: PresentationRequest): Map<String, String> =
+        AuthorisationResponseHandler().prepareAuthorisationResponseV2(request, listOf(listOf(sdJwt())), DID, holder, jwkList = listOf(listOf(holder)))
+
     private fun kbClaims(
         request: PresentationRequest,
         isScaFlow: Boolean = false,
@@ -107,28 +110,38 @@ class TransactionDataCharacterisationTest {
     }
 
     @Test
-    fun `a transaction entry naming another credential id adds no hashes`() {
+    fun `a transaction entry naming an id the query does not request leaves nothing to send`() {
         val entry = transactionData("urn:eudi:sca:payment", "someone-else")
-        val claims = kbClaims(dcqlRequest(dcqlSdJwt("pid"), transactionData = listOf(entry)))
-
-        assertNull(claims.getClaim("transaction_data_hashes"))
-        assertNull(claims.getClaim("transaction_data_hashes_alg"))
+        val params = runBlocking { prepare(dcqlRequest(dcqlSdJwt("pid"), transactionData = listOf(entry))) }
+        // Before leg 6 this was ignored; section 8.5 lists it as invalid_transaction_data.
+        assertTrue(params.isEmpty())
     }
 
     @Test
-    fun `defect - only the first of several transaction entries is hashed`() {
+    fun `an entry naming another requested credential adds no hashes to this one`() {
+        val entry = transactionData("urn:eudi:sca:payment", "other")
+        val request = dcqlRequest(dcqlSdJwt("pid"), dcqlSdJwt("other"), transactionData = listOf(entry))
+        val params = runBlocking {
+            AuthorisationResponseHandler().prepareAuthorisationResponseV2(request, listOf(listOf(sdJwt()), emptyList()), DID, holder, jwkList = listOf(listOf(holder)))
+        }
+        val presented = json(params.getValue("vp_token")).asJsonObject.getAsJsonArray("pid")[0].asString
+        assertNull(keyBindingJwt(presented).jwtClaimsSet.getClaim("transaction_data_hashes"))
+    }
+
+    @Test
+    fun `every transaction entry naming the credential is hashed in request order`() {
         val first = transactionData("urn:eudi:sca:payment", "pid")
         val second = transactionData("urn:eudi:sca:emandate", "pid")
         val claims = kbClaims(dcqlRequest(dcqlSdJwt("pid"), transactionData = listOf(first, second)))
 
-        // OpenID4VP 1.0 section 8.4 expects one hash per entry; today the second is dropped.
-        assertEquals(listOf(generateHash(first)), claims.getClaim("transaction_data_hashes"))
+        // Before leg 6 only the first was hashed.
+        assertEquals(listOf(generateHash(first), generateHash(second)), claims.getClaim("transaction_data_hashes"))
     }
 
     @Test
-    fun `a transaction entry that is not base64url JSON is ignored`() {
-        val claims = kbClaims(dcqlRequest(dcqlSdJwt("pid"), transactionData = listOf("not base64url!")))
-        assertNull(claims.getClaim("transaction_data_hashes"))
-        assertTrue(claims.getClaim("amr") == null)
+    fun `a transaction entry that is not base64url JSON leaves nothing to send`() {
+        val params = runBlocking { prepare(dcqlRequest(dcqlSdJwt("pid"), transactionData = listOf("not base64url!"))) }
+        // Before leg 6 this was ignored.
+        assertTrue(params.isEmpty())
     }
 }
