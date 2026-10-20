@@ -16,9 +16,9 @@ import com.ewc.eudiwalletoidcandroid.databinding.ActivityMainBinding
 import io.igrant.qrcode_scanner_android.qrcode.utils.QRScanner
 
 /**
- * A test harness for the issuance SDK, one function per button.
+ * A test harness for the SDK, one function per button.
  *
- * Scan a credential offer, then run each step on its own and read what the SDK actually did.
+ * Scan a credential offer or a presentation request, then run each step on its own and read what the SDK actually did.
  * Nothing runs implicitly, so a failing step can be repeated without redoing the ones before it.
  */
 class MainActivity : AppCompatActivity() {
@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnCredential.setOnClickListener { viewModel.requestCredential() }
         binding.btnDeferred.setOnClickListener { viewModel.requestDeferredCredential() }
         binding.btnNotify.setOnClickListener { viewModel.sendNotification() }
+        binding.btnResolvePresentation.setOnClickListener { viewModel.resolveAuthorizationRequest() }
         binding.btnRunAll.setOnClickListener { viewModel.runAll() }
         binding.btnClear.setOnClickListener { viewModel.clear() }
     }
