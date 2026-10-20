@@ -7,6 +7,11 @@ import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.verification.match.CredentialMatches
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.AuthenticationMethods
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.PresentationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
@@ -42,6 +47,25 @@ interface VerificationServiceInterface {
     )
     suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest?
 
+    /**
+     * Builds the presentations for [selected], encodes the Authorization Response for the
+     * request's response mode and sends it to the `response_uri` (OpenID4VP 1.0 section 8), or
+     * hands it back for the host to deliver over the Digital Credentials API.
+     *
+     * @param selected what the user picked, one per query entry, each with the key that binds it
+     * @param identity the wallet's identity; its key signs whatever has no key of its own
+     * @param attestation the wallet unit attestation to send as client attestation headers
+     * @param authentication the factors of a strong customer authentication flow; null otherwise
+     */
+    suspend fun submitPresentation(
+        request: PresentationRequest,
+        selected: List<SelectedCredential>,
+        identity: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        authentication: AuthenticationMethods? = null
+    ): PresentationOutcome
+
+    @Deprecated("Use submitPresentation")
     suspend fun processAndSendAuthorisationResponse(
         did: String?,
         subJwk: JWK?,
@@ -52,6 +76,7 @@ interface VerificationServiceInterface {
         isScaFlow: Boolean = false
     ): WrappedVpTokenResponse?
 
+    @Deprecated("Use submitPresentation, which takes SelectedCredential values and returns a typed outcome")
     suspend fun processAndSendAuthorisationResponseV2(
         did: String?,
         subJwk: JWK?,

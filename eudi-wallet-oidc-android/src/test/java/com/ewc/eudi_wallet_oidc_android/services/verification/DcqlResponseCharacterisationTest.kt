@@ -140,13 +140,14 @@ class DcqlResponseCharacterisationTest {
     }
 
     @Test
-    fun `defect - an entry whose meta names no format is sent as an empty value`() {
+    fun `an entry whose meta names no format is presented by the credential's own shape`() {
         val typeless = CredentialList(id = "x", format = "dc+sd-jwt")
         val params = respond(dcqlRequest(typeless), listOf(listOf(sdJwt())))
 
-        // The format is derived from `meta`, not from `format`, so this entry builds nothing.
+        // Before leg 5 the format came from `meta`, so this entry was sent empty.
         val token = vpToken(params)
-        assertTrue(!token.has("x") || token["x"].isJsonNull)
+        assertEquals(1, token.getAsJsonArray("x").size())
+        assertEquals("kb+jwt", keyBindingJwt(token.getAsJsonArray("x")[0].asString).header.type.type)
     }
 
     @Test

@@ -150,25 +150,22 @@ class PexResponseCharacterisationTest {
     }
 
     @Test
-    fun `defect - an mdoc with no signing key is forwarded raw instead of refused`() {
+    fun `an mdoc with no signing key leaves nothing to send`() {
         val raw = mdoc(null)
         val params = respond(pexRequest(mdocDescriptor("mdl")), listOf(listOf(raw)), keys = listOf(listOf(null)), subJwk = null)
 
-        // The unsigned IssuerSigned structure itself is placed in vp_token; the verifier gets a
-        // well-formed response with no device signature and no error on our side.
-        assertEquals(raw, params["vp_token"])
-        assertEquals("mso_mdoc", descriptorMap(params).single().asJsonObject["format"].asString)
+        // Before leg 5 the unsigned IssuerSigned structure itself went out as the vp_token.
+        assertTrue(params.isEmpty())
     }
 
     @Test
-    fun `defect - an SD-JWT whose key cannot sign is forwarded without a key binding JWT`() {
-        // A public-only key: it cannot sign. (An EdDSA key used to be the example here; since leg 4
-        // it signs, see PresentationBuilderTest 4_4.)
+    fun `an SD-JWT whose key cannot sign leaves nothing to send`() {
+        // A public-only key: it cannot sign.
         val publicOnly = key().toPublicJWK()
-        val credential = sdJwt()
-        val params = respond(pexRequest(sdJwtDescriptor("pid")), listOf(listOf(credential)), keys = listOf(listOf(publicOnly)), subJwk = publicOnly)
+        val params = respond(pexRequest(sdJwtDescriptor("pid")), listOf(listOf(sdJwt())), keys = listOf(listOf(publicOnly)), subJwk = publicOnly)
 
-        assertEquals("the bare credential goes out, KB-JWT silently missing", credential, params["vp_token"])
+        // Before leg 5 the bare credential went out with the key binding JWT silently missing.
+        assertTrue(params.isEmpty())
     }
 
     @Test

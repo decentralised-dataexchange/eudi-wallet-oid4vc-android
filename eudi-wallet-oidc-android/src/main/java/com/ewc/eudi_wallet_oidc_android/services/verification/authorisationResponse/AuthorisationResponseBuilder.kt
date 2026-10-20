@@ -33,6 +33,7 @@ import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import kotlin.collections.contains
 
+@Deprecated("The response is built by response.AuthorizationResponse and presentation.PresentationBuilder")
 class AuthorisationResponseBuilder {
     suspend fun buildResponse(
         presentationRequest: PresentationRequest,

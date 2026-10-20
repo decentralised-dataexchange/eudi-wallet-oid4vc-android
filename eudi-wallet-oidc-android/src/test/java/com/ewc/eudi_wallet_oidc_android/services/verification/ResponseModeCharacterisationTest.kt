@@ -86,23 +86,23 @@ class ResponseModeCharacterisationTest {
     }
 
     @Test
-    fun `defect - an enc the SDK does not support throws out of the handler`() {
-        val request = dcqlRequest(
-            dcqlSdJwt("pid"),
-            responseMode = "direct_post.jwt",
-            clientMetadata = encryptionMetadata(verifierKey, enc = "A256CBC-HS512"),
-        )
-        assertThrows(IllegalArgumentException::class.java) { respond(request) }
+    fun `A256CBC-HS512 is an accepted enc and an unknown one leaves nothing to send`() {
+        val accepted = respond(dcqlRequest(dcqlSdJwt("pid"), responseMode = "direct_post.jwt", clientMetadata = encryptionMetadata(verifierKey, enc = "A256CBC-HS512")))
+        assertEquals("A256CBC-HS512", decrypt(accepted.getValue("response")).header.encryptionMethod.name)
+
+        // Before leg 5 this threw out of the handler; an empty map is its "nothing to send".
+        val unknown = respond(dcqlRequest(dcqlSdJwt("pid"), responseMode = "direct_post.jwt", clientMetadata = encryptionMetadata(verifierKey, enc = "A192GCM")))
+        assertTrue(unknown.isEmpty())
     }
 
     @Test
-    fun `defect - an alg other than ECDH-ES throws out of the handler`() {
-        val request = dcqlRequest(
-            dcqlSdJwt("pid"),
-            responseMode = "direct_post.jwt",
-            clientMetadata = encryptionMetadata(verifierKey, alg = "ECDH-ES+A128KW"),
-        )
-        assertThrows(IllegalArgumentException::class.java) { respond(request) }
+    fun `the key wrapping ECDH-ES variants are accepted and another alg leaves nothing to send`() {
+        val wrapped = respond(dcqlRequest(dcqlSdJwt("pid"), responseMode = "direct_post.jwt", clientMetadata = encryptionMetadata(verifierKey, alg = "ECDH-ES+A128KW")))
+        assertEquals("ECDH-ES+A128KW", decrypt(wrapped.getValue("response")).header.algorithm.name)
+
+        // Before leg 5 this threw out of the handler; an empty map is its "nothing to send".
+        val other = respond(dcqlRequest(dcqlSdJwt("pid"), responseMode = "direct_post.jwt", clientMetadata = encryptionMetadata(verifierKey, alg = "RSA-OAEP-256")))
+        assertTrue(other.isEmpty())
     }
 
     @Test
