@@ -1,7 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification
 
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequestUri
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestResolver
 import com.google.gson.JsonParser
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JOSEObjectType
@@ -118,7 +119,10 @@ class RequestUriMethodFetchTest {
     }
 
     private fun fetch(method: String?): WrappedPresentationRequest = runBlocking {
-        AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(authorisationRequest(method))
+        when (val outcome = PresentationRequestResolver().resolve(authorisationRequest(method))) {
+            is PresentationRequestOutcome.Resolved -> WrappedPresentationRequest(presentationRequest = outcome.request)
+            is PresentationRequestOutcome.Failed -> WrappedPresentationRequest(errorResponse = outcome.error)
+        }
     }
 
     @Test

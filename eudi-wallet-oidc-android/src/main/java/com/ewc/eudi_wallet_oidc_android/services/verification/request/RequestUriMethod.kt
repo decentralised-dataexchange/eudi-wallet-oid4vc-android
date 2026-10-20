@@ -1,4 +1,4 @@
-package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest
+package com.ewc.eudi_wallet_oidc_android.services.verification.request
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -11,7 +11,6 @@ import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.KeyUse
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator
-import java.net.URLDecoder
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
@@ -40,23 +39,9 @@ internal object RequestUriMethod {
     fun requestUri(authorisationRequestData: String): String? =
         queryParameter(authorisationRequestData, "request_uri")?.takeIf { it.isNotBlank() }
 
-    /**
-     * Reads one query parameter from the raw authorization request URI. Parsed by hand rather
-     * than through `android.net.Uri` so the decision is the same in JVM unit tests as on device.
-     */
-    internal fun queryParameter(uri: String, name: String): String? {
-        val query = uri.substringAfter('?', "").substringBefore('#')
-        if (query.isBlank()) return null
-        return query.split('&').firstNotNullOfOrNull { pair ->
-            val key = pair.substringBefore('=')
-            if (key != name) null
-            else try {
-                URLDecoder.decode(pair.substringAfter('=', ""), "UTF-8")
-            } catch (e: Exception) {
-                null
-            }
-        }
-    }
+    /** Reads one query parameter from the raw authorization request URI. */
+    internal fun queryParameter(uri: String, name: String): String? =
+        AuthorizationRequestUri.queryParam(uri, name)
 
     /** A fresh, URL-safe random value for the `wallet_nonce` POST parameter. */
     fun newWalletNonce(): String {

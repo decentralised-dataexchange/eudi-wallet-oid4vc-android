@@ -14,11 +14,9 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.Wal
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByJWT
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequest
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequestUri
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByValue
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestForIAR
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
 import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
@@ -33,46 +31,28 @@ class VerificationService : VerificationServiceInterface {
         const val TAG = "VerificationService"
     }
 
+    override suspend fun resolveAuthorizationRequest(
+        data: String?,
+        policy: PresentationRequestPolicy
+    ): PresentationRequestOutcome = PresentationRequestResolver(policy).resolve(data)
+
     /**
-     * Authorisation requests can be presented to the wallet by verifying in two ways:
-     * 1) by value
-     * 2) by reference as defined in JWT-Secured Authorization Request (JAR) via use of request_uri.
-     *      The custom URL scheme for authorisation requests is openid4vp://.
-     *
-     * @param data - will accept the full data which is scanned from the QR code or deep link
-     *
-     * @return PresentationRequest
+     * Kept for integrators on the previous API. Blank input still answers null, because callers
+     * test for that; every other outcome is wrapped as before.
      */
+    @Deprecated(
+        "Use resolveAuthorizationRequest, which returns a typed outcome instead of a nullable wrapper",
+        ReplaceWith("resolveAuthorizationRequest(data)")
+    )
     override suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest? {
         if (data.isNullOrBlank())
             return null
 
-        val uri = Uri.parse(data)
-        val presentationDefinition = uri.getQueryParameter("presentation_definition")
-        val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
-        val dcqlQuery = uri.getQueryParameter("dcql_query")
-        val iarOpenid4VPRequest = uri.getQueryParameter("openid4vp_request")
-
-        val requestUri = uri.getQueryParameter("request_uri")
-        val request = uri.getQueryParameter("request")
-        if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
-            return AuthorisationRequestByValue().processAuthorisationRequest(data)
-        } else if (!requestUri.isNullOrBlank()) {
-            return AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
-        } else if (request != null) {
-            return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
-        } else if (isValidJWT(data)) {
-            return AuthorisationRequestByJWT().processAuthorisationRequest(data)
-        } else if (iarOpenid4VPRequest != null){
-            return AuthorisationRequestForIAR().processAuthorisationRequest(data)
-        } else {
-            return WrappedPresentationRequest(
-                presentationRequest = null,
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "Invalid Request"
-                )
-            )
+        return when (val outcome = resolveAuthorizationRequest(data)) {
+            is PresentationRequestOutcome.Resolved ->
+                WrappedPresentationRequest(presentationRequest = outcome.request)
+            is PresentationRequestOutcome.Failed ->
+                WrappedPresentationRequest(presentationRequest = null, errorResponse = outcome.error)
         }
     }
 
