@@ -49,6 +49,8 @@ data class CredentialList(
     @SerializedName("id") var id: String? = null,
     @SerializedName("format") var format: String? = null,
     @SerializedName("multiple") var multiple: Boolean = false,
+    /** OpenID4VP 1.0 section 6.1: default true, a presentation with cryptographic holder binding is required. */
+    @SerializedName("require_cryptographic_holder_binding") var requireCryptographicHolderBinding: Boolean = true,
     @SerializedName("meta") var meta: Meta? = null,
     val claims: List<DcqlClaim>?=null,
     val claim_sets: List<List<String>>? = null , // Only present in dc+sd-jwt format

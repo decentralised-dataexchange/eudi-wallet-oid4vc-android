@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.client
 
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.did.DIDService
+import com.ewc.eudi_wallet_oidc_android.services.verification.CertificateFixtures
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationFixtures
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestException
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
@@ -12,7 +13,6 @@ import com.google.gson.JsonParser
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSASigner
-import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jose.util.Base64
@@ -24,13 +24,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.ByteArrayInputStream
 import java.net.URLEncoder
-import java.security.KeyFactory
-import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.security.interfaces.ECPublicKey
-import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Date
 
 /**
@@ -42,24 +37,10 @@ class ClientIdentifierVerifierTest {
 
     // ── material ─────────────────────────────────────────────────────────────
 
-    private val verifierCertB64 = "MIIBtDCCAVqgAwIBAgIUJsHYk3yflYWvq1iMKQKZITaGXIQwCgYIKoZIzj0EAwIwHzEdMBsGA1UEAwwUdmVyaWZpZXIuZXhhbXBsZS5jb20wHhcNMjYxMDIwMDU0MjEwWhcNMzYxMDE3MDU0MjEwWjAfMR0wGwYDVQQDDBR2ZXJpZmllci5leGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABAmSPckSvx36gEW3IKXyZ9fX9N9REqXleT5RzS4OKDfKbBXyDVwlIA3iUNK5FK54huYlgswh65xLhcb4soOYp9ujdDByMB0GA1UdDgQWBBTrdRmNpoBdgt9thiqmS6pm8gU3mzAfBgNVHSMEGDAWgBTrdRmNpoBdgt9thiqmS6pm8gU3mzAPBgNVHRMBAf8EBTADAQH/MB8GA1UdEQQYMBaCFHZlcmlmaWVyLmV4YW1wbGUuY29tMAoGCCqGSM49BAMCA0gAMEUCICHQGvDmhX66OgAgmLUIZmCbkf5Ws/g53LvI/BRK6UblAiEA15PjCV0JkOBonBi8kp9mUFpXfkYokVh1NpOUbZ158sI="
-    private val verifierKeyB64 = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgQ3tsfM3VYgHPq49oU/PEM8vl9l8L+pb13hYi/xbP+8KhRANCAAQJkj3JEr8d+oBFtyCl8mfX1/TfURKl5Xk+Uc0uDig3ymwV8g1cJSAN4lDSuRSueIbmJYLMIeucS4XG+LKDmKfb"
-    private val otherCertB64 = "MIIBqzCCAVGgAwIBAgIUDujcZ42n4HZztprdLsAJpk05aoYwCgYIKoZIzj0EAwIwHDEaMBgGA1UEAwwRb3RoZXIuZXhhbXBsZS5jb20wHhcNMjYxMDIwMDU0MjEwWhcNMzYxMDE3MDU0MjEwWjAcMRowGAYDVQQDDBFvdGhlci5leGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJdaY8MDrGB0QpcAdOnDuj6e8vu6Ydd5iXWabud9yB/Geu1I36U4kZDaY0W5RdTPX56hDimKCWLwbQfG71dX01qjcTBvMB0GA1UdDgQWBBTiZSd2e9ah24O5ysEIMuHyJN1mxzAfBgNVHSMEGDAWgBTiZSd2e9ah24O5ysEIMuHyJN1mxzAPBgNVHRMBAf8EBTADAQH/MBwGA1UdEQQVMBOCEW90aGVyLmV4YW1wbGUuY29tMAoGCCqGSM49BAMCA0gAMEUCIB0uPVnd6x0zLMf79waHQbk+rUUjtVn8LDBWAwfyaeAuAiEA6Chrffd3laKaEllVaTsYkgyklfiidi+I9d+DdmARaeE="
-    private val otherKeyB64 = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgZLEeToyJC2WGlj+DmG2+R59t3hsYKHkrmDqkZGBaE5ShRANCAASXWmPDA6xgdEKXAHTpw7o+nvL7umHXeYl1mm7nfcgfxnrtSN+lOJGQ2mNFuUXUz1+eoQ4pigli8G0Hxu9XV9Na"
-
-    private fun certificate(b64: String): X509Certificate =
-        CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(Base64.from(b64).decode())) as X509Certificate
-
-    private fun key(certB64: String, keyB64: String): ECKey {
-        val cert = certificate(certB64)
-        val private = KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(Base64.from(keyB64).decode()))
-        return ECKey.Builder(Curve.P_256, cert.publicKey as ECPublicKey).privateKey(private).build()
-    }
-
-    private val verifierCert by lazy { certificate(verifierCertB64) }
-    private val otherCert by lazy { certificate(otherCertB64) }
-    private val verifierKey by lazy { key(verifierCertB64, verifierKeyB64) }
-    private val otherKey by lazy { key(otherCertB64, otherKeyB64) }
+    private val verifierCert get() = CertificateFixtures.verifierCert
+    private val otherCert get() = CertificateFixtures.otherCert
+    private val verifierKey get() = CertificateFixtures.verifierKey
+    private val otherKey get() = CertificateFixtures.otherKey
 
     private val sanDns = "x509_san_dns:verifier.example.com"
     private val responseUri = "https://verifier.example.com/response"

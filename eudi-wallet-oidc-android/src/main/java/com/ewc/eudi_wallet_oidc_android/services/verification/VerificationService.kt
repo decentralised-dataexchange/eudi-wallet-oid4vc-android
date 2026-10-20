@@ -18,8 +18,9 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.request.Presentati
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
-import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
-import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.CredentialMatches
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.PresentationQuery
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.PresentationQueryMatcher
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.nimbusds.jose.jwk.JWK
@@ -365,32 +366,28 @@ class VerificationService : VerificationServiceInterface {
     /**
      * Returns all the list of credentials matching for all input descriptors
      */
+    override suspend fun matchCredentials(
+        request: PresentationRequest,
+        credentials: List<String?>
+    ): CredentialMatches = PresentationQueryMatcher().match(request, credentials)
+
+    /** Previous API: the candidates per query entry, in query order, with nothing about satisfiability. */
+    @Deprecated(
+        "Use matchCredentials, which names each entry and reports whether the request can be satisfied",
+        ReplaceWith("matchCredentials(request, allCredentialList)")
+    )
     override suspend fun filterCredentials(
         allCredentialList: List<String?>,
         queryItem: Any?
     ): List<List<String>> {
-        when (queryItem) {
-            is DCQL -> {
-                return DCQLCredentialFilter().filterCredentialsUsingDCQL(
-                    allCredentialList,
-                    queryItem
-                )
-            }
-
-            is PresentationDefinition -> {
-                return PresentationDefinitionCredentialFilter().filterCredentialsUsingPresentationDefinition(
-                    allCredentialList,
-                    queryItem
-                )
-            }
-
+        val query = when (queryItem) {
+            is DCQL -> PresentationQuery.Dcql(queryItem)
+            is PresentationDefinition -> PresentationQuery.PresentationDefinition(queryItem)
             else -> {
-                Log.e(
-                    "VerificationService",
-                    "Invalid query item type: ${queryItem?.javaClass?.name}"
-                )
+                Log.e(TAG, "Invalid query item type: ${queryItem?.javaClass?.name}")
                 return emptyList()
             }
         }
+        return PresentationQueryMatcher().match(query, allCredentialList).asLegacyLists()
     }
 }

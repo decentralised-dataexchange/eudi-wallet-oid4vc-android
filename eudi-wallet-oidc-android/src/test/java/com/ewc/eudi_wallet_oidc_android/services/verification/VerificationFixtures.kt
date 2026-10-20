@@ -71,7 +71,11 @@ internal object VerificationFixtures {
         ByteArrayOutputStream().also { CborEncoder(it).encode(item) }.toByteArray()
 
     /** A minimal IssuerSigned (empty name spaces) whose MSO names [docType] and binds [deviceKey]. */
-    fun mdoc(deviceKey: ECKey?, docType: String = DOC_TYPE): String {
+    fun mdoc(
+        deviceKey: ECKey?,
+        docType: String = DOC_TYPE,
+        nameSpaces: Map<String, Map<String, Any>> = emptyMap(),
+    ): String {
         val mso = CborMap().apply {
             put(UnicodeString("docType"), UnicodeString(docType))
             if (deviceKey != null) {
@@ -91,8 +95,27 @@ internal object VerificationFixtures {
             add(ByteString(encode(taggedMso)))
             add(ByteString(ByteArray(64)))
         }
+        val issuerNameSpaces = CborMap().apply {
+            nameSpaces.forEach { (namespace, elements) ->
+                val items = CborArray()
+                elements.entries.forEachIndexed { index, (identifier, value) ->
+                    val item = CborMap().apply {
+                        put(UnicodeString("digestID"), UnsignedInteger(index.toLong()))
+                        put(UnicodeString("random"), ByteString(ByteArray(16) { index.toByte() }))
+                        put(UnicodeString("elementIdentifier"), UnicodeString(identifier))
+                        put(UnicodeString("elementValue"), when (value) {
+                            is Int -> UnsignedInteger(value.toLong())
+                            is Long -> UnsignedInteger(value)
+                            else -> UnicodeString(value.toString())
+                        })
+                    }
+                    items.add(ByteString(encode(item)).apply { setTag(24) })
+                }
+                put(UnicodeString(namespace), items)
+            }
+        }
         val signed = CborMap().apply {
-            put(UnicodeString("nameSpaces"), CborMap())
+            put(UnicodeString("nameSpaces"), issuerNameSpaces)
             put(UnicodeString("issuerAuth"), issuerAuth)
         }
         return Base64.getUrlEncoder().withoutPadding().encodeToString(encode(signed))

@@ -5,6 +5,7 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.CredentialMatches
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
@@ -65,12 +66,26 @@ interface VerificationServiceInterface {
     ): WrappedVpTokenResponse?
 
     /**
-     * To filter the credential using the input descriptors
-     * @param credentialList - list of all issued credentials
-     * @param presentationDefinition
+     * Matches the wallet's credentials against the request's query (OpenID4VP 1.0 section 6, or
+     * a draft presentation definition): one entry per credential query with its candidates, and
+     * whether the required entries and credential sets can be satisfied at all.
      *
-     * @return list of credentials filtered using the presentation definition
+     * @param credentials every stored credential: SD-JWTs and JWTs in compact form, mdocs as
+     *   base64url IssuerSigned
      */
+    suspend fun matchCredentials(
+        request: PresentationRequest,
+        credentials: List<String?>
+    ): CredentialMatches
+
+    /**
+     * Previous API: the candidate credentials per query entry, in query order.
+     * @param queryItem a [com.ewc.eudi_wallet_oidc_android.models.DCQL] or a [PresentationDefinition]
+     */
+    @Deprecated(
+        "Use matchCredentials, which names each entry and reports whether the request can be satisfied",
+        ReplaceWith("matchCredentials(request, credentialList)")
+    )
     suspend fun filterCredentials(
         credentialList: List<String?>,
         queryItem: Any?
