@@ -27,6 +27,7 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.notification.Notification
 import com.ewc.eudi_wallet_oidc_android.services.notification.NotificationService
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.VerifierIdentity
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestSpecVersion
 import com.nimbusds.jose.jwk.ECKey
@@ -697,6 +698,8 @@ class MainViewModel : ViewModel() {
                         appendLine("  spec revision      ${specVersionOf(outcome.specVersion)}")
                         appendLine("  source             ${outcome.source}")
                         appendLine("  client_id          ${request.clientId ?: "-"}")
+                        appendLine("  client prefix      ${outcome.verifier.identifier.prefix.value ?: "none (pre-registered)"}")
+                        appendLine("  client verified    ${clientStatusOf(outcome.verifier)}")
                         appendLine("  response_type      ${request.responseType ?: "-"}")
                         appendLine("  response_mode      ${request.responseMode ?: "- (direct_post assumed)"}")
                         appendLine("  response_uri       ${request.responseUri ?: request.redirectUri ?: "-"}")
@@ -752,6 +755,12 @@ class MainViewModel : ViewModel() {
     private fun specVersionOf(version: PresentationRequestSpecVersion) = when (version) {
         PresentationRequestSpecVersion.V1_0 -> "OpenID4VP 1.0"
         PresentationRequestSpecVersion.Draft -> "pre-1.0 draft (presentation_definition)"
+    }
+
+    private fun clientStatusOf(client: VerifierIdentity): String = buildString {
+        append(if (client.verified) "yes" else "no")
+        if (client.anchored) append(", anchored to a trust anchor")
+        client.reason?.let { append("  ($it)") }
     }
 
     private fun queryOf(request: PresentationRequest): String {

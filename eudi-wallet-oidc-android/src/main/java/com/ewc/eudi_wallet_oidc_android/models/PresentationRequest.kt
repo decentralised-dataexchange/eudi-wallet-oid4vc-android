@@ -31,6 +31,8 @@ data class PresentationRequest(
     /** OpenID4VP 1.0 section 5.10: the nonce the wallet sent when it fetched the request object by POST. */
     @SerializedName("wallet_nonce") var walletNonce: String? = null,
     @SerializedName("dcql_query") var dcqlQuery: DCQL? = null,
+    /** OpenID4VP 1.0 section 5.11: attestations about the verifier from third parties. Carried, not yet validated. */
+    @SerializedName("verifier_info") var verifierInfo: Any? = null,
     @SerializedName("auth_session") var authSession: String? =null,
     @SerializedName("status") var status: String? =null,
     @SerializedName("type") var type: String? =null,

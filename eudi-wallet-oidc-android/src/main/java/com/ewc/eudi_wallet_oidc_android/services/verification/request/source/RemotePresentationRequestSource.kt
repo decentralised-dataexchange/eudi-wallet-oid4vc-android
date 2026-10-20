@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifierVerifier
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.AuthorizationRequestUri
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestException
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
@@ -39,7 +40,10 @@ class RemotePresentationRequestSource : PresentationRequestSource {
                 service?.postPresentationRequestToRequestUri(
                     requestUri,
                     mapOf(
-                        RequestUriMethod.WALLET_METADATA to RequestUriMethod.walletMetadata(encryptionKey),
+                        RequestUriMethod.WALLET_METADATA to RequestUriMethod.walletMetadata(
+                            encryptionKey,
+                            ClientIdentifierVerifier().supportedPrefixes(policy)
+                        ),
                         RequestUriMethod.WALLET_NONCE to walletNonce
                     ),
                     RequestUriMethod.REQUEST_OBJECT_MEDIA_TYPE

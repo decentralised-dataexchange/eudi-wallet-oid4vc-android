@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.dcql.DcqlQueryValidator
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifierVerifier
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy.ClientMetadataUriResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy.PresentationDefinitionUriResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.source.InlinePresentationRequestSource
@@ -21,13 +22,14 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.request.source.ext
  * carrying a description a user can read, never a bare null.
  *
  * Every source funnels through [complete], so a rule that applies to all of them, such as the
- * DCQL validation and, in the next step, the client identifier check, is written once.
+ * DCQL validation and the client identifier check, is written once.
  */
 class PresentationRequestResolver(
     private val policy: PresentationRequestPolicy = PresentationRequestPolicy.Default,
     private val sources: List<PresentationRequestSource> = defaultSources(),
     private val presentationDefinitionUriResolver: PresentationDefinitionUriResolver = PresentationDefinitionUriResolver(),
     private val clientMetadataUriResolver: ClientMetadataUriResolver = ClientMetadataUriResolver(),
+    private val clientIdentifierVerifier: ClientIdentifierVerifier = ClientIdentifierVerifier(),
 ) {
 
     suspend fun resolve(data: String?): PresentationRequestOutcome {
@@ -100,10 +102,11 @@ class PresentationRequestResolver(
         }
         // --- end legacy ---
 
-        // The client identifier check (prefix handling, request object signature) goes here next.
+        // Section 5.9: who the verifier is, by the rules of its client identifier prefix.
+        val verifier = clientIdentifierVerifier.verify(request, policy)
 
         Logger.d(TAG, "Resolved a $specVersion presentation request from ${source.name}")
-        return PresentationRequestOutcome.Resolved(request, specVersion, source.name)
+        return PresentationRequestOutcome.Resolved(request, specVersion, source.name, verifier)
     }
 
     private fun failure(e: PresentationRequestException): PresentationRequestOutcome.Failed {

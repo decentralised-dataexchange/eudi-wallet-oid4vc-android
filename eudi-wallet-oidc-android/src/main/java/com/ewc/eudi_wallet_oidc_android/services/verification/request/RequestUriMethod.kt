@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.request
 
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifierVerifier
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -85,7 +86,10 @@ internal object RequestUriMethod {
      * algorithms the verifier can use to encrypt the request object. Serialised as the JSON string
      * the form parameter expects.
      */
-    fun walletMetadata(encryptionKey: ECKey? = null): String {
+    fun walletMetadata(
+        encryptionKey: ECKey? = null,
+        clientIdPrefixes: List<String> = ClientIdentifierVerifier().supportedPrefixes(PresentationRequestPolicy.Default),
+    ): String {
         val es256 = JsonArray().apply { add("ES256") }
         val coseEs256 = JsonArray().apply { add(-7) }
         val formats = JsonObject().apply {
@@ -98,10 +102,9 @@ internal object RequestUriMethod {
                 add("deviceauth_alg_values", coseEs256)
             })
         }
-        val prefixes = JsonArray().apply {
-            listOf("x509_san_dns", "x509_hash", "verifier_attestation", "decentralized_identifier", "redirect_uri")
-                .forEach { add(it) }
-        }
+        // Derived from the client identifier registry, so the advertisement and the enforcement
+        // cannot drift apart.
+        val prefixes = JsonArray().apply { clientIdPrefixes.forEach { add(it) } }
         val responseModes = JsonArray().apply {
             listOf("direct_post", "direct_post.jwt").forEach { add(it) }
         }

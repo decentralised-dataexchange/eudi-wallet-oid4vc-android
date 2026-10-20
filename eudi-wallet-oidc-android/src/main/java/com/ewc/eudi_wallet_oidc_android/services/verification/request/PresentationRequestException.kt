@@ -70,6 +70,21 @@ sealed class PresentationRequestException(
             (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
     )
 
+    /**
+     * The request broke the rules of its client identifier prefix (OpenID4VP 1.0 section 5.9.3),
+     * so the verifier is not who the client_id says. Section 8.5 files this under invalid_request.
+     */
+    class ClientNotVerified(detail: String) : PresentationRequestException(
+        "The verifier could not be authenticated: $detail",
+        oauthError = INVALID_REQUEST,
+    )
+
+    /** Section 8.5: "The Wallet does not support the Client Identifier Prefix passed in the Authorization Request." */
+    class UnsupportedClientIdPrefix(prefix: String) : PresentationRequestException(
+        "The client identifier prefix '$prefix' is not supported",
+        oauthError = INVALID_REQUEST,
+    )
+
     /** A draft request arrived while [PresentationRequestPolicy.allowDraftRequests] is false. */
     class DraftNotAllowed : PresentationRequestException(
         "This presentation request uses a draft format that is not supported"

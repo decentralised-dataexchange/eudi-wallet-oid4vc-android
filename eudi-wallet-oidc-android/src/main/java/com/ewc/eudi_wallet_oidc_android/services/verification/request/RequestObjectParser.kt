@@ -3,8 +3,8 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.request
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
-import com.ewc.eudi_wallet_oidc_android.services.verification.ClientIdScheme
-import com.ewc.eudi_wallet_oidc_android.services.verification.clientIdSchemeHandling.ClientIdParser
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdPrefix
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifier
 import com.google.gson.Gson
 import com.nimbusds.jwt.JWTParser
 import com.nimbusds.jwt.PlainJWT
@@ -77,11 +77,7 @@ internal object RequestObjectParser {
         }
     }
 
-    /** True when the client id scheme, explicit or taken from the client_id prefix, is redirect_uri. */
-    private fun isRedirectUriScheme(request: PresentationRequest): Boolean {
-        val scheme = request.clientIdScheme?.takeIf { it.isNotBlank() }
-            ?.let { ClientIdScheme.fromScheme(it) }
-            ?: ClientIdParser.getClientIdScheme(request.clientId ?: "")
-        return scheme == ClientIdScheme.REDIRECT_URI
-    }
+    /** True when the client identifier prefix, or the draft client_id_scheme parameter, is redirect_uri. */
+    private fun isRedirectUriScheme(request: PresentationRequest): Boolean =
+        ClientIdentifier.parse(request.clientId ?: "", request.clientIdScheme).prefix == ClientIdPrefix.REDIRECT_URI
 }

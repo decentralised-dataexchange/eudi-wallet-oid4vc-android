@@ -34,7 +34,9 @@ class PresentationRequestResolverTest {
     private lateinit var server: MockWebServer
     private val responses = mutableMapOf<String, MockResponse>()
 
-    private val clientId = VerificationFixtures.CLIENT_ID
+    /** A redirect_uri client: the one prefix whose requests carry no signature to verify, so the request rows stay about requests. */
+    private val clientId = "redirect_uri:${VerificationFixtures.RESPONSE_URI}"
+    private val x509ClientId = VerificationFixtures.CLIENT_ID
     private val dcqlJson =
         """{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:1"]},"claims":[{"path":["family_name"]}]}]}"""
     private val pdJson =
@@ -197,14 +199,15 @@ class PresentationRequestResolverTest {
 
     @Test
     fun `1_9 an unsigned request object is refused unless the prefix is redirect_uri or the policy allows it`() {
-        serve("/request", unsignedRequestObject(), contentType = "application/oauth-authz-req+jwt")
-        val data = link("client_id" to clientId, "request_uri" to url("/request"))
+        serve("/request", unsignedRequestObject(x509ClientId), contentType = "application/oauth-authz-req+jwt")
+        val data = link("client_id" to x509ClientId, "request_uri" to url("/request"))
         assertEquals("Request validation failed", failed(resolve(data)).error.errorDescription)
-        resolved(resolve(data, PresentationRequestPolicy(allowUnsignedRequestObjects = true)))
+        // Unsigned objects allowed, but x509_san_dns still has nothing to verify against.
+        val allowed = failed(resolve(data, PresentationRequestPolicy(allowUnsignedRequestObjects = true)))
+        assertTrue(allowed.error.errorDescription!!.startsWith("The verifier could not be authenticated"))
 
-        val redirect = "redirect_uri:https://verifier.example/response"
-        serve("/request", unsignedRequestObject(redirect), contentType = "application/oauth-authz-req+jwt")
-        resolved(resolve(link("client_id" to redirect, "request_uri" to url("/request"))))
+        serve("/request", unsignedRequestObject(), contentType = "application/oauth-authz-req+jwt")
+        resolved(resolve(link("client_id" to clientId, "request_uri" to url("/request"))))
     }
 
     @Test
