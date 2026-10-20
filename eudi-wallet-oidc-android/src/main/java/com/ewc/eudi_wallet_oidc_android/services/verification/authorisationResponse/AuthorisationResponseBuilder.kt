@@ -16,6 +16,13 @@ import com.ewc.eudi_wallet_oidc_android.services.verification.presentationSubMis
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.JWTVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.MDocVpTokenBuilder
 import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.SDJWTVpTokenBuilder
+import com.ewc.eudi_wallet_oidc_android.services.verification.vpTokenBuilders.LegacyTransactionData
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.AuthenticationMethods
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.PresentationBuilder
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.PresentationInputs
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.legacy.PresentationSubmissionBuilder
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.nimbusds.jose.jwk.JWK
@@ -383,195 +390,44 @@ class AuthorisationResponseBuilder {
         amrInherenceFactor: String? = null,
         amrKnowledgeFactor: String? = null
     ): Triple<List<String>?, String?, PresentationSubmission?> {
-
-        val vpTokenList: MutableList<String> = mutableListOf()
+        var vpTokenList: List<String> = emptyList()
         var idToken: String? = null
         var presentationSubmission: PresentationSubmission? = null
-
         if (presentationRequest.responseType?.contains("vp_token") == true) {
+            val definition = processPresentationDefinition(presentationRequest.presentationDefinition)
+            val descriptors = definition.inputDescriptors.orEmpty()
 
-            val jwtList: MutableList<String> = mutableListOf()
-            val jwtKeyList: MutableList<JWK?> = mutableListOf()
-            val mdocList: MutableList<String> = mutableListOf()
-            val mdocKeyList: MutableList<JWK?> = mutableListOf()
-            val descriptorMap: ArrayList<DescriptorMap> = ArrayList()
-
-            val presentationDefinitionProcess: PresentationDefinition? =
-                processPresentationDefinition(presentationRequest.presentationDefinition)
-            credentialList?.let { credentials ->
-                val presentationDefinition =
-                    processPresentationDefinition(presentationRequest.presentationDefinition)
-
-                credentials.forEachIndexed { credentialIndex, credential ->
-                    val currentCredentialJwkList = jwkList?.getOrNull(credentialIndex)
-                    try {
-                        var claimsSet: JWTClaimsSet? = null
-                        if (presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)?.format?.containsKey(
-                                "mso_mdoc"
-                            ) != true &&
-                            presentationDefinition.format?.containsKey("mso_mdoc") != true
-                        ) {
-                            val jwt: JWT = JWTParser.parse(credential.getOrNull(0))
-                            claimsSet = jwt.jwtClaimsSet
-                        }
-
-                        // Mdoc
-
-                        if (presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)?.format?.contains(
-                                "mso_mdoc"
-                            ) == true ||
-                            presentationDefinition.format?.contains("mso_mdoc") == true
-                        ) {
-                            mdocList.add(credential.getOrNull(0)?:"")
-                            mdocKeyList.add(currentCredentialJwkList?.getOrNull(0) ?: subJwk)
-                            if (!vpTokenList.contains("mdoc")) {
-                                vpTokenList.add("mdoc")
-                            }
-
-                            val currentVpTokenIndex = vpTokenList.indexOf("mdoc")
-                            val descriptor = DescriptorMap(
-                                id = presentationDefinition.inputDescriptors?.getOrNull(
-                                    credentialIndex
-                                )?.id,
-                                path = "$[$currentVpTokenIndex]", // vpTokenList index
-                                format = "mso_mdoc"
-                            )
-                            descriptorMap.add(descriptor)
-
-
-                        }
-                        // sdjwt
-
-                        else if (claimsSet?.getStringClaim("vct") != null) {
-                            val inputDescriptors =
-                                presentationDefinition.inputDescriptors?.getOrNull(credentialIndex)
-                            val updatedCredentials = SDJWTVpTokenBuilder().buildV2(
-                                credentialList = credential,
-                                presentationRequest = presentationRequest,
-                                did = did,
-                                jwk = subJwk ,
-                                inputDescriptors = inputDescriptors,
-                                isScaFlow = isScaFlow,
-                                jwkList = currentCredentialJwkList,
-                                amrInherenceFactor = amrInherenceFactor,
-                                amrKnowledgeFactor = amrKnowledgeFactor
-                            )
-                            //NEW: Iterate through results (SD-JWT buildV2 returns a list)
-                            updatedCredentials.forEach { updatedCredential ->
-                           if (updatedCredential != null) {
-                                vpTokenList.add(updatedCredential)
-                                val currentVpTokenIndex = vpTokenList.lastIndex
-
-                                val descriptor = DescriptorMap(
-                                    id = presentationDefinition.inputDescriptors?.getOrNull(
-                                        credentialIndex
-                                    )?.id,
-                                    path = "$[$currentVpTokenIndex]", // vpTokenList index
-                                    format = presentationDefinition.inputDescriptors?.getOrNull(
-                                        credentialIndex
-                                    )?.format?.keys?.firstOrNull()
-                                        ?: presentationDefinition.format?.keys?.firstOrNull()
-                                        ?: "jwt_vp"
-                                )
-                                descriptorMap.add(descriptor)
-
-                                }
-                            }
-                        }
-                        //jwt
-
-                        else {
-                            jwtList.add(credential.getOrNull(0)?:"")
-                            jwtKeyList.add(currentCredentialJwkList?.getOrNull(0) ?: subJwk)
-                            if (!vpTokenList.contains("jwt")) {
-                                vpTokenList.add("jwt")
-                            }
-                            val currentVpTokenIndex = vpTokenList.indexOf("jwt")
-                            val currentJwtListIndex = jwtList.lastIndex
-
-                            val descriptor = DescriptorMap(
-                                id = presentationDefinition.inputDescriptors?.getOrNull(
-                                    credentialIndex
-                                )?.id,
-                                path = "$[$currentVpTokenIndex]", // vpTokenList index
-                                format = fetchFormat(presentationDefinition,credentialIndex),
-                                pathNested = PathNested(
-                                    id = presentationDefinition.inputDescriptors?.getOrNull(
-                                        credentialIndex
-                                    )?.id,
-                                    format = "jwt_vc",
-                                    path = "$[$currentVpTokenIndex].vp.verifiableCredential[$currentJwtListIndex]" // jwtList index
-                                )
-                            )
-                            descriptorMap.add(descriptor)
-                        }
-                    } catch (e: Exception) {
-                        Log.d("processTokenRequest:", "${e.message}")
-                    }
-                }
-                if (presentationRequest.dcqlQuery == null){
-                    presentationSubmission= PresentationSubmissionGenerator().generatePresentationSubmission(vpTokenList,descriptorMap,presentationDefinitionProcess)
-                }
-            }
-
-            if (jwtList.isNotEmpty()) {
-                if (jwtList.size > 1) {
-                val jwtSerialize = JWTVpTokenBuilder().build(
-                    credentialList = jwtList,
-                    presentationRequest = presentationRequest,
-                    did = did,
-                    jwk = subJwk
-                )
-                val jwtIndex = vpTokenList.indexOf("jwt")
-                if (jwtIndex != -1) {
-                    vpTokenList[jwtIndex] = jwtSerialize ?: ""
-                }
-                }else{
-                    val jwtSerializeList = JWTVpTokenBuilder().buildV2(
-                        credentialList = jwtList,
-                        presentationRequest = presentationRequest,
-                        did = did,
-                        jwk = subJwk,
-                        jwkList = jwtKeyList
+            // One selected credential per entry, named by its input descriptor; the groups and
+            // keys arrive aligned by position, which is the previous API's contract.
+            val selected = credentialList.orEmpty().flatMapIndexed { entryIndex, group ->
+                val entry = descriptors.getOrNull(entryIndex)
+                group.filter { it.isNotBlank() }.mapIndexed { credentialIndex, credential ->
+                    SelectedCredential(
+                        entryId = entry?.id.orEmpty(),
+                        credential = credential,
+                        key = jwkList?.getOrNull(entryIndex)?.getOrNull(credentialIndex) ?: subJwk,
                     )
-                    val jwtIndex = vpTokenList.indexOf("jwt")
-                    if (jwtIndex != -1) {
-                        vpTokenList.removeAt(jwtIndex)
-                        vpTokenList.addAll(jwtIndex, jwtSerializeList.filterNotNull())
-                    }
                 }
             }
-            if (mdocList.isNotEmpty()) {
-                val cborTokenList = MDocVpTokenBuilder().buildV2(
-                    credentialList = mdocList,
-                    presentationRequest = presentationRequest,
-                    did = did,
-                    jwk = subJwk,
-                    jwkList = mdocKeyList
-                )
-
-                // Replace "mdoc" with cborToken in vpTokenList if "mdoc" is present
-                val mdocIndex = vpTokenList.indexOf("mdoc")
-                if (mdocIndex != -1) {
-                    vpTokenList.removeAt(mdocIndex)
-                    vpTokenList.addAll(mdocIndex, cborTokenList.filterNotNull())
-                }
-
-            }
-
-        }
-
-        if (presentationRequest.responseType?.contains("id_token") == true) {
-            idToken = IdTokenGenerator().generateIdToken(
-                presentationRequest,
-                did,
-                subJwk
+            val inputs = PresentationInputs(
+                request = presentationRequest,
+                holder = WalletIdentity(did, subJwk),
+                transactionDataHashes = descriptors.associate { (it.id ?: "") to LegacyTransactionData.hashesFor(it, presentationRequest) },
+                strongCustomerAuthentication = isScaFlow || LegacyTransactionData.isStrongCustomerAuthentication(presentationRequest),
+                authentication = AuthenticationMethods(amrInherenceFactor, amrKnowledgeFactor),
+                encryptionKeyThumbprint = PresentationBuilder.encryptionKeyThumbprint(presentationRequest),
             )
+            val presentations = PresentationBuilder(lenient = true).build(selected, inputs)
+            vpTokenList = presentations.map { it.token }
+            if (presentationRequest.dcqlQuery == null) {
+                presentationSubmission = PresentationSubmissionBuilder().build(presentations, definition)
+            }
         }
-
+        if (presentationRequest.responseType?.contains("id_token") == true) {
+            idToken = IdTokenGenerator().generateIdToken(presentationRequest, did, subJwk)
+        }
         return Triple(vpTokenList, idToken, presentationSubmission)
     }
-
     private fun checkTransactionDataWithInputDescriptor(
         inputDescriptors: InputDescriptors?,
         transactionDataItem: String?

@@ -162,11 +162,20 @@ class PexResponseCharacterisationTest {
 
     @Test
     fun `defect - an SD-JWT whose key cannot sign is forwarded without a key binding JWT`() {
-        val okp = OctetKeyPairGenerator(Curve.Ed25519).generate()
+        // A public-only key: it cannot sign. (An EdDSA key used to be the example here; since leg 4
+        // it signs, see PresentationBuilderTest 4_4.)
+        val publicOnly = key().toPublicJWK()
         val credential = sdJwt()
-        val params = respond(pexRequest(sdJwtDescriptor("pid")), listOf(listOf(credential)), keys = listOf(listOf(okp)), subJwk = okp)
+        val params = respond(pexRequest(sdJwtDescriptor("pid")), listOf(listOf(credential)), keys = listOf(listOf(publicOnly)), subJwk = publicOnly)
 
         assertEquals("the bare credential goes out, KB-JWT silently missing", credential, params["vp_token"])
+    }
+
+    @Test
+    fun `an EdDSA holder key signs the key binding JWT`() {
+        val okp = OctetKeyPairGenerator(Curve.Ed25519).generate()
+        val params = respond(pexRequest(sdJwtDescriptor("pid")), listOf(listOf(sdJwt())), keys = listOf(listOf(okp)), subJwk = okp)
+        assertEquals("EdDSA", keyBindingJwt(params.getValue("vp_token")).header.algorithm.name)
     }
 
     @Test
