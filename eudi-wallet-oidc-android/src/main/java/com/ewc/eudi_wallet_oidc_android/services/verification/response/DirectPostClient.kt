@@ -25,12 +25,15 @@ class DirectPostClient {
                 when {
                     code == 200 -> {
                         val body = response.body()?.string()
-                        val redirect = try {
-                            JsonParser.parseString(body).asJsonObject.get("redirect_uri")?.takeIf { it.isJsonPrimitive }?.asString
+                        val json = try {
+                            JsonParser.parseString(body).asJsonObject
                         } catch (e: Exception) {
                             null
                         }
-                        PresentationOutcome.Accepted(redirectUri = redirect?.takeIf { it.isNotBlank() })
+                        fun field(name: String) = json?.get(name)?.takeIf { it.isJsonPrimitive }?.asString?.takeIf { it.isNotBlank() }
+                        // `code` is what an issuer's interactive authorization endpoint answers
+                        // a presentation with; a verifier's response URI sends `redirect_uri`.
+                        PresentationOutcome.Accepted(redirectUri = field("redirect_uri"), authorizationCode = field("code"))
                     }
                     code == 204 -> PresentationOutcome.Accepted()
                     code in 300..399 -> {

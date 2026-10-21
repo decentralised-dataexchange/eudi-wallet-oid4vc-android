@@ -82,6 +82,17 @@ class PresentationSubmitterTest {
     }
 
     @Test
+    fun `5_3 an interactive authorization code in the body is carried, and the adapter keeps it in the placeholder`() {
+        answer(200, """{"status":"ok","code":"auth-code-1"}""")
+        assertEquals("auth-code-1", (submit(request()) as PresentationOutcome.Accepted).authorizationCode)
+
+        answer(200, """{"status":"ok","code":"auth-code-2"}""")
+        @Suppress("DEPRECATION")
+        val legacy = runBlocking { VerificationService().processAndSendAuthorisationResponseV2(VerificationFixtures.DID, holderKey, request(), listOf(listOf(sdJwt)), null, null, false, null, null, null) }
+        assertEquals("https://www.example.com?code=auth-code-2", legacy.vpTokenResponse?.redirectUri)
+    }
+
+    @Test
     fun `5_4 a 204 is Accepted with nothing further`() {
         answer(204)
         assertEquals(PresentationOutcome.Accepted(), submit(request()))

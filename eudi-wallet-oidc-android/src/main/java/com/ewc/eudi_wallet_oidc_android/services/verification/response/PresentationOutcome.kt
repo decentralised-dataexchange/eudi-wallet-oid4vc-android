@@ -13,8 +13,15 @@ sealed class PresentationOutcome {
      *   "the Wallet is not required to perform any further steps".
      * @param location the `Location` of a 302 answer, which some verifiers send instead of the
      *   JSON body. Not in 1.0; kept for them.
+     * @param authorizationCode the `code` an issuer's interactive authorization endpoint returns
+     *   once the presentation it asked for is accepted; the wallet exchanges it at the token
+     *   endpoint to continue issuance.
      */
-    data class Accepted(val redirectUri: String? = null, val location: String? = null) : PresentationOutcome()
+    data class Accepted(
+        val redirectUri: String? = null,
+        val location: String? = null,
+        val authorizationCode: String? = null,
+    ) : PresentationOutcome()
 
     /**
      * The response is ready but the host delivers it: the Digital Credentials API modes, where

@@ -133,6 +133,9 @@ class VerificationService : VerificationServiceInterface {
                 vpTokenResponse = when {
                     outcome.redirectUri != null -> VPTokenResponse(redirectUri = outcome.redirectUri)
                     outcome.location != null -> VPTokenResponse(location = outcome.location)
+                    // The previous API carried an interactive authorization code in the
+                    // placeholder's query, where callers read it to continue issuance.
+                    outcome.authorizationCode != null -> VPTokenResponse(redirectUri = "https://www.example.com?code=${outcome.authorizationCode}")
                     // Callers of this entry point test the placeholder to mean "accepted, nowhere to go".
                     else -> VPTokenResponse(redirectUri = ACCEPTED_PLACEHOLDER)
                 }
