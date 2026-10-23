@@ -15,6 +15,9 @@ import com.google.gson.Gson
  */
 data class AuthorizationResponse(val parameters: Map<String, Any?>) {
 
+    /** True when there is neither a `vp_token` nor an `id_token` to send. */
+    val isEmpty: Boolean get() = "vp_token" !in parameters && "id_token" !in parameters
+
     /** The parameters as form fields: strings as they are, null as empty, anything else as JSON. */
     fun asFormFields(): Map<String, String> = parameters.mapValues { (_, value) ->
         when (value) {

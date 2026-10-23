@@ -122,6 +122,18 @@ class ClientIdentifierVerifierTest {
     }
 
     @Test
+    fun `the prefixed x509_san_uri form is stripped and the bare draft form is kept whole`() {
+        val prefixed = ClientIdentifier.parse("x509_san_uri:https://verifier.example/cb")
+        assertEquals(ClientIdPrefix.X509_SAN_URI, prefixed.prefix)
+        assertEquals("https://verifier.example/cb", prefixed.identifier)
+        assertEquals("x509_san_uri:https://verifier.example/cb", prefixed.original)
+
+        val bare = ClientIdentifier.parse("https://verifier.example/cb", legacyScheme = "x509_san_uri")
+        assertEquals(ClientIdPrefix.X509_SAN_URI, bare.prefix)
+        assertEquals("https://verifier.example/cb", bare.identifier)
+    }
+
+    @Test
     fun `no colon, an https URL and an unknown prefix are pre-registered clients`() {
         assertEquals(ClientIdPrefix.PRE_REGISTERED, ClientIdentifier.parse("example-client").prefix)
         val https = ClientIdentifier.parse("https://verifier.example")

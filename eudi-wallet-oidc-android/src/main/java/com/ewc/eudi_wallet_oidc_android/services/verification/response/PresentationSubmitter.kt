@@ -95,6 +95,7 @@ class PresentationSubmitter(
         }
         val idToken = if (request.responseType?.contains("id_token") == true) IdTokenGenerator().generateIdToken(request, identity.did, identity.jwk) else null
         val response = AuthorizationResponse.build(request, presentations, submission, idToken)
+        if (response.isEmpty) throw SubmissionException.NothingToSend()
         return encoder.encode(mode, response, request)
     }
 

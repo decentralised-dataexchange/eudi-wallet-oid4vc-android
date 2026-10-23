@@ -90,15 +90,11 @@ class PresentationRequestResolver(
             throw PresentationRequestException.DraftNotAllowed()
         }
 
-        // A presentation definition request with a response type the wallet cannot answer is
-        // refused now, before any URI is fetched or the user is asked anything. Without this the
-        // wallet would go on to send an empty response.
-        if (specVersion == PresentationRequestSpecVersion.Draft) {
-            request.responseType?.let { type ->
-                if (type !in SUPPORTED_RESPONSE_TYPES) {
-                    throw PresentationRequestException.UnsupportedResponseType(type)
-                }
-            }
+        // A presentation definition request with a response type the wallet cannot answer, or
+        // none, is refused now, before any URI is fetched or the user is asked anything. Without
+        // this the wallet would go on to send an empty response.
+        if (specVersion == PresentationRequestSpecVersion.Draft && request.responseType !in SUPPORTED_RESPONSE_TYPES) {
+            throw PresentationRequestException.UnsupportedResponseType(request.responseType)
         }
 
         // --- legacy, safe to delete as a block ---

@@ -198,7 +198,7 @@ class PexResponseCharacterisationTest {
     }
 
     @Test
-    fun `an unknown response type yields an empty map`() {
+    fun `an unknown response type leaves nothing to send`() {
         val params = respond(pexRequest(sdJwtDescriptor("pid"), responseType = "code"), listOf(listOf(sdJwt())))
         assertTrue(params.isEmpty())
     }

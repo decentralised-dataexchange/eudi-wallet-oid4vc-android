@@ -20,4 +20,11 @@ sealed class SubmissionException(message: String, val oauthError: String = "inva
         SubmissionException("The transaction data in the request is invalid: $detail", oauthError = "invalid_transaction_data")
 
     class EncryptionFailed(cause: Throwable?) : SubmissionException("The response could not be encrypted", cause = cause)
+
+    /**
+     * The response would carry neither a `vp_token` nor an `id_token`, as with a response type
+     * this SDK does not know. Refused rather than posting an empty response.
+     */
+    class NothingToSend :
+        SubmissionException("The request asks for nothing this wallet can send", oauthError = "unsupported_response_type")
 }

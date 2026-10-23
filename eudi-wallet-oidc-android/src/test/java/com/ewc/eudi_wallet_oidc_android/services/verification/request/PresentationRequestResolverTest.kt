@@ -127,7 +127,7 @@ class PresentationRequestResolverTest {
 
     @Test
     fun `1_3 a presentation_definition by value resolves as Draft and is refused by the strict policy`() {
-        val data = link("client_id" to clientId, "nonce" to "n1", "presentation_definition" to pdJson)
+        val data = link("client_id" to clientId, "nonce" to "n1", "response_type" to "vp_token", "presentation_definition" to pdJson)
         val outcome = resolved(resolve(data))
         assertEquals(PresentationRequestSpecVersion.Draft, outcome.specVersion)
         assertEquals(pdJson, outcome.request.presentationDefinition)
@@ -141,11 +141,11 @@ class PresentationRequestResolverTest {
     @Test
     fun `1_4 presentation_definition_uri is fetched and a failed fetch fails the request`() {
         serve("/pd", pdJson)
-        val ok = resolved(resolve(link("client_id" to clientId, "presentation_definition_uri" to url("/pd"))))
+        val ok = resolved(resolve(link("client_id" to clientId, "response_type" to "vp_token", "presentation_definition_uri" to url("/pd"))))
         assertEquals(PresentationRequestSpecVersion.Draft, ok.specVersion)
         assertEquals("pd1", (ok.request.presentationDefinition as PresentationDefinition).id)
 
-        val failure = failed(resolve(link("client_id" to clientId, "presentation_definition_uri" to url("/missing"))))
+        val failure = failed(resolve(link("client_id" to clientId, "response_type" to "vp_token", "presentation_definition_uri" to url("/missing"))))
         assertTrue(failure.error.errorDescription!!.startsWith("The presentation definition could not be fetched"))
     }
 
@@ -325,6 +325,25 @@ class PresentationRequestResolverTest {
         assertEquals("direct_post.jwt", outcome.request.responseMode)
     }
 
+    @Test
+    fun `1_21 a presentation definition request is refused unless its response type can be answered`() {
+        fun pex(vararg extra: Pair<String, String>) =
+            resolve(link("client_id" to clientId, "nonce" to "n1", "presentation_definition" to pdJson, *extra))
+
+        for (type in listOf("vp_token", "id_token", "vp_token id_token", "vp_token+id_token")) {
+            assertEquals(PresentationRequestSpecVersion.Draft, resolved(pex("response_type" to type)).specVersion)
+        }
+        val unknown = failed(pex("response_type" to "code"))
+        assertEquals(PresentationRequestException.UNSUPPORTED_RESPONSE_TYPE, unknown.error.errorCode)
+        assertEquals("The response type 'code' is not supported", unknown.error.errorDescription)
+        val missing = failed(pex())
+        assertEquals(PresentationRequestException.UNSUPPORTED_RESPONSE_TYPE, missing.error.errorCode)
+        assertEquals("The request names no response type", missing.error.errorDescription)
+
+        // 1.0 always answers with vp_token, so a DCQL request is not checked.
+        resolved(resolve(link("client_id" to clientId, "nonce" to "n1", "response_type" to "code", "dcql_query" to dcqlJson)))
+    }
+
     // ── registry and adapter ────────────────────────────────────────────────
 
     @Test
@@ -344,7 +363,7 @@ class PresentationRequestResolverTest {
         serve("/request", jwt, contentType = "application/oauth-authz-req+jwt")
         val links = listOf(
             link("client_id" to clientId, "nonce" to "n1", "dcql_query" to dcqlJson),
-            link("client_id" to clientId, "nonce" to "n1", "presentation_definition" to pdJson),
+            link("client_id" to clientId, "nonce" to "n1", "response_type" to "vp_token", "presentation_definition" to pdJson),
             link("client_id" to clientId, "request_uri" to url("/request")),
             link("openid4vp_request" to """{"client_id":"https://issuer.example","request":"$jwt"}""", "auth_session" to "s1"),
         )

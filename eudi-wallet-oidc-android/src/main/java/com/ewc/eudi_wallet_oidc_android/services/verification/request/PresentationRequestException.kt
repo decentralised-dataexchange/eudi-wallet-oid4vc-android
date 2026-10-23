@@ -86,12 +86,12 @@ sealed class PresentationRequestException(
     )
 
     /**
-     * A presentation definition request names a `response_type` the wallet cannot answer. The
+     * A presentation definition request names a `response_type` the wallet cannot answer, or none. The
      * request is refused when it is resolved, before the user is asked anything, rather than
      * answered later with an empty response.
      */
-    class UnsupportedResponseType(responseType: String) : PresentationRequestException(
-        "The response type '$responseType' is not supported",
+    class UnsupportedResponseType(responseType: String?) : PresentationRequestException(
+        if (responseType == null) "The request names no response type" else "The response type '$responseType' is not supported",
         oauthError = UNSUPPORTED_RESPONSE_TYPE,
     )
 

@@ -194,6 +194,17 @@ class PresentationSubmitterTest {
     }
 
     @Test
+    fun `5_13b a response type that leaves nothing to send is Refused and nothing is sent`() {
+        for (responseType in listOf("code", null)) {
+            val request = VerificationFixtures.pexRequest(VerificationFixtures.sdJwtDescriptor("pid"), responseType = responseType)
+                .copy(responseUri = server.url("/response").toString())
+            val refused = submit(request) as PresentationOutcome.Refused
+            assertEquals("unsupported_response_type", refused.error.errorCode)
+        }
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun `5_14 a proof that cannot be made is Refused and nothing is sent`() {
         val refused = submit(request(), listOf(SelectedCredential("pid", sdJwt, holderKey.toPublicJWK())).let { it }, attestation = null)
         // The holder key would be the fallback, so take it away too.
