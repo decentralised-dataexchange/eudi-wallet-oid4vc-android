@@ -103,6 +103,12 @@
                     android:text="@string/harness_step_notify" />
 
                 <Button
+                    android:id="@+id/btnResolvePresentation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/harness_step_presentation" />
+
+                <Button
                     android:id="@+id/btnRunAll"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

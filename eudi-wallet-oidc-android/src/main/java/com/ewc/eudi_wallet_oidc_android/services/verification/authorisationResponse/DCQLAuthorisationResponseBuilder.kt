@@ -16,6 +16,7 @@ import com.nimbusds.jose.jwk.JWK
 
 import org.json.JSONObject
 
+@Deprecated("The response is built by response.AuthorizationResponse and presentation.PresentationBuilder")
 class DCQLAuthorisationResponseBuilder {
 
     suspend fun buildResponse(

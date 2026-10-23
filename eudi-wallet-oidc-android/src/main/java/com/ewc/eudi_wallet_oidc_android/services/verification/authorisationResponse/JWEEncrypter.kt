@@ -3,6 +3,8 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResp
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.google.gson.Gson
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.ResponseEncrypter
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.SubmissionException
 import com.google.gson.JsonObject
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
@@ -27,77 +29,17 @@ class JWEEncrypter {
         private const val TAG = "JWEEncrypterLog"
     }
 
+    /** Previous API. Delegates to [ResponseEncrypter]; a response that cannot be encrypted still throws here. */
+    @Deprecated("Use response.ResponseEncrypter")
     suspend fun encrypt(
         payload: Map<String, Any?>,
         presentationRequest: PresentationRequest
-    ): String {
-        Log.d(TAG, "Starting encryption process...")
-        Log.d(TAG, "Payload: $payload")
-        Log.d(
-            TAG,
-            "PresentationRequest.clientMetaDetails: ${presentationRequest.clientMetaDetails}"
-        )
-
-        val gson = Gson()
-        val clientMetadataJson = gson.toJsonTree(presentationRequest.clientMetaDetails).asJsonObject
-
-        val jweAlgorithm = VerifierJwk.deriveJWEAlgorithmFromClientMetadata(clientMetadataJson)
-        val clientJwk = VerifierJwk.deriveVerifiersJWKFromClientMetadata(clientMetadataJson, jweAlgorithm)
-        Log.d(TAG, "Creating ECKey with kid: ${clientJwk?.keyID}")
-        Log.d(TAG, "ECKey created: $clientJwk")
-        val encSupported: List<String> = when {
-
-            clientMetadataJson.has("authorization_encrypted_response_enc") ->
-                listOf(
-                    clientMetadataJson
-                        .getAsJsonPrimitive("authorization_encrypted_response_enc")
-                        .asString
-                )
-
-            clientMetadataJson.has("encrypted_response_enc_values_supported") ->
-                clientMetadataJson
-                    .getAsJsonArray("encrypted_response_enc_values_supported")
-                    .map { it.asString }
-
-            clientMetadataJson.has("jwks") -> {
-                listOf("A128GCM")
-            }
-
-            else -> emptyList()
-        }
-
-        Log.d(TAG, "Verifier supported enc methods: $encSupported")
-
-        val encryptionMethod = selectEncryptionMethod(encSupported)
-
-        Log.d(TAG, "Selected encryption method: $encryptionMethod")
-
-        val builder = JWEHeader.Builder(jweAlgorithm, encryptionMethod)
-            .keyID(clientJwk?.keyID)
-
-        if (presentationRequest.nonce != null) {
-            builder.agreementPartyVInfo(Base64URL.encode(presentationRequest.nonce))
-        }
-
-        if (presentationRequest.clientId != null) {
-            builder.agreementPartyUInfo(Base64URL.encode(presentationRequest.clientId))
-        }
-
-        val header = builder.build()
-
-        Log.d(TAG, "JWEHeader created: $header")
-
-        val encryptedJWT = JWEObject(header, Payload(payload))
-        val encryptor = ECDHEncrypter(clientJwk)
-
-        Log.d(TAG, "Encrypting JWEObject...")
-        encryptedJWT.encrypt(encryptor)
-
-        val serialized = encryptedJWT.serialize()
-        Log.d(TAG, "Encryption complete. Serialized JWE: $serialized")
-
-        return serialized
+    ): String = try {
+        ResponseEncrypter().encrypt(payload, presentationRequest)
+    } catch (e: SubmissionException) {
+        throw IllegalArgumentException(e.message, e)
     }
+
     suspend fun encrypt(
         payload: Map<String, Any?>,
         jwk: JsonObject?

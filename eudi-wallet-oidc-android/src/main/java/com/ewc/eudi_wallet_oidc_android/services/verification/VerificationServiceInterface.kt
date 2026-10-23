@@ -5,6 +5,14 @@ import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.PresentationSubmission
 import com.ewc.eudi_wallet_oidc_android.models.WrappedPresentationRequest
 import com.ewc.eudi_wallet_oidc_android.models.WrappedVpTokenResponse
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.CredentialMatches
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.AuthenticationMethods
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.PresentationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
 import com.github.decentraliseddataexchange.presentationexchangesdk.PresentationExchange
 import com.github.decentraliseddataexchange.presentationexchangesdk.models.MatchedCredential
 import com.google.gson.Gson
@@ -15,17 +23,49 @@ import com.nimbusds.jose.jwk.JWK
 interface VerificationServiceInterface {
 
     /**
-     * Authorisation requests can be presented to the wallet by verifying in two ways:
-     * 1) by value
-     * 2) by reference as defined in JWT-Secured Authorization Request (JAR) via use of request_uri.
-     *      The custom URL scheme for authorisation requests is openid4vp://.
+     * Resolves scanned data (QR code or deep link) into a presentation request.
      *
-     * @param data - will accept the full data which is scanned from the QR code or deep link
+     * OpenID4VP 1.0 lets a verifier pass the request by value in the URI, as a `request` object,
+     * or behind a `request_uri` fetched by GET or by POST (section 5.10). Draft parameters such as
+     * `presentation_definition` are accepted while [policy] allows them.
      *
-     * @return PresentationRequest
+     * @param data the full data scanned from the QR code or received in the deep link
+     * @param policy what to accept; [PresentationRequestPolicy.Default] is the SDK's existing behaviour
      */
+    suspend fun resolveAuthorizationRequest(
+        data: String?,
+        policy: PresentationRequestPolicy = PresentationRequestPolicy.Default
+    ): PresentationRequestOutcome
+
+    /**
+     * Previous API. Returns null for blank input, otherwise the outcome of
+     * [resolveAuthorizationRequest] wrapped as a [WrappedPresentationRequest].
+     */
+    @Deprecated(
+        "Use resolveAuthorizationRequest, which returns a typed outcome instead of a nullable wrapper",
+        ReplaceWith("resolveAuthorizationRequest(data)")
+    )
     suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest?
 
+    /**
+     * Builds the presentations for [selected], encodes the Authorization Response for the
+     * request's response mode and sends it to the `response_uri` (OpenID4VP 1.0 section 8), or
+     * hands it back for the host to deliver over the Digital Credentials API.
+     *
+     * @param selected what the user picked, one per query entry, each with the key that binds it
+     * @param identity the wallet's identity; its key signs whatever has no key of its own
+     * @param attestation the wallet unit attestation to send as client attestation headers
+     * @param authentication the factors of a strong customer authentication flow; null otherwise
+     */
+    suspend fun submitPresentation(
+        request: PresentationRequest,
+        selected: List<SelectedCredential>,
+        identity: WalletIdentity,
+        attestation: WalletAttestation? = null,
+        authentication: AuthenticationMethods? = null
+    ): PresentationOutcome
+
+    @Deprecated("Use submitPresentation")
     suspend fun processAndSendAuthorisationResponse(
         did: String?,
         subJwk: JWK?,
@@ -36,6 +76,7 @@ interface VerificationServiceInterface {
         isScaFlow: Boolean = false
     ): WrappedVpTokenResponse?
 
+    @Deprecated("Use submitPresentation, which takes SelectedCredential values and returns a typed outcome")
     suspend fun processAndSendAuthorisationResponseV2(
         did: String?,
         subJwk: JWK?,
@@ -50,12 +91,26 @@ interface VerificationServiceInterface {
     ): WrappedVpTokenResponse?
 
     /**
-     * To filter the credential using the input descriptors
-     * @param credentialList - list of all issued credentials
-     * @param presentationDefinition
+     * Matches the wallet's credentials against the request's query (OpenID4VP 1.0 section 6, or
+     * a draft presentation definition): one entry per credential query with its candidates, and
+     * whether the required entries and credential sets can be satisfied at all.
      *
-     * @return list of credentials filtered using the presentation definition
+     * @param credentials every stored credential: SD-JWTs and JWTs in compact form, mdocs as
+     *   base64url IssuerSigned
      */
+    suspend fun matchCredentials(
+        request: PresentationRequest,
+        credentials: List<String?>
+    ): CredentialMatches
+
+    /**
+     * Previous API: the candidate credentials per query entry, in query order.
+     * @param queryItem a [com.ewc.eudi_wallet_oidc_android.models.DCQL] or a [PresentationDefinition]
+     */
+    @Deprecated(
+        "Use matchCredentials, which names each entry and reports whether the request can be satisfied",
+        ReplaceWith("matchCredentials(request, credentialList)")
+    )
     suspend fun filterCredentials(
         credentialList: List<String?>,
         queryItem: Any?

@@ -1,6 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification
 
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.RequestUriMethod
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.RequestUriMethod
 import com.google.gson.JsonParser
 import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm

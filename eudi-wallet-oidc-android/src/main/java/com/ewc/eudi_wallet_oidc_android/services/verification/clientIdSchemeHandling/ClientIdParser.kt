@@ -2,6 +2,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.clientIdSchemeHan
 
 import com.ewc.eudi_wallet_oidc_android.services.verification.ClientIdScheme
 
+@Deprecated("Use ClientIdentifier.parse", ReplaceWith("ClientIdentifier", "com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdentifier"))
 object ClientIdParser {
     /**
      * Parses the scheme part from a given client ID string.

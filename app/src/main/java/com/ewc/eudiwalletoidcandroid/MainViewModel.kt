@@ -25,12 +25,17 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.deferred.DeferredTransact
 import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationEvent
 import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationOutcome
 import com.ewc.eudi_wallet_oidc_android.services.notification.NotificationService
+import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
+import com.ewc.eudi_wallet_oidc_android.services.verification.VerificationService
+import com.ewc.eudi_wallet_oidc_android.services.verification.client.VerifierIdentity
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestSpecVersion
 import com.nimbusds.jose.jwk.ECKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * A harness for the SDK's issuance functions, one at a time.
+ * A harness for the SDK's issuance and presentation functions, one at a time.
  *
  * One scan feeds every step; each button invokes exactly one SDK function and prints its result
  * plus **which internal path answered** - the source and spec revision that claimed the offer,
@@ -69,6 +74,9 @@ class MainViewModel : ViewModel() {
 
     /** Set when step 6 or step 7 issues, so step 8 has something to acknowledge. */
     private var notificationId: String? = null
+
+    /** The presentation side: set by step P1, read by the matching and submission steps to come. */
+    private var presentationRequest: PresentationRequest? = null
     private var dpopNonce: String? = null
 
     /** The transaction code, when the offer asks for one. Bound two-way to the field in the UI. */
@@ -85,6 +93,7 @@ class MainViewModel : ViewModel() {
         sentRedirectUri = null
         token = null
         dpopNonce = null
+        presentationRequest = null
         clear()
         log("Scanned", data)
     }
@@ -659,6 +668,52 @@ class MainViewModel : ViewModel() {
             }
         }
 
+    /**
+     * Step P1 - `VerificationService.resolveAuthorizationRequest`.
+     *
+     * The first presentation step. Prints which source claimed the request (by value, request_uri,
+     * request object, interactive authorization request) and which spec revision it follows, which
+     * the resolved request alone does not say.
+     */
+    fun resolveAuthorizationRequest() = run(STEP_PRESENTATION) {
+        val data = scannedInput.value
+        if (data.isNullOrBlank() || data == NOTHING_SCANNED) {
+            log(STEP_PRESENTATION, "Scan a presentation request first")
+            return@run
+        }
+
+        when (val outcome = VerificationService().resolveAuthorizationRequest(data)) {
+            is PresentationRequestOutcome.Failed -> log(STEP_PRESENTATION, """
+                  outcome            FAILED
+                  error              ${outcome.error.errorCode ?: outcome.error.error ?: "-"}
+                  description        ${outcome.error.errorDescription ?: "no reason given"}
+            """.trimIndent())
+
+            is PresentationRequestOutcome.Resolved -> {
+                val request = outcome.request
+                presentationRequest = request
+                log(
+                    STEP_PRESENTATION,
+                    buildString {
+                        appendLine("  spec revision      ${specVersionOf(outcome.specVersion)}")
+                        appendLine("  source             ${outcome.source}")
+                        appendLine("  client_id          ${request.clientId ?: "-"}")
+                        appendLine("  client prefix      ${outcome.verifier.identifier.prefix.value ?: "none (pre-registered)"}")
+                        appendLine("  client verified    ${clientStatusOf(outcome.verifier)}")
+                        appendLine("  response_type      ${request.responseType ?: "-"}")
+                        appendLine("  response_mode      ${request.responseMode ?: "- (direct_post assumed)"}")
+                        appendLine("  response_uri       ${request.responseUri ?: request.redirectUri ?: "-"}")
+                        appendLine("  nonce              ${request.nonce ?: "-"}")
+                        appendLine("  query              ${queryOf(request)}")
+                        appendLine("  transaction_data   ${request.transactionDdata?.size ?: 0} entries")
+                        appendLine("  client_metadata    ${if (request.clientMetaDetails != null) "present" else "-"}")
+                        append("  request object     ${if (request.request != null) "yes" else "no"}")
+                    },
+                )
+            }
+        }
+    }
+
     private fun describe(subject: CredentialSubject) = when (subject) {
         is CredentialSubject.ByIdentifier -> "credential_identifier=${subject.credentialIdentifier}"
         is CredentialSubject.ByConfiguration -> "credential_configuration_id=${subject.credentialConfigurationId}"
@@ -697,6 +752,25 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    private fun specVersionOf(version: PresentationRequestSpecVersion) = when (version) {
+        PresentationRequestSpecVersion.V1_0 -> "OpenID4VP 1.0"
+        PresentationRequestSpecVersion.Draft -> "pre-1.0 draft (presentation_definition)"
+    }
+
+    private fun clientStatusOf(client: VerifierIdentity): String = buildString {
+        append(if (client.verified) "yes" else "no")
+        if (client.anchored) append(", anchored to a trust anchor")
+        client.reason?.let { append("  ($it)") }
+    }
+
+    private fun queryOf(request: PresentationRequest): String {
+        request.dcqlQuery?.credentials?.let { credentials ->
+            return "dcql_query  " + credentials.joinToString { "${it.id}:${it.format}" }
+        }
+        if (request.presentationDefinition != null) return "presentation_definition (draft)"
+        return "none (scope=${request.scope ?: "-"})"
+    }
+
     private fun specVersionOf(offer: CredentialOffer) = when (offer.version) {
         2 -> "OpenID4VCI 1.0"
         1 -> "pre-1.0 draft"
@@ -727,6 +801,7 @@ class MainViewModel : ViewModel() {
 
     private companion object {
         const val NOTHING_SCANNED = "Nothing scanned yet"
+        const val STEP_PRESENTATION = "P1 · Resolve presentation request"
 
         /** The harness polls a handful of times rather than forever; a wallet schedules instead. */
         const val MAX_DEFERRED_ATTEMPTS = 5

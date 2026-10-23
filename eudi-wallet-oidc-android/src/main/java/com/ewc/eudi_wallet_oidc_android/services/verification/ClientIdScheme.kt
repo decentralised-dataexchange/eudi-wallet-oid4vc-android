@@ -1,5 +1,6 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification
 
+@Deprecated("OpenID4VP 1.0 calls these prefixes; use ClientIdPrefix", ReplaceWith("ClientIdPrefix", "com.ewc.eudi_wallet_oidc_android.services.verification.client.ClientIdPrefix"))
 enum class ClientIdScheme(val scheme: String) {
     REDIRECT_URI("redirect_uri"),
     HTTPS("https"),

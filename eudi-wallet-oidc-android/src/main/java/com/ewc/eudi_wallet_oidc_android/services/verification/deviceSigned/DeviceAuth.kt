@@ -16,6 +16,7 @@ import java.security.PrivateKey
 import co.nstant.`in`.cbor.model.NegativeInteger
 import co.nstant.`in`.cbor.model.UnsignedInteger
 import com.ewc.eudi_wallet_oidc_android.services.verification.ResponseModes
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SessionTranscript
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ISO 18013-5 §9.1.5.1 — SessionTranscript (OpenID4VP / redirect flow)
@@ -55,46 +56,11 @@ fun buildSessionTranscriptForOpenID4VP(
     jwkThumbprint: ByteArray? = null,
     responseMode: String?
 ): Pair<CborArray, ByteArray> {
-    val TAG = "SessionTranscript"
-
-    // Step 1: HandoverInfo = [clientId, nonce, jwkThumbprint, responseUri]
-    val handoverInfo = if (responseUri != null) {
-        CborArray().apply {
-            add(UnicodeString(clientId))
-            add(UnicodeString(nonce))
-            add(if (jwkThumbprint != null) ByteString(jwkThumbprint) else SimpleValue.NULL)
-            add(UnicodeString(responseUri))
-        }
-    } else {
-        CborArray().apply {
-            add(UnicodeString(clientId))
-            add(UnicodeString(nonce))
-            add(if (jwkThumbprint != null) ByteString(jwkThumbprint) else SimpleValue.NULL)
-        }
-    }
-    val handoverInfoBytes = encodeCbor(handoverInfo)
-
-    // Step 2: Hash HandoverInfo
-    val handoverInfoHash = MessageDigest.getInstance("SHA-256").digest(handoverInfoBytes)
-
-    // Step 3: OpenID4VPHandover = ["OpenID4VPHandover", hash]
-    val handoverArray = CborArray().apply {
-        add(if (responseMode == ResponseModes.DC_API.value ||
-            responseMode == ResponseModes.DC_API_JWT.value) UnicodeString("OpenID4VPDCAPIHandover")
-                else UnicodeString("OpenID4VPHandover"))
-        add(ByteString(handoverInfoHash))
-    }
-
-    // Step 4: SessionTranscript = [null, null, OpenID4VPHandover]
-    val stArray = CborArray().apply {
-        add(SimpleValue.NULL) // DeviceEngagement
-        add(SimpleValue.NULL) // EReaderKey
-        add(handoverArray)    // Handover
-    }
-
-    val finalSessionTranscriptBytes = encodeCbor(stArray)
-
-    return Pair(stArray, finalSessionTranscriptBytes)
+    // Kept for its callers; the transcript itself lives in presentation.SessionTranscript.
+    val isDcApi = responseMode == ResponseModes.DC_API.value || responseMode == ResponseModes.DC_API_JWT.value
+    val transcript = if (isDcApi || responseUri == null) SessionTranscript.dcApi(clientId, nonce, jwkThumbprint)
+    else SessionTranscript.openId4Vp(clientId, nonce, responseUri, jwkThumbprint)
+    return Pair(transcript.array, transcript.bytes)
 }
 
 private fun encodeCbor(dataItem: co.nstant.`in`.cbor.model.DataItem): ByteArray {
@@ -134,36 +100,8 @@ fun buildSessionTranscriptForAnnexB18013_7(
     responseUri: String,
     mdocGeneratedNonce: String = clientId
 ): Pair<CborArray, ByteArray> {
-    fun cborArrayBytes(vararg values: String): ByteArray {
-        val baos = ByteArrayOutputStream()
-        val arr = CborArray()
-        values.forEach { arr.add(UnicodeString(it)) }
-        CborEncoder(baos).encode(arr)
-        return baos.toByteArray()
-    }
-
-    val sha256 = { data: ByteArray -> MessageDigest.getInstance("SHA-256").digest(data) }
-
-    // clientIdHash = SHA-256(CBOR([clientId, mdocGeneratedNonce]))
-    val clientIdHash = sha256(cborArrayBytes(clientId, mdocGeneratedNonce))
-    // responseUriHash = SHA-256(CBOR([responseUri, mdocGeneratedNonce]))
-    val responseUriHash = sha256(cborArrayBytes(responseUri, mdocGeneratedNonce))
-
-    // OID4VPHandover = [clientIdHash, responseUriHash, nonce]
-    val handover = CborArray().apply {
-        add(ByteString(clientIdHash))     // bstr
-        add(ByteString(responseUriHash))  // bstr
-        add(UnicodeString(nonce))         // tstr
-    }
-
-    // SessionTranscript = [null, null, OID4VPHandover]
-    val stArray = CborArray().apply {
-        add(SimpleValue.NULL) // DeviceEngagementBytes
-        add(SimpleValue.NULL) // EReaderKeyBytes
-        add(handover)
-    }
-
-    return Pair(stArray, encodeCbor(stArray))
+    val transcript = SessionTranscript.annexB(clientId, nonce, responseUri, mdocGeneratedNonce)
+    return Pair(transcript.array, transcript.bytes)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

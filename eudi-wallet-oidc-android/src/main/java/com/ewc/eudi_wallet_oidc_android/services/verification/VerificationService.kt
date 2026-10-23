@@ -14,14 +14,20 @@ import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.Wal
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByJWT
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequest
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByReferenceWithRequestUri
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestByValue
-import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationRequest.AuthorisationRequestForIAR
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.AuthenticationMethods
+import com.ewc.eudi_wallet_oidc_android.services.verification.presentation.SelectedCredential
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.LegacySelection
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.PresentationOutcome
+import com.ewc.eudi_wallet_oidc_android.services.verification.response.PresentationSubmitter
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletAttestation
+import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestPolicy
+import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.AuthorisationResponseHandler
-import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.DCQLCredentialFilter
-import com.ewc.eudi_wallet_oidc_android.services.verification.filterCredentials.PresentationDefinitionCredentialFilter
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.CredentialMatches
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.PresentationQuery
+import com.ewc.eudi_wallet_oidc_android.services.verification.match.PresentationQueryMatcher
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.nimbusds.jose.jwk.JWK
@@ -29,96 +35,48 @@ import org.json.JSONObject
 
 class VerificationService : VerificationServiceInterface {
 
+    private companion object {
+        const val TAG = "VerificationService"
+
+        /** What the previous API answered when the verifier accepted without a redirect. */
+        const val ACCEPTED_PLACEHOLDER = "https://www.example.com?code=1"
+    }
+
+    override suspend fun resolveAuthorizationRequest(
+        data: String?,
+        policy: PresentationRequestPolicy
+    ): PresentationRequestOutcome = PresentationRequestResolver(policy).resolve(data)
 
     /**
-     * Authorisation requests can be presented to the wallet by verifying in two ways:
-     * 1) by value
-     * 2) by reference as defined in JWT-Secured Authorization Request (JAR) via use of request_uri.
-     *      The custom URL scheme for authorisation requests is openid4vp://.
-     *
-     * @param data - will accept the full data which is scanned from the QR code or deep link
-     *
-     * @return PresentationRequest
+     * Kept for integrators on the previous API. Blank input still answers null, because callers
+     * test for that; every other outcome is wrapped as before.
      */
+    @Deprecated(
+        "Use resolveAuthorizationRequest, which returns a typed outcome instead of a nullable wrapper",
+        ReplaceWith("resolveAuthorizationRequest(data)")
+    )
     override suspend fun processAuthorisationRequest(data: String?): WrappedPresentationRequest? {
         if (data.isNullOrBlank())
             return null
 
-        val uri = Uri.parse(data)
-        val presentationDefinition = uri.getQueryParameter("presentation_definition")
-        val presentationDefinitionUri = uri.getQueryParameter("presentation_definition_uri")
-        val dcqlQuery = uri.getQueryParameter("dcql_query")
-        val iarOpenid4VPRequest = uri.getQueryParameter("openid4vp_request")
-
-        val requestUri = uri.getQueryParameter("request_uri")
-        val request = uri.getQueryParameter("request")
-        if (presentationDefinition != null || presentationDefinitionUri != null || dcqlQuery != null) {
-            return AuthorisationRequestByValue().processAuthorisationRequest(data)
-                .also { logDcql("by_value", it) }
-        } else if (!requestUri.isNullOrBlank()) {
-            return AuthorisationRequestByReferenceWithRequestUri().processAuthorisationRequest(data)
-                .also { logDcql("request_uri", it) }
-        } else if (request != null) {
-            return AuthorisationRequestByReferenceWithRequest().processAuthorisationRequest(data)
-                .also { logDcql("request", it) }
-        } else if (isValidJWT(data)) {
-            return AuthorisationRequestByJWT().processAuthorisationRequest(data)
-                .also { logDcql("jwt", it) }
-        } else if (iarOpenid4VPRequest != null){
-            return AuthorisationRequestForIAR().processAuthorisationRequest(data)
-                .also { logDcql("iar", it) }
-        } else {
-            return WrappedPresentationRequest(
-                presentationRequest = null,
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "Invalid Request"
-                )
-            )
+        return when (val outcome = resolveAuthorizationRequest(data)) {
+            is PresentationRequestOutcome.Resolved ->
+                WrappedPresentationRequest(presentationRequest = outcome.request)
+            is PresentationRequestOutcome.Failed ->
+                WrappedPresentationRequest(presentationRequest = null, errorResponse = outcome.error)
         }
     }
 
-    private fun logDcql(source: String, wrapped: WrappedPresentationRequest?) {
-        val pr = wrapped?.presentationRequest
-        Log.d("BankIdWatch", "DCQL source=$source clientId=${pr?.clientId} responseMode=${pr?.responseMode} nonce=${pr?.nonce} error=${wrapped?.errorResponse?.errorDescription}")
-        val dcql = pr?.dcqlQuery
-        if (dcql == null) {
-            Log.d("BankIdWatch", "DCQL query: NONE (presentationDefinition=${pr?.presentationDefinition != null})")
-        } else {
-            Gson().toJson(dcql).chunked(3000).forEachIndexed { i, chunk ->
-                Log.d("BankIdWatch", "DCQL query[$i]=$chunk")
-            }
-        }
-        // Transaction data (TS12): each entry is base64url-encoded JSON.
-        val txData = pr?.transactionDdata
-        if (txData.isNullOrEmpty()) {
-            Log.d("TxWatch", "transaction_data: NONE")
-        } else {
-            Log.d("TxWatch", "transaction_data: ${txData.size} entries")
-            txData.forEachIndexed { i, entry ->
-                entry.chunked(3000).forEachIndexed { j, chunk ->
-                    Log.d("TxWatch", "transaction_data[$i] raw[$j]=$chunk")
-                }
-                try {
-                    val decoded = String(
-                        android.util.Base64.decode(
-                            entry,
-                            android.util.Base64.URL_SAFE or
-                                android.util.Base64.NO_WRAP or
-                                android.util.Base64.NO_PADDING
-                        ),
-                        Charsets.UTF_8
-                    )
-                    decoded.chunked(3000).forEachIndexed { j, chunk ->
-                        Log.d("TxWatch", "transaction_data[$i] json[$j]=$chunk")
-                    }
-                } catch (e: Exception) {
-                    Log.e("TxWatch", "transaction_data[$i] decode failed: ${e.message}")
-                }
-            }
-        }
-    }
+    override suspend fun submitPresentation(
+        request: PresentationRequest,
+        selected: List<SelectedCredential>,
+        identity: WalletIdentity,
+        attestation: WalletAttestation?,
+        authentication: AuthenticationMethods?
+    ): PresentationOutcome = PresentationSubmitter().submit(request, selected, identity, attestation, authentication)
 
+    /** Previous API, single credential per entry. Adapts onto the V2 shape. */
+    @Deprecated("Use submitPresentation", ReplaceWith("submitPresentation(presentationRequest, selected, identity, attestation)"))
     override suspend fun processAndSendAuthorisationResponse(
         did: String?,
         subJwk: JWK?,
@@ -127,149 +85,26 @@ class VerificationService : VerificationServiceInterface {
         walletUnitAttestationJWT: String?,
         walletUnitProofOfPossession: String?,
         isScaFlow: Boolean
-    ): WrappedVpTokenResponse {
-        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
-        if (responseUri.isNullOrEmpty()) {
-            return WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "Unable to resolve host: $responseUri"
-                )
-            )
-        }
+    ): WrappedVpTokenResponse? = processAndSendAuthorisationResponseV2(
+        did = did,
+        subJwk = subJwk,
+        presentationRequest = presentationRequest,
+        credentialList = credentialList?.map { listOf(it) },
+        walletUnitAttestationJWT = walletUnitAttestationJWT,
+        walletUnitProofOfPossession = walletUnitProofOfPossession,
+        isScaFlow = isScaFlow,
+        jwkList = null,
+        // The V1 path always reported fingerprint as the inherence factor of a strong customer authentication.
+        amrInherenceFactor = if (isScaFlow) "fingerprint_device" else null,
+        amrKnowledgeFactor = null
+    )
 
-        val headers = WalletUnitAttestationHeaders.build(
-            walletUnitAttestationJWT,
-            walletUnitProofOfPossession
-        )
-
-        return try {
-            val params = AuthorisationResponseHandler().prepareAuthorisationResponse(
-                presentationRequest = presentationRequest,
-                credentialList = credentialList,
-                did = did,
-                jwk = subJwk,
-                isScaFlow = isScaFlow
-            )
-            Log.d("Params value:", params.toString())
-
-            val result = safeApiCallResponse {
-                ApiManager.api.getService()?.sendVPToken(
-                    presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params,
-                    headers
-                )
-            }
-
-            result.fold(
-                onSuccess = { response ->
-                    when {
-                        response.code() == 200 -> {
-                            val bodyString = response.body()?.string()
-                            val gson = Gson()
-                            try {
-                                val vpTokenResponse =
-                                    gson.fromJson(bodyString, VPTokenResponse::class.java)
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        redirectUri = vpTokenResponse.redirectUri ?: run {
-                                            val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
-                                            jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
-                                                ?: "https://www.example.com?code=1"
-                                        }
-                                    )
-                                )
-                            } catch (e: Exception) {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        redirectUri = "https://www.example.com?code=1"
-                                    )
-                                )
-                            }
-                        }
-
-                        response.code() == 204 -> {
-                            val urlValue = response.raw().request.url.toString()
-                            if (urlValue.isNullOrEmpty()) {
-                                WrappedVpTokenResponse(
-                                    errorResponse = ErrorResponse(
-                                        error = null,
-                                        errorDescription = "The response URL is missing or empty"
-                                    )
-                                )
-                            } else {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(location = urlValue)
-                                )
-                            }
-                        }
-
-                        response.code() == 302 || response.code() == 200 -> {
-                            val locationHeader = response.headers()["Location"]
-                            Log.d("BankIdWatch", "direct_post response code=${response.code()} Location=$locationHeader Set-Cookie=${response.headers().values("Set-Cookie")}")
-                            if (locationHeader?.contains("error=") == true) {
-                                val errorParams = locationHeader.substringAfter("?").split("&").associate {
-                                    val (key, value) = it.split("=")
-                                    key to value
-                                }
-                                WrappedVpTokenResponse(
-                                    errorResponse = ErrorResponse(
-                                        error = when (errorParams["error"]) {
-                                            "invalid_request" -> 400
-                                            else -> null
-                                        },
-                                        errorDescription = errorParams["error_description"]
-                                    )
-                                )
-                            } else {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        location = locationHeader ?: "https://www.example.com?code=1"
-                                    )
-                                )
-                            }
-                        }
-
-                        response.code() >= 400 -> {
-                            val errorBody = response.errorBody()?.string()
-                            val errorMessage =
-                                errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
-                            WrappedVpTokenResponse(
-                                errorResponse = ErrorResponse(
-                                    error = response.code(),
-                                    errorDescription = errorMessage
-                                )
-                            )
-                        }
-
-                        else -> WrappedVpTokenResponse(
-                            errorResponse = ErrorResponse(
-                                error = response.code(),
-                                errorDescription = "An unexpected error occurred"
-                            )
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    WrappedVpTokenResponse(
-                        errorResponse = ErrorResponse(
-                            error = null,
-                            errorDescription = error.message ?: "Network or API error occurred"
-                        )
-                    )
-                }
-            )
-        } catch (e: Exception) {
-            Log.d("milna", "processAndSendAuthorisationResponse: ${e.message}")
-            WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = e.message.toString()
-                )
-            )
-        }
-    }
-
+    /**
+     * Previous API. The credentials and keys arrive as lists aligned by position with the query;
+     * the outcome is wrapped the way callers of this entry point expect, placeholder redirect
+     * included.
+     */
+    @Deprecated("Use submitPresentation, which takes SelectedCredential values and returns a typed outcome")
     override suspend fun processAndSendAuthorisationResponseV2(
         did: String?,
         subJwk: JWK?,
@@ -282,180 +117,59 @@ class VerificationService : VerificationServiceInterface {
         amrInherenceFactor: String?,
         amrKnowledgeFactor: String?
     ): WrappedVpTokenResponse {
-        val responseUri = presentationRequest.responseUri ?: presentationRequest.redirectUri
-        if (responseUri.isNullOrEmpty()) {
-            return WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = "Unable to resolve host: $responseUri"
-                )
+        val selected = LegacySelection.from(presentationRequest, credentialList, jwkList, subJwk)
+            ?: return WrappedVpTokenResponse(
+                errorResponse = ErrorResponse(errorDescription = "The selected credentials do not match the query", errorCode = "invalid_request")
             )
-        }
-
-        val headers = WalletUnitAttestationHeaders.build(
-            walletUnitAttestationJWT,
-            walletUnitProofOfPossession
+        val outcome = PresentationSubmitter().submit(
+            request = presentationRequest,
+            selected = selected,
+            identity = WalletIdentity(did, subJwk),
+            attestation = WalletAttestation(walletUnitAttestationJWT, walletUnitProofOfPossession),
+            authentication = if (isScaFlow) AuthenticationMethods(amrInherenceFactor, amrKnowledgeFactor) else null,
         )
-
-        return try {
-            val params = AuthorisationResponseHandler().prepareAuthorisationResponseV2(
-                presentationRequest = presentationRequest,
-                credentialList = credentialList,
-                did = did,
-                jwk = subJwk,
-                isScaFlow = isScaFlow,
-                jwkList = jwkList,
-                amrInherenceFactor = amrInherenceFactor,
-                amrKnowledgeFactor = amrKnowledgeFactor
-            )
-            Log.d("Params value:", params.toString())
-
-            val result = safeApiCallResponse {
-                ApiManager.api.getService()?.sendVPToken(
-                    presentationRequest.responseUri ?: presentationRequest.redirectUri ?: "",
-                    params,
-                    headers
-                )
-            }
-
-            result.fold(
-                onSuccess = { response ->
-                    when {
-                        response.code() == 200 -> {
-                            val bodyString = response.body()?.string()
-                            val gson = Gson()
-                            try {
-                                val vpTokenResponse =
-                                    gson.fromJson(bodyString, VPTokenResponse::class.java)
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        redirectUri = vpTokenResponse.redirectUri ?: run {
-                                            val jsonObject = gson.fromJson(bodyString, JsonObject::class.java)
-                                            jsonObject?.get("code")?.asString?.let { "https://www.example.com?code=$it" }
-                                                ?: "https://www.example.com?code=1"
-                                        }
-                                    )
-                                )
-                            } catch (e: Exception) {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        redirectUri = "https://www.example.com?code=1"
-                                    )
-                                )
-                            }
-                        }
-
-                        response.code() == 204 -> {
-                            val urlValue = response.raw().request.url.toString()
-                            if (urlValue.isNullOrEmpty()) {
-                                WrappedVpTokenResponse(
-                                    errorResponse = ErrorResponse(
-                                        error = null,
-                                        errorDescription = "The response URL is missing or empty"
-                                    )
-                                )
-                            } else {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(location = urlValue)
-                                )
-                            }
-                        }
-
-                        response.code() == 302 || response.code() == 200 -> {
-                            val locationHeader = response.headers()["Location"]
-                            Log.d("BankIdWatch", "direct_post response code=${response.code()} Location=$locationHeader Set-Cookie=${response.headers().values("Set-Cookie")}")
-                            if (locationHeader?.contains("error=") == true) {
-                                val errorParams = locationHeader.substringAfter("?").split("&").associate {
-                                    val (key, value) = it.split("=")
-                                    key to value
-                                }
-                                WrappedVpTokenResponse(
-                                    errorResponse = ErrorResponse(
-                                        error = when (errorParams["error"]) {
-                                            "invalid_request" -> 400
-                                            else -> null
-                                        },
-                                        errorDescription = errorParams["error_description"]
-                                    )
-                                )
-                            } else {
-                                WrappedVpTokenResponse(
-                                    vpTokenResponse = VPTokenResponse(
-                                        location = locationHeader ?: "https://www.example.com?code=1"
-                                    )
-                                )
-                            }
-                        }
-
-                        response.code() >= 400 -> {
-                            val errorBody = response.errorBody()?.string()
-                            val errorMessage =
-                                errorBody?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred"
-                            WrappedVpTokenResponse(
-                                errorResponse = ErrorResponse(
-                                    error = response.code(),
-                                    errorDescription = errorMessage
-                                )
-                            )
-                        }
-
-                        else -> WrappedVpTokenResponse(
-                            errorResponse = ErrorResponse(
-                                error = response.code(),
-                                errorDescription = "An unexpected error occurred"
-                            )
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    WrappedVpTokenResponse(
-                        errorResponse = ErrorResponse(
-                            error = null,
-                            errorDescription = error.message ?: "Network or API error occurred"
-                        )
-                    )
+        return when (outcome) {
+            is PresentationOutcome.Accepted -> WrappedVpTokenResponse(
+                vpTokenResponse = when {
+                    outcome.redirectUri != null -> VPTokenResponse(redirectUri = outcome.redirectUri)
+                    outcome.location != null -> VPTokenResponse(location = outcome.location)
+                    // The previous API carried an interactive authorization code in the
+                    // placeholder's query, where callers read it to continue issuance.
+                    outcome.authorizationCode != null -> VPTokenResponse(redirectUri = "https://www.example.com?code=${outcome.authorizationCode}")
+                    // Callers of this entry point test the placeholder to mean "accepted, nowhere to go".
+                    else -> VPTokenResponse(redirectUri = ACCEPTED_PLACEHOLDER)
                 }
             )
-        } catch (e: Exception) {
-            Log.d("milna", "processAndSendAuthorisationResponseV2: ${e.message}")
-            WrappedVpTokenResponse(
-                errorResponse = ErrorResponse(
-                    error = null,
-                    errorDescription = e.message.toString()
-                )
-            )
+            is PresentationOutcome.Delivered -> WrappedVpTokenResponse(vpTokenResponse = VPTokenResponse(redirectUri = ACCEPTED_PLACEHOLDER))
+            is PresentationOutcome.Refused -> WrappedVpTokenResponse(errorResponse = outcome.error)
         }
     }
 
     /**
      * Returns all the list of credentials matching for all input descriptors
      */
+    override suspend fun matchCredentials(
+        request: PresentationRequest,
+        credentials: List<String?>
+    ): CredentialMatches = PresentationQueryMatcher().match(request, credentials)
+
+    /** Previous API: the candidates per query entry, in query order, with nothing about satisfiability. */
+    @Deprecated(
+        "Use matchCredentials, which names each entry and reports whether the request can be satisfied",
+        ReplaceWith("matchCredentials(request, allCredentialList)")
+    )
     override suspend fun filterCredentials(
         allCredentialList: List<String?>,
         queryItem: Any?
     ): List<List<String>> {
-        when (queryItem) {
-            is DCQL -> {
-                return DCQLCredentialFilter().filterCredentialsUsingDCQL(
-                    allCredentialList,
-                    queryItem
-                )
-            }
-
-            is PresentationDefinition -> {
-                return PresentationDefinitionCredentialFilter().filterCredentialsUsingPresentationDefinition(
-                    allCredentialList,
-                    queryItem
-                )
-            }
-
+        val query = when (queryItem) {
+            is DCQL -> PresentationQuery.Dcql(queryItem)
+            is PresentationDefinition -> PresentationQuery.PresentationDefinition(queryItem)
             else -> {
-                Log.e(
-                    "VerificationService",
-                    "Invalid query item type: ${queryItem?.javaClass?.name}"
-                )
+                Log.e(TAG, "Invalid query item type: ${queryItem?.javaClass?.name}")
                 return emptyList()
             }
         }
+        return PresentationQueryMatcher().match(query, allCredentialList).asLegacyLists()
     }
 }
