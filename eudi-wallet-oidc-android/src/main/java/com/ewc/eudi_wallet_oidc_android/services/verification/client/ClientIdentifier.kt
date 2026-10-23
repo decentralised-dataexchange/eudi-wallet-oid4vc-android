@@ -29,6 +29,12 @@ data class ClientIdentifier(
             if (fromHead != null && !fromHead.legacy) {
                 return ClientIdentifier(fromHead, clientId.substringAfter(':'), clientId)
             }
+            if (fromHead == ClientIdPrefix.X509_SAN_URI) {
+                // Prefixed form `x509_san_uri:<uri>`: the prefix is not part of the identifier, so
+                // strip it before the URI is matched against the certificate's URI SANs. The bare
+                // draft 20 form (`client_id=<uri>` plus client_id_scheme) is handled below.
+                return ClientIdentifier(fromHead, clientId.substringAfter(':'), clientId)
+            }
             ClientIdPrefix.fromValue(legacyScheme?.trim()?.takeIf { it.isNotEmpty() })?.let { scheme ->
                 return ClientIdentifier(scheme, clientId, clientId)
             }
