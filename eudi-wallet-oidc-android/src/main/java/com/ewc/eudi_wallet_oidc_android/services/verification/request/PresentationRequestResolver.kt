@@ -90,6 +90,17 @@ class PresentationRequestResolver(
             throw PresentationRequestException.DraftNotAllowed()
         }
 
+        // A presentation definition request with a response type the wallet cannot answer is
+        // refused now, before any URI is fetched or the user is asked anything. Without this the
+        // wallet would go on to send an empty response.
+        if (specVersion == PresentationRequestSpecVersion.Draft) {
+            request.responseType?.let { type ->
+                if (type !in SUPPORTED_RESPONSE_TYPES) {
+                    throw PresentationRequestException.UnsupportedResponseType(type)
+                }
+            }
+        }
+
         // --- legacy, safe to delete as a block ---
         if (request.presentationDefinition == null && !request.presentationDefinitionUri.isNullOrBlank()) {
             request.presentationDefinition = presentationDefinitionUriResolver.resolve(request.presentationDefinitionUri!!)
@@ -127,6 +138,13 @@ class PresentationRequestResolver(
 
     companion object {
         private const val TAG = "PresentationRequestResolver"
+
+        /**
+         * The response types `AuthorizationResponse.build` can answer for a presentation
+         * definition request.
+         */
+        private val SUPPORTED_RESPONSE_TYPES =
+            setOf("vp_token", "id_token", "vp_token id_token", "vp_token+id_token")
 
         /** Ordered: OpenID4VP 1.0 mechanisms first, the issuance profile extension last. */
         fun defaultSources(): List<PresentationRequestSource> = listOf(

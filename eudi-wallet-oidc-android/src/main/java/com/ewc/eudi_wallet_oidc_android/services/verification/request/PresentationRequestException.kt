@@ -85,6 +85,16 @@ sealed class PresentationRequestException(
         oauthError = INVALID_REQUEST,
     )
 
+    /**
+     * A presentation definition request names a `response_type` the wallet cannot answer. The
+     * request is refused when it is resolved, before the user is asked anything, rather than
+     * answered later with an empty response.
+     */
+    class UnsupportedResponseType(responseType: String) : PresentationRequestException(
+        "The response type '$responseType' is not supported",
+        oauthError = UNSUPPORTED_RESPONSE_TYPE,
+    )
+
     /** Section 8.5 `invalid_transaction_data`. */
     class InvalidTransactionData(detail: String?) : PresentationRequestException(
         "The transaction data in the request is invalid: $detail",
@@ -99,5 +109,8 @@ sealed class PresentationRequestException(
     companion object {
         /** RFC 6749 section 4.1.2.1. */
         const val INVALID_REQUEST = "invalid_request"
+
+        /** RFC 6749 section 4.1.2.1. */
+        const val UNSUPPORTED_RESPONSE_TYPE = "unsupported_response_type"
     }
 }
