@@ -58,6 +58,7 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.token.TokenRequestResolve
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.issue.offer.CredentialOfferResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.ProofService
 import com.ewc.eudi_wallet_oidc_android.services.verification.authorisationResponse.JWEEncrypter
@@ -450,7 +451,7 @@ class IssueService(
                     (response.code() >= 400) -> {
                         try {
                             WrappedCredentialResponse(
-                                errorResponse = ErrorHandler.processError(response.errorBody()?.string())
+                                errorResponse = ErrorHandler.processError(response.errorBody()?.string(), response.code(), HttpCall.requestId(response))
                             )
                         } catch (e: Exception) {
                             null
@@ -469,7 +470,7 @@ class IssueService(
             onFailure = { error ->
                 println("Error while processing credential request: ${error.message}")
                 WrappedCredentialResponse(
-                    errorResponse = ErrorHandler.processError(error.message)
+                    errorResponse = ErrorHandler.processFailure(error)
                 )
             }
         )

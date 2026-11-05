@@ -1,6 +1,7 @@
 package com.ewc.eudi_wallet_oidc_android.models
 
 import com.google.gson.annotations.SerializedName
+import org.json.JSONObject
 
 /**
  * A failure, as far as it could be understood.
@@ -32,7 +33,17 @@ data class ErrorResponse(
 
     /** The unparsed body, kept for diagnostics when none of the known shapes matched. */
     var raw: String? = null,
-)
+) {
+    /**
+     * The id the server gave this response, so a user can quote it and support can find the log
+     * entry. It is the `X-Request-Id` header when the failure path had the response, and otherwise
+     * the `requestId` of an RFC 9457 problem body, read from [raw]. Null when there is neither.
+     */
+    var requestId: String? = null
+        get() = field ?: raw?.let { body ->
+            runCatching { JSONObject(body).optString("requestId") }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
+}
 
 data class CredentialResponse(
     @SerializedName("format") var format: String? = null,

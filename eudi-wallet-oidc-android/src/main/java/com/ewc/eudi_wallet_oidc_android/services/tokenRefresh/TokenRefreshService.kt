@@ -3,8 +3,10 @@ package com.ewc.eudi_wallet_oidc_android.services.tokenRefresh
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 import com.nimbusds.jose.jwk.ECKey
 
@@ -98,15 +100,19 @@ class TokenRefreshService : TokenRefreshInterface {
             if (response.isSuccessful) {
                 tokenResponse = WrappedRefreshTokenResponse(tokenResponse = response.body())
             } else {
+                val body = try {
+                    response.errorBody()?.string()
+                } catch (e: Exception) {
+                    null
+                }
+                // Read through ErrorHandler so the user gets the server's sentence, not its JSON,
+                // and the status and request id are kept. `error` stays the status, as before.
                 tokenResponse = WrappedRefreshTokenResponse(
-                    errorResponse = ErrorResponse(
-                        error = response.code(),
-                        errorDescription = try {
-                            response.errorBody()?.string()
-                        } catch (e: Exception) {
-                            null
-                        } ?: response.message()
-                    )
+                    errorResponse = (body?.takeIf { it.isNotBlank() }
+                        ?.let { ErrorHandler.processError(it, response.code(), HttpCall.requestId(response)) }
+                        ?: ErrorResponse(errorDescription = response.message(), httpStatus = response.code())
+                            .apply { requestId = HttpCall.requestId(response) })
+                        .apply { error = response.code() }
                 )
             }
         }.onFailure { e ->

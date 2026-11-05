@@ -141,7 +141,7 @@ class TokenRequestResolver(
         val body = HttpCall.errorBody(response)
         // An empty body parses to an error with no code and no description, which would hide
         // the "refused (HTTP n)" fallback below. No body, no parsed error.
-        val error = body?.let { ErrorHandler.processError(it, response.code()) }
+        val error = body?.let { ErrorHandler.processError(it, response.code(), HttpCall.requestId(response)) }
 
         // RFC 9449 section 8: `400` + `use_dpop_nonce` + a `DPoP-Nonce` header. Exactly once.
         val demandsNonce = response.code() == 400 &&
@@ -158,7 +158,7 @@ class TokenRequestResolver(
                 error = -1,
                 errorDescription = "The token request was refused (HTTP ${response.code()})",
                 httpStatus = response.code(),
-            ),
+            ).apply { requestId = HttpCall.requestId(response) },
             dpopNonce = issuedNonce,
         )
     }

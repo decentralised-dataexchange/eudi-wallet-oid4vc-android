@@ -68,7 +68,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
             // Now actually reachable for a 4xx. The Date header is the server's own clock --
             // compare it with the proof-of-possession `iat` when a rejection looks like skew.
             Logger.e(TAG, "PAR rejected code=${response.code()} serverDate=${response.headers()["Date"]}")
-            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response), HttpCall.requestId(response))
         }
 
         val requestUri = response.body()?.requestUri.orEmpty()
@@ -129,7 +129,7 @@ internal class PushedAuthorizationRequestTransport : AuthorizationRequestTranspo
                 )
 
             response.code() >= 400 -> throw AuthorizationException.Rejected(
-                response.code(), HttpCall.errorBody(response)
+                response.code(), HttpCall.errorBody(response), HttpCall.requestId(response)
             )
 
             else -> throw AuthorizationException.Unusable(

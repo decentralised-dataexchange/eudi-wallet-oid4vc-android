@@ -1,165 +1,175 @@
 package com.ewc.eudi_wallet_oidc_android
 
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Replaces the former IssueServiceTest, which called IssueService.processError() -- that method
- * moved to ErrorHandler, so the old file no longer compiled and the whole test source set was dead.
+ * What the app is promised about an error: the server's `error` code (normalised), the HTTP
+ * status, the request id, and a description that has not changed.
  *
- * These assert ErrorHandler's *current* behaviour. Two of them differ from what the old test
- * expected: a null or unrecognised error now yields ErrorResponse(error = -1) rather than null.
- * Whether "no error" should be representable again is a separate question, tracked outside this PR.
+ * The parser uses org.json, so the unit-test classpath needs `testImplementation("org.json:json:20231013")`
+ * (the one inside android.jar is a stub that throws).
  */
 class ErrorHandlerTest {
 
-    @Test
-    fun `null error yields error minus one with null description`() {
-        val result = ErrorHandler.processError(null)
-        assertEquals(-1, result?.error)
-        assertNull(result?.errorDescription)
-    }
+    private val problem404 = """{"type":"about:blank","title":"Not Found","status":404,"detail":"Credential definition not found.","requestId":"54f37f12-7cc3-44ed-98dd-aaa06470919e"}"""
+
+    // ---- OAuth bodies (issuer, authorization server, direct_post, wallet provider)
 
     @Test
-    fun `plain non-json string is passed through as the description`() {
-        val result = ErrorHandler.processError("Invalid Proof JWT")
-        assertEquals(-1, result?.error)
-        assertEquals("Invalid Proof JWT", result?.errorDescription)
-    }
-
-    @Test
-    fun `issuer not matching client id is mapped to a dedicated error code`() {
-        val result =
-            ErrorHandler.processError("Invalid Proof JWT: iss doesn't match the expected client_id")
-        assertEquals(1, result?.error)
-        assertEquals("DID is invalid", result?.errorDescription)
-    }
-
-    @Test
-    fun `error description is preferred over error`() {
-        val result = ErrorHandler.processError(
-            """{"error":"Token request failed","error_description":"Invalid Client ID"}"""
+    fun oauthBodyKeepsCodeAndDescription() {
+        val e = ErrorHandler.processError(
+            """{"error":"credential_request_denied","error_description":"Credential request denied."}""", 400
         )
-        assertEquals(-1, result?.error)
-        assertEquals("Invalid Client ID", result?.errorDescription)
+        assertEquals("credential_request_denied", e?.errorCode)
+        assertEquals("Credential request denied.", e?.errorDescription)
+        assertEquals(400, e?.httpStatus)
     }
 
     @Test
-    fun `error alone is used when no description is present`() {
-        val result = ErrorHandler.processError("""{"error":"Invalid Client ID"}""")
-        assertEquals(-1, result?.error)
-        assertEquals("Invalid Client ID", result?.errorDescription)
+    fun codeAloneBecomesTheDescriptionToo() {
+        val e = ErrorHandler.processError("""{"error":"invalid_token"}""")
+        assertEquals("invalid_token", e?.errorCode)
+        assertEquals("invalid_token", e?.errorDescription)
     }
 
     @Test
-    fun `errors array uses the first message`() {
-        val result = ErrorHandler.processError(
-            """{"errors":[{"message":"Validation is failed"},{"message":"ignored"}]}"""
+    fun codeIsTrimmedAndLowerCased() {
+        val e = ErrorHandler.processError("""{"error":"  Invalid_Grant "}""")
+        assertEquals("invalid_grant", e?.errorCode)
+    }
+
+    @Test
+    fun whitespaceOnlyCodeIsNoCode() {
+        assertNull(ErrorHandler.processError("""{"error":"   "}""")?.errorCode)
+        assertNull(ErrorHandler.processError("""{"error":""}""")?.errorCode)
+    }
+
+    @Test
+    fun codeNestedUnderDetail() {
+        val e = ErrorHandler.processError("""{"detail":{"error":"invalid_nonce","error_description":"nonce expired"}}""")
+        assertEquals("invalid_nonce", e?.errorCode)
+        assertEquals("nonce expired", e?.errorDescription)
+    }
+
+    @Test
+    fun errorThatIsNotAStringIsNotACode() {
+        assertNull(ErrorHandler.processError("""{"error":{"nested":1}}""")?.errorCode)
+    }
+
+    @Test
+    fun oauthBodyHasNoRequestId() {
+        assertNull(ErrorHandler.processError("""{"error":"invalid_request"}""", 400)?.requestId)
+    }
+
+    // ---- RFC 9457 problems (api, wallet config and service routes)
+
+    @Test
+    fun problemGivesItsDetailTheStatusAndTheBodyRequestId() {
+        val e = ErrorHandler.processError(problem404, 404)
+        assertEquals("Credential definition not found.", e?.errorDescription)
+        assertEquals(404, e?.httpStatus)
+        assertEquals("54f37f12-7cc3-44ed-98dd-aaa06470919e", e?.requestId)
+        assertNull(e?.errorCode)
+    }
+
+    @Test
+    fun headerRequestIdWinsOverTheBody() {
+        val e = ErrorHandler.processError(problem404, 404, "from-header")
+        assertEquals("from-header", e?.requestId)
+    }
+
+    @Test
+    fun headerRequestIdIsKeptWhenTheBodyHasNone() {
+        val e = ErrorHandler.processError("""{"error":"server_error"}""", 500, "hdr-1")
+        assertEquals("hdr-1", e?.requestId)
+        assertEquals("server_error", e?.errorCode)
+    }
+
+    @Test
+    fun upgradeRequiredBodyWithTheLegacyMembersIsReadFromDetail() {
+        val e = ErrorHandler.processError(
+            """{"type":"about:blank","title":"Upgrade Required","status":426,"detail":"Please update to the latest version to continue using this service.","errorCode":426,"errorDescription":"Please update to the latest version to continue using this service."}""",
+            426
         )
-        assertEquals(-1, result?.error)
-        assertEquals("Validation is failed", result?.errorDescription)
+        assertEquals("Please update to the latest version to continue using this service.", e?.errorDescription)
+        assertEquals(426, e?.httpStatus)
+        assertNull(e?.errorCode) // the legacy numeric errorCode is not an OAuth code
     }
 
     @Test
-    fun `errors object is flattened to key and first value`() {
-        val result = ErrorHandler.processError("""{"errors":{"vct":["is required"]}}""")
-        assertEquals(-1, result?.error)
-        assertEquals("vct: is required", result?.errorDescription)
+    fun problemStatusInTheBodyIsUsedWhenTheCallerPassedNone() {
+        val e = ErrorHandler.processError(problem404)
+        assertEquals(404, e?.httpStatus)
     }
 
     @Test
-    fun `detail string is used as the description`() {
-        val result = ErrorHandler.processError("""{"detail":"VC token expired"}""")
-        assertEquals(-1, result?.error)
-        assertEquals("VC token expired", result?.errorDescription)
+    fun callerStatusWinsOverTheBodyStatus() {
+        assertEquals(503, ErrorHandler.processError(problem404, 503)?.httpStatus)
     }
 
     @Test
-    fun `nested detail prefers its error description`() {
-        val result = ErrorHandler.processError(
-            """{"detail":{"error":"invalid_grant","error_description":"PIN is wrong"}}"""
+    fun aStatusMemberOfAnOAuthBodyIsNotAProblemStatus() {
+        // no title or type: not an RFC 9457 problem
+        assertNull(ErrorHandler.processError("""{"error":"invalid_request","status":404}""")?.httpStatus)
+        // a status that is not a number in the HTTP range
+        assertNull(ErrorHandler.processError("""{"type":"about:blank","title":"x","status":"failed","detail":"d"}""")?.httpStatus)
+    }
+
+    @Test
+    fun everyStatusTheApiAndWalletCanAnswerReadsAsAProblem() {
+        // the statuses of the API team's census (2026-11-03), all the same body shape
+        for (status in listOf(400, 401, 403, 404, 405, 409, 413, 415, 426, 429, 500, 502, 503, 504, 507)) {
+            val body = """{"type":"about:blank","title":"t","status":$status,"detail":"A sentence.","requestId":"r-$status"}"""
+            val e = ErrorHandler.processError(body, status)
+            assertEquals("A sentence.", e?.errorDescription)
+            assertEquals(status, e?.httpStatus)
+            assertEquals("r-$status", e?.requestId)
+            assertNull(e?.errorCode)
+        }
+    }
+
+    @Test
+    fun credentialDefinitionRefusalWithItsExtraMembersReadsFromDetail() {
+        val e = ErrorHandler.processError(
+            """{"type":"about:blank","title":"Bad Request","status":400,"detail":"The credential definition is not valid.","requestId":"r","errorType":"validation","errorField":"name","errorMessages":["is required"]}""",
+            400
         )
-        assertEquals(-1, result?.error)
-        assertEquals("PIN is wrong", result?.errorDescription)
+        assertEquals("The credential definition is not valid.", e?.errorDescription)
+        assertNull(e?.errorCode)
     }
 
+    // ---- bodies that are not JSON
+
     @Test
-    fun `html body is replaced with a generic message`() {
-        val result = ErrorHandler.processError("<html><body>502 Bad Gateway</body></html>")
-        assertEquals(-1, result?.error)
-        assertEquals("Unexpected error, please try again.", result?.errorDescription)
+    fun htmlAndPlainTextHaveNoCode() {
+        assertNull(ErrorHandler.processError("<html>Bad gateway</html>", 502)?.errorCode)
+        assertNull(ErrorHandler.processError("No Internet or DNS issue")?.errorCode)
     }
 
-    /** A long plain-text body is shown cut down: a gateway's page is not a message for the user. */
-    @Test
-    fun `a long plain-text body is cut down for display`() {
-        val trace = "java.lang.IllegalStateException: " + "at frame\n".repeat(600)
-
-        val result = ErrorHandler.processError(trace, 502)
-
-        val description = result?.errorDescription.orEmpty()
-        assertEquals(true, description.startsWith("java.lang.IllegalStateException"))
-        assertEquals(true, description.endsWith("(truncated)"))
-        assertEquals(true, description.length < 600)
-    }
+    // ---- failures that SafeApiCall converted
 
     @Test
-    fun `message field is used when nothing more specific is present`() {
-        val result = ErrorHandler.processError("""{"message":"Something went wrong"}""")
-        assertEquals(-1, result?.error)
-        assertEquals("Something went wrong", result?.errorDescription)
-    }
-
-    @Test
-    fun `unrecognised json object is flattened to its first entry`() {
-        val result = ErrorHandler.processError("""{"reason":"unsupported_format"}""")
-        assertEquals(-1, result?.error)
-        assertEquals("reason: unsupported_format", result?.errorDescription)
-    }
-    // The code and the description are two different fields and both have to survive. Before this,
-    // `error_description` won and the code - the only machine-readable half - was discarded.
-
-    @Test
-    fun `oauth error code survives alongside the description`() {
-        val result = ErrorHandler.processError(
-            """{"error":"invalid_grant","error_description":"Issuer state is not found"}"""
+    fun failureCarriesTheStatusAndRequestIdOfTheResponse() {
+        val failure = HttpErrorException(
+            503, "id-503",
+            """{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"The wallet service is not available right now. Try again later."}"""
         )
-        assertEquals("invalid_grant", result?.errorCode)
-        assertEquals("Issuer state is not found", result?.errorDescription)
-        assertEquals(-1, result?.error)
+        val e = ErrorHandler.processFailure(failure)
+        assertEquals("The wallet service is not available right now. Try again later.", e?.errorDescription)
+        assertEquals(503, e?.httpStatus)
+        assertEquals("id-503", e?.requestId)
     }
 
     @Test
-    fun `nested detail also yields its error code`() {
-        val result = ErrorHandler.processError(
-            """{"detail":{"error":"invalid_grant","error_description":"PIN is wrong"}}"""
-        )
-        assertEquals("invalid_grant", result?.errorCode)
-        assertEquals("PIN is wrong", result?.errorDescription)
-    }
-
-    @Test
-    fun `a body with no code reports none rather than inventing one`() {
-        assertNull(ErrorHandler.processError("Invalid Proof JWT")?.errorCode)
-        assertNull(ErrorHandler.processError("""{"message":"Something went wrong"}""")?.errorCode)
-    }
-
-    @Test
-    fun `http status and the raw body are carried for diagnostics`() {
-        val body = """{"error":"use_dpop_nonce"}"""
-        val result = ErrorHandler.processError(body, httpStatus = 401)
-        assertEquals("use_dpop_nonce", result?.errorCode)
-        assertEquals(401, result?.httpStatus)
-        assertEquals(body, result?.raw)
-    }
-
-    @Test
-    fun `error_uri is kept when the server sends one`() {
-        val result = ErrorHandler.processError(
-            """{"error":"invalid_request","error_uri":"https://issuer.example/errors/1"}"""
-        )
-        assertEquals("https://issuer.example/errors/1", result?.errorUri)
+    fun aTransportFailureHasNoStatus() {
+        val e = ErrorHandler.processFailure(Exception("No Internet or DNS issue"))
+        assertNotNull(e)
+        assertNull(e?.httpStatus)
+        assertNull(e?.requestId)
     }
 }

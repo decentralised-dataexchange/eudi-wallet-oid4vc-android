@@ -68,7 +68,7 @@ internal class InAppAuthorizationRequestTransport(
         // "gave no redirect to continue with" below, which discarded the body and the OAuth error
         // code -- the same loss this rework removed from the PAR and interactive transports.
         if (response.code() >= 400) {
-            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response), HttpCall.requestId(response))
         }
 
         // Preserved: the redirect is read only from a 302, and its absence is an outcome rather

@@ -3,6 +3,7 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.ClientMetaDetails
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
@@ -44,7 +45,7 @@ class ClientMetadataUriResolver {
                 }
             },
             onFailure = { error ->
-                Logger.w(TAG, "client_metadata_uri could not be fetched: ${error.message}")
+                Logger.w(TAG, "client_metadata_uri could not be fetched: status=${(error as? HttpErrorException)?.status} requestId=${(error as? HttpErrorException)?.requestId} ${error.message}")
                 null
             },
         )

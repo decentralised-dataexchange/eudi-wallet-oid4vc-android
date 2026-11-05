@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.AuthorizationUri
 import com.ewc.eudi_wallet_oidc_android.services.issue.authorization.WalletIdentity
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -78,7 +79,7 @@ class IdTokenResponder {
                 if (response.code() == 302) response.headers()["Location"] else null
             },
             onFailure = { error ->
-                Logger.e(TAG, "ID token response failed: ${error.message}")
+                Logger.e(TAG, "ID token response failed: status=${(error as? HttpErrorException)?.status} requestId=${(error as? HttpErrorException)?.requestId} ${error.message}")
                 null
             },
         )

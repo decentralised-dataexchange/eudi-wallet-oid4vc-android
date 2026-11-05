@@ -2,7 +2,9 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.request.legacy
 
 import com.ewc.eudi_wallet_oidc_android.models.PresentationDefinition
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.isValidJWT
 import com.ewc.eudi_wallet_oidc_android.services.utils.JwtUtils.parseJWTForPayload
 import com.ewc.eudi_wallet_oidc_android.services.verification.request.PresentationRequestException
@@ -49,7 +51,14 @@ class PresentationDefinitionUriResolver {
                 )
             },
             onFailure = { error ->
-                throw PresentationRequestException.PresentationDefinitionUnavailable(error.message)
+                // The verifier's error body, read through ErrorHandler, with the status and id.
+                val parsed = ErrorHandler.processFailure(error)
+                throw PresentationRequestException.PresentationDefinitionUnavailable(
+                    detail = parsed?.errorDescription?.takeIf { it.isNotBlank() } ?: error.message,
+                    status = (error as? HttpErrorException)?.status,
+                    requestId = parsed?.requestId,
+                    oauthError = parsed?.errorCode,
+                )
             },
         )
     }

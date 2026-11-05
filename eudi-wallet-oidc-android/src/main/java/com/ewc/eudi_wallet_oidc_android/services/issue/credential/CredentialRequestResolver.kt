@@ -177,7 +177,7 @@ class CredentialRequestResolver(
         val body = HttpCall.errorBody(response)
         // No body, no parsed error: an empty body would otherwise parse to an error with neither
         // code nor description and hide the "refused (HTTP n)" fallback below.
-        val error = body?.let { ErrorHandler.processError(it, response.code()) }
+        val error = body?.let { ErrorHandler.processError(it, response.code(), HttpCall.requestId(response)) }
 
         // RFC 9449 section 8, the same challenge the token endpoint answers -- the credential
         // endpoint has never handled it.
@@ -223,7 +223,7 @@ class CredentialRequestResolver(
         Logger.e(TAG, "credential endpoint ${response.code()} body=${HttpCall.summary(body) ?: "<empty>"}")
         Logger.d(TAG, "the request it refused: ${Gson().toJson(request)}")
         return CredentialOutcome.Failed(
-            error ?: CredentialRequestException.Rejected(response.code(), body).toErrorResponse()
+            error ?: CredentialRequestException.Rejected(response.code(), body, HttpCall.requestId(response)).toErrorResponse()
         )
     }
 

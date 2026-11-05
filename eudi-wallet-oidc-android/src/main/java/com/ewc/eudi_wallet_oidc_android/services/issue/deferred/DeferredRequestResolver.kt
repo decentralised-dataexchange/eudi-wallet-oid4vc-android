@@ -134,7 +134,7 @@ class DeferredRequestResolver(
 
         val body = HttpCall.errorBody(response)
         // No body, no parsed error, so the "refused (HTTP n)" fallback below stays reachable.
-        val error = body?.let { ErrorHandler.processError(it, response.code()) }
+        val error = body?.let { ErrorHandler.processError(it, response.code(), HttpCall.requestId(response)) }
         val issuedDPoPNonce = response.headers()["DPoP-Nonce"]
 
         if (allowRetry && policy.retryOnDPoPNonce && dpopKey != null &&
@@ -160,7 +160,7 @@ class DeferredRequestResolver(
             "deferred endpoint ${response.code()} error=${error?.errorCode ?: error?.errorDescription}",
         )
         return CredentialOutcome.Failed(
-            error ?: CredentialRequestException.Rejected(response.code(), body).toErrorResponse()
+            error ?: CredentialRequestException.Rejected(response.code(), body, HttpCall.requestId(response)).toErrorResponse()
         )
     }
 

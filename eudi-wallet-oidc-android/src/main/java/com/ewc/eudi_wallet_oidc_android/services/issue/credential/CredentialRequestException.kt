@@ -13,6 +13,7 @@ internal sealed class CredentialRequestException(
     val errorCode: String? = null,
     val httpStatus: Int? = null,
     val raw: String? = null,
+    val requestId: String? = null,
 ) : Exception(message) {
 
     fun toErrorResponse(): ErrorResponse = ErrorResponse(
@@ -21,7 +22,7 @@ internal sealed class CredentialRequestException(
         errorCode = errorCode,
         httpStatus = httpStatus,
         raw = raw,
-    )
+    ).apply { this@apply.requestId = this@CredentialRequestException.requestId }
 
     /** The issuer metadata named no credential endpoint. */
     class NoCredentialEndpoint :
@@ -43,16 +44,17 @@ internal sealed class CredentialRequestException(
         errorCode: String?,
         status: Int?,
         raw: String?,
-    ) : CredentialRequestException(message, errorCode, status, raw) {
+        requestId: String?,
+    ) : CredentialRequestException(message, errorCode, status, raw, requestId) {
 
         companion object {
-            operator fun invoke(status: Int?, detail: String?): Rejected {
+            operator fun invoke(status: Int?, detail: String?, requestId: String? = null): Rejected {
                 val parsed = detail?.takeIf { it.isNotBlank() }
-                    ?.let { ErrorHandler.processError(it, status) }
+                    ?.let { ErrorHandler.processError(it, status, requestId) }
                 val message = parsed?.errorDescription?.takeIf { it.isNotBlank() }
                     ?: detail?.takeIf { it.isNotBlank() }
                     ?: "The credential request was refused${status?.let { " (HTTP $it)" }.orEmpty()}"
-                return Rejected(message, parsed?.errorCode, status, detail)
+                return Rejected(message, parsed?.errorCode, status, detail, requestId ?: parsed?.requestId)
             }
         }
     }

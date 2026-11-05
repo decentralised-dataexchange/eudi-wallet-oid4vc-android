@@ -30,7 +30,7 @@ class NonceService : NonceServiceInterface {
                         .getOrNull()
                 }
             } else {
-                Logger.e(TAG, "nonce endpoint ${response.code()} body=${HttpCall.summary(HttpCall.errorBody(response)) ?: "<empty>"}")
+                Logger.e(TAG, "nonce endpoint ${response.code()} requestId=${HttpCall.requestId(response)} body=${HttpCall.summary(HttpCall.errorBody(response)) ?: "<empty>"}")
             }
         }.onFailure { e ->
             Logger.e(TAG, "nonce request failed: ${e.message}")

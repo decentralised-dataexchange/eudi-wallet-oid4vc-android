@@ -2,6 +2,8 @@ package com.ewc.eudi_wallet_oidc_android.services.discovery.metadata
 
 import com.ewc.eudi_wallet_oidc_android.services.UriValidationFailed
 import com.ewc.eudi_wallet_oidc_android.services.UrlUtils
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.IOException
@@ -103,9 +105,16 @@ internal object MetadataFetcher {
             } catch (e: Exception) {
                 null
             }
+            val requestId = HttpCall.requestId(response)
+            // The body is read through ErrorHandler, so an RFC 9457 problem or an OAuth error
+            // gives its sentence instead of its JSON.
+            val sentence = detail?.let {
+                ErrorHandler.processError(it, response.code(), requestId)?.errorDescription?.takeIf { s -> s.isNotBlank() }
+            }
             throw DiscoveryException.FetchFailed(
                 response.code(),
-                detail ?: response.message().takeIf { it.isNotBlank() },
+                sentence ?: detail ?: response.message().takeIf { it.isNotBlank() },
+                requestId,
             )
         }
 

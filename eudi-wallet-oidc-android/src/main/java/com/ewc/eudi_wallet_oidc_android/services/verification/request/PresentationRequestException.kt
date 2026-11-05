@@ -14,6 +14,8 @@ sealed class PresentationRequestException(
     val code: Int? = null,
     val oauthError: String? = null,
     cause: Throwable? = null,
+    /** The `X-Request-Id` of the failing response, when the failure came from one. */
+    val requestId: String? = null,
 ) : Exception(message, cause) {
 
     /** The scanned data carried none of the parameters that identify a presentation request. */
@@ -26,8 +28,16 @@ sealed class PresentationRequestException(
     )
 
     /** The `request_uri` fetch failed; the detail is the verifier's error body when it sent one. */
-    class FetchFailed(detail: String?) : PresentationRequestException(
-        detail?.takeIf { it.isNotBlank() } ?: "Unable to process request"
+    class FetchFailed(
+        detail: String?,
+        status: Int? = null,
+        requestId: String? = null,
+        oauthError: String? = null,
+    ) : PresentationRequestException(
+        detail?.takeIf { it.isNotBlank() } ?: "Unable to process request",
+        code = status,
+        oauthError = oauthError,
+        requestId = requestId,
     )
 
     /** The `request_uri` answered with an empty body. */
@@ -65,9 +75,17 @@ sealed class PresentationRequestException(
     )
 
     /** A draft `presentation_definition_uri` could not be fetched or did not parse. */
-    class PresentationDefinitionUnavailable(detail: String?) : PresentationRequestException(
+    class PresentationDefinitionUnavailable(
+        detail: String?,
+        status: Int? = null,
+        requestId: String? = null,
+        oauthError: String? = null,
+    ) : PresentationRequestException(
         "The presentation definition could not be fetched" +
-            (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+            (detail?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""),
+        code = status,
+        oauthError = oauthError,
+        requestId = requestId,
     )
 
     /**

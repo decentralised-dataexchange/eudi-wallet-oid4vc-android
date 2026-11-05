@@ -68,7 +68,7 @@ object SafeApiCall {
                 }
 
                 val message = errorMsg ?: response.message() ?: "Unknown error"
-                Result.failure(Exception(message))
+                Result.failure(HttpErrorException(response.code(), HttpCall.requestId(response), message))
             }
         } catch (e: UnknownHostException) {
             Result.failure(Exception("No Internet or DNS issue"))

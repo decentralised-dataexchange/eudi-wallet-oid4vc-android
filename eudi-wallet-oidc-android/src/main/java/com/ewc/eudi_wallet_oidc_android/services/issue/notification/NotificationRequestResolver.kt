@@ -73,7 +73,7 @@ class NotificationRequestResolver {
 
             val body = HttpCall.errorBody(response)
             // No body, no parsed error, so the "refused (HTTP n)" fallback below stays reachable.
-            val error = body?.let { ErrorHandler.processError(it, response.code()) }
+            val error = body?.let { ErrorHandler.processError(it, response.code(), HttpCall.requestId(response)) }
             Logger.e(
                 TAG,
                 "notification refused ${response.code()} error=${error?.errorCode ?: error?.errorDescription}",
@@ -84,7 +84,7 @@ class NotificationRequestResolver {
                     errorDescription = "The notification was refused (HTTP ${response.code()})",
                     httpStatus = response.code(),
                     raw = body,
-                )
+                ).apply { requestId = HttpCall.requestId(response) }
             )
         } catch (e: Exception) {
             Logger.e(TAG, "notification failed: ${e.message}")
