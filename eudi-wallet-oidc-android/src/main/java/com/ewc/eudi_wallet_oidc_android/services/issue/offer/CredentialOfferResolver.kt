@@ -106,7 +106,12 @@ class CredentialOfferResolver(
         Logger.d(TAG, "Credential offer rejected: ${e.message}")
         return WrappedCredentialOffer(
             credentialOffer = null,
-            errorResponse = ErrorResponse(error = -1, errorDescription = e.message),
+            errorResponse = ErrorResponse(
+                error = -1,
+                errorDescription = e.message,
+                errorCode = (e as? CredentialOfferException.FetchFailed)?.errorCode,
+                httpStatus = (e as? CredentialOfferException.FetchFailed)?.httpStatus,
+            ).also { it.requestId = (e as? CredentialOfferException.FetchFailed)?.requestId },
         )
     }
 

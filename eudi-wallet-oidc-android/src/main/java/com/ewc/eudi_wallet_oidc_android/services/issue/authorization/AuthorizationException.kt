@@ -24,6 +24,7 @@ internal sealed class AuthorizationException(
     val errorCode: String? = null,
     val httpStatus: Int? = null,
     val raw: String? = null,
+    val requestId: String? = null,
 ) : Exception(message) {
 
     /** The same error shape the rest of the SDK returns. */
@@ -33,7 +34,7 @@ internal sealed class AuthorizationException(
         errorCode = errorCode,
         httpStatus = httpStatus,
         raw = raw,
-    )
+    ).apply { this@apply.requestId = this@AuthorizationException.requestId }
 
     /** The authorization server metadata named no authorization endpoint. */
     class NoAuthorizationEndpoint :
@@ -52,16 +53,17 @@ internal sealed class AuthorizationException(
         errorCode: String?,
         status: Int?,
         raw: String?,
-    ) : AuthorizationException(message, errorCode, status, raw) {
+        requestId: String?,
+    ) : AuthorizationException(message, errorCode, status, raw, requestId) {
 
         companion object {
-            operator fun invoke(status: Int?, detail: String?): Rejected {
+            operator fun invoke(status: Int?, detail: String?, requestId: String? = null): Rejected {
                 val parsed = detail?.takeIf { it.isNotBlank() }
-                    ?.let { ErrorHandler.processError(it, status) }
+                    ?.let { ErrorHandler.processError(it, status, requestId) }
                 val message = parsed?.errorDescription?.takeIf { it.isNotBlank() }
                     ?: HttpCall.summary(detail)?.takeIf { it.isNotBlank() }
                     ?: "The authorization request was refused${status?.let { " (HTTP $it)" }.orEmpty()}"
-                return Rejected(message, parsed?.errorCode, status, detail)
+                return Rejected(message, parsed?.errorCode, status, detail, requestId ?: parsed?.requestId)
             }
         }
     }

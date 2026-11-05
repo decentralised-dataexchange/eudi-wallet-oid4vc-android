@@ -167,7 +167,8 @@ class IssuerMetadataResolver(
             errorResponse = ErrorResponse(
                 error = error.httpStatus,
                 errorDescription = error.message,
-            ),
+                httpStatus = error.httpStatus,
+            ).also { it.requestId = error.requestId },
         ),
         diagnostics = diagnostics,
     )

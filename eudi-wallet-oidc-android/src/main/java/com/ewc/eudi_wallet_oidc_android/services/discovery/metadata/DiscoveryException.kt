@@ -11,6 +11,8 @@ sealed class DiscoveryException(
     /** HTTP status, when the failure came from a response. */
     val httpStatus: Int? = null,
     cause: Throwable? = null,
+    /** The `X-Request-Id` of the failing response, when the failure came from one. */
+    val requestId: String? = null,
 ) : Exception(message, cause) {
 
     /** No usable issuer or authorization server identifier was supplied. */
@@ -25,10 +27,11 @@ sealed class DiscoveryException(
         DiscoveryException("The issuer address is not valid: $identifier")
 
     /** The metadata request failed. */
-    class FetchFailed(status: Int?, detail: String?) : DiscoveryException(
+    class FetchFailed(status: Int?, detail: String?, requestId: String? = null) : DiscoveryException(
         detail?.takeIf { it.isNotBlank() }
             ?: "The issuer configuration could not be downloaded${status?.let { " (HTTP $it)" }.orEmpty()}",
         httpStatus = status,
+        requestId = requestId,
     )
 
     /** The response was not the expected media type. */

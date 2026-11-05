@@ -1,6 +1,8 @@
 package com.ewc.eudi_wallet_oidc_android.services.verification.request.source
 
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.models.PresentationRequest
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
@@ -55,7 +57,16 @@ class RemotePresentationRequestSource : PresentationRequestSource {
 
         val rawBody = result.fold(
             onSuccess = { response -> response.body()?.string() },
-            onFailure = { error -> throw PresentationRequestException.FetchFailed(error.message) },
+            onFailure = { error ->
+                // The verifier's error body, read through ErrorHandler, with the status and id.
+                val parsed = ErrorHandler.processFailure(error)
+                throw PresentationRequestException.FetchFailed(
+                    detail = parsed?.errorDescription?.takeIf { it.isNotBlank() } ?: error.message,
+                    status = (error as? HttpErrorException)?.status,
+                    requestId = parsed?.requestId,
+                    oauthError = parsed?.errorCode,
+                )
+            },
         )
 
         // A verifier given our key may answer with an encrypted request object; open it here so

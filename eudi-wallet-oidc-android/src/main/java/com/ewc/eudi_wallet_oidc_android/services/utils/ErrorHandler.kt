@@ -2,13 +2,21 @@ package com.ewc.eudi_wallet_oidc_android.services.utils
 
 import android.util.Log
 import com.ewc.eudi_wallet_oidc_android.models.ErrorCodes
+import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 object ErrorHandler {
+
+    /** [processError] for a failure that [HttpErrorException] may be carrying the status and request id of. */
+    internal fun processFailure(failure: Throwable?): ErrorResponse? {
+        val http = failure as? HttpErrorException
+        return processError(failure?.message, http?.status, http?.requestId)
+    }
 
     /**
      * Turns whatever a server sent into an [ErrorResponse].
@@ -19,10 +27,13 @@ object ErrorHandler {
      * being overwritten by it: a standard
      * `{"error":"invalid_grant","error_description":"Issuer state is not found"}` used to come back
      * as the sentence alone, leaving callers to string-match prose to decide what to do.
+     *
+     * @param responseRequestId the `X-Request-Id` header of the response, when the caller has it.
+     *   Without it the id is read from the body, where an RFC 9457 problem carries it too.
      */
     @Suppress("TooGenericExceptionCaught")
     @JvmOverloads
-    fun processError(err: String?, httpStatus: Int? = null): ErrorResponse? {
+    fun processError(err: String?, httpStatus: Int? = null, responseRequestId: String? = null): ErrorResponse? {
         // Known possibilities for error:
         // 1. "Validation is failed"
         // 2. {"error_description": "Validation is failed", }
@@ -36,12 +47,19 @@ object ErrorHandler {
         }
         // Read the code and the description as the two separate fields they are. `error` is only
         // a code when it is a string: some issuers nest the real pair under `detail`.
+        // Trimmed and lower-cased so a caller can compare it with ServerErrorCodes as it is.
         val oauthCode = jsonObject?.let { root ->
-            (root.opt("error") as? String)?.takeIf { it.isNotBlank() }
+            ((root.opt("error") as? String)?.takeIf { it.isNotBlank() }
                 ?: (root.opt("detail") as? JSONObject)
-                    ?.let { it.opt("error") as? String }?.takeIf { it.isNotBlank() }
+                    ?.let { it.opt("error") as? String }?.takeIf { it.isNotBlank() })
+                ?.trim()?.lowercase()
         }
         val errorUri = jsonObject?.let { (it.opt("error_uri") as? String)?.takeIf(String::isNotBlank) }
+        // An RFC 9457 problem repeats its HTTP status in the body. Used when the caller had no
+        // status to pass, so the app can still tell a 503 from a 404. An OAuth body has no title or
+        // type, so a `status` of some other meaning is not mistaken for one.
+        val problemStatus = jsonObject?.takeIf { it.has("title") || it.has("type") }
+            ?.let { it.opt("status") as? Int }?.takeIf { it in 100..599 }
 
         val result = try {
         val errorResponse = when {
@@ -149,10 +167,10 @@ object ErrorHandler {
         }
             errorResponse
     } catch (e: JSONException) {
-            Log.e("ErrorHandler", "Failed to parse error body: $err", e)
+            Log.e("ErrorHandler", "Failed to parse error body (${err?.length ?: 0} chars)", e)
             ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = HttpCall.summary(err))
     } catch (e: NoSuchElementException) {
-            Log.e("ErrorHandler", "Failed to parse error body: $err", e)
+            Log.e("ErrorHandler", "Failed to parse error body (${err?.length ?: 0} chars)", e)
             ErrorResponse(error = ErrorCodes.UNCLASSIFIED, errorDescription = err)
     } catch (e: Exception) {
             Log.e("ErrorHandler", "Error processing error response: ${e.message}")
@@ -163,8 +181,15 @@ object ErrorHandler {
         return result?.apply {
             errorCode = oauthCode
             this.errorUri = errorUri
-            this.httpStatus = httpStatus
+            this.httpStatus = httpStatus ?: problemStatus
             raw = err
+            responseRequestId?.let { requestId = it }
+        }?.also {
+            // One line per server error, with the id the user is asked to quote. The body stays
+            // out of the log: it can carry tokens or personal data.
+            if (it.httpStatus != null || it.requestId != null) {
+                Logger.w("ErrorHandler", "server error status=${it.httpStatus} code=${it.errorCode} requestId=${it.requestId}")
+            }
         }
     }
 }

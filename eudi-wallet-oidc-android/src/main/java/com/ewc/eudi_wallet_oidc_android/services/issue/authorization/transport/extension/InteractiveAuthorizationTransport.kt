@@ -75,7 +75,7 @@ internal class InteractiveAuthorizationTransport : AuthorizationRequestTransport
             )
         }
         if (!response.isSuccessful) {
-            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response))
+            throw AuthorizationException.Rejected(response.code(), HttpCall.errorBody(response), HttpCall.requestId(response))
         }
 
         val body = response.body()

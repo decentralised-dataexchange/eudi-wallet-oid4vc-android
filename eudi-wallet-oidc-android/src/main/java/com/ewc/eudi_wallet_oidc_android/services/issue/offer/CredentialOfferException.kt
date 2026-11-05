@@ -24,7 +24,12 @@ sealed class CredentialOfferException(
         CredentialOfferException("The credential offer link uses an unsupported scheme: $scheme")
 
     /** The `credential_offer_uri` fetch failed. */
-    class FetchFailed(val httpStatus: Int?, detail: String?) : CredentialOfferException(
+    class FetchFailed(
+        val httpStatus: Int?,
+        detail: String?,
+        val requestId: String? = null,
+        val errorCode: String? = null,
+    ) : CredentialOfferException(
         detail?.takeIf { it.isNotBlank() }
             ?: "The credential offer could not be downloaded${httpStatus?.let { " (HTTP $it)" }.orEmpty()}"
     )

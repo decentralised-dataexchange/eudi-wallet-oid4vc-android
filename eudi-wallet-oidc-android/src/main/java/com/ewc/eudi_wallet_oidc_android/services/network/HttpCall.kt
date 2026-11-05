@@ -62,6 +62,10 @@ internal object HttpCall {
         response.errorBody()?.string()?.takeIf { it.isNotBlank() }
     }.getOrNull()
 
+    /** The `X-Request-Id` the server put on [response], so a failure can be traced in its logs. */
+    fun requestId(response: Response<*>): String? =
+        response.headers()["X-Request-Id"]?.trim()?.takeIf { it.isNotEmpty() }
+
     /** [body] cut down for a log line or a user-facing fallback. Parse the whole body first. */
     fun summary(body: String?): String? = body?.let {
         if (it.length <= MAX_DETAIL) it else it.take(MAX_DETAIL) + TRUNCATED

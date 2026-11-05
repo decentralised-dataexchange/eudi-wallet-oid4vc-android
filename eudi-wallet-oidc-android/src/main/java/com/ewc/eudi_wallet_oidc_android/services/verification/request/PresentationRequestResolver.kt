@@ -129,6 +129,7 @@ class PresentationRequestResolver(
         Logger.d(TAG, "Presentation request rejected: ${e.message}")
         return PresentationRequestOutcome.Failed(
             ErrorResponse(error = e.code, errorDescription = e.message, errorCode = e.oauthError)
+                .also { it.requestId = e.requestId }
         )
     }
 

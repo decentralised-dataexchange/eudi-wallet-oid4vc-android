@@ -13,6 +13,7 @@ import com.ewc.eudi_wallet_oidc_android.services.issue.notification.Notification
 import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationOutcome
 import com.ewc.eudi_wallet_oidc_android.services.issue.notification.NotificationRequestResolver
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import com.nimbusds.jose.jwk.ECKey
@@ -112,7 +113,7 @@ class NotificationService : NotificationServiceInterface {
                     } catch (e: Exception) {
                         "Error reading errorBody: ${e.message}"
                     }
-                    Log.e("sendNotificationResponse", "Error: $errorBody")
+                    Log.e("sendNotificationResponse", "Error: status=${response.code()} requestId=${HttpCall.requestId(response)} $errorBody")
                 }
                 else -> {
                     Log.d("sendNotificationResponse", "Request successful: ${response.code()}")

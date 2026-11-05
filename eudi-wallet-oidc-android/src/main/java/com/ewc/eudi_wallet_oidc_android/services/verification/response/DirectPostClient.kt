@@ -3,6 +3,8 @@ package com.ewc.eudi_wallet_oidc_android.services.verification.response
 import com.ewc.eudi_wallet_oidc_android.logging.Logger
 import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpCall
+import com.ewc.eudi_wallet_oidc_android.services.network.HttpErrorException
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall.safeApiCallResponse
 import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.google.gson.JsonParser
@@ -42,19 +44,20 @@ class DirectPostClient {
                         if (error != null) PresentationOutcome.Refused(error.apply { httpStatus = code })
                         else PresentationOutcome.Accepted(location = location)
                     }
-                    else -> PresentationOutcome.Refused(refusal(response.errorBody()?.string(), code))
+                    else -> PresentationOutcome.Refused(refusal(response.errorBody()?.string(), code, HttpCall.requestId(response)))
                 }
             },
             onFailure = { error ->
                 // SafeApiCall turns a 4xx or 5xx into a failure carrying the body, and a transport
                 // failure into one carrying its message.
-                PresentationOutcome.Refused(refusal(error.message, null))
+                val http = error as? HttpErrorException
+                PresentationOutcome.Refused(refusal(error.message, http?.status, http?.requestId))
             },
         )
     }
 
-    private fun refusal(body: String?, status: Int?): ErrorResponse {
-        val parsed = ErrorHandler.processError(body, status)
+    private fun refusal(body: String?, status: Int?, responseRequestId: String? = null): ErrorResponse {
+        val parsed = ErrorHandler.processError(body, status, responseRequestId)
         return ErrorResponse(
             error = status ?: parsed?.error,
             errorDescription = parsed?.errorDescription?.takeIf { it.isNotBlank() } ?: body?.takeIf { it.isNotBlank() } ?: "The verifier did not accept the presentation",
@@ -62,7 +65,7 @@ class DirectPostClient {
             errorUri = parsed?.errorUri,
             httpStatus = status,
             raw = body,
-        ).also { Logger.d(TAG, "Presentation refused: ${it.errorCode ?: ""} ${it.errorDescription}") }
+        ).also { it.requestId = parsed?.requestId }.also { Logger.d(TAG, "Presentation refused: ${it.errorCode ?: ""} ${it.errorDescription}") }
     }
 
     /** The OAuth error carried in a redirect's query or fragment, when there is one. */
