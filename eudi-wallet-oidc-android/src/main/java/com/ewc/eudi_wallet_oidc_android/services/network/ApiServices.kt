@@ -239,6 +239,17 @@ interface ApiService {
     @GET
     suspend fun fetchNonce(@Url url: String): Response<ResponseBody>
 
+    /**
+     * A protocol 2 request of the wallet provider: the body goes as the given bytes (the
+     * Content-Digest and the signature cover them), with the given headers.
+     */
+    @POST
+    suspend fun sendSignedRequest(
+        @Url url: String,
+        @HeaderMap headers: Map<String, String>,
+        @Body body: RequestBody
+    ): Response<ResponseBody>
+
     @POST
     suspend fun sendKeyAttestationRequest(
         @Url url: String,

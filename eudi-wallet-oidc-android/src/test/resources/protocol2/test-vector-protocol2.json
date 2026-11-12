@@ -1,0 +1,84 @@
+{
+  "description": "Reference of the P2 request signature (RFC 9421, label wp, ecdsa-p256-sha256, raw r||s). Test keys only.",
+  "contract": "CONTRACT.md section 2",
+  "cases": [
+    {
+      "name": "android-status",
+      "note": "",
+      "requestKeyPublicJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "wjk5lWu3smO1SfHPxgj8utTSNaK8PjDOuJ0jQLLhgmM",
+        "y": "qyxVsnVhA9rn9HymNjOR_9IROFxBXOKU3ZAfboyUTGw"
+      },
+      "requestKeyPrivateScalarHex": "1f2e3d4c5b6a79881726354453627180a9b8c7d6e5f40312233445566778899a",
+      "keyid": "kc_AsxzLRyGU7LlE4hEDy7XLCYZvR77pyE6wfYqHbFI",
+      "method": "POST",
+      "targetUri": "https://wallet.example/organisation/6ae0f1a2-c4b6-4e7a-9c1d-2f3e4a5b6c7d/service/wallet-provider/wallet-unit/status",
+      "bodyUtf8": "{}",
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Digest": "sha-256=:RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=:",
+        "X-Wallet-Unit-Nonce": "n-7c1f0a9e2b",
+        "X-Wallet-Unit-Platform": "android",
+        "X-Wallet-App-Version": "2026.12.0",
+        "X-Wallet-App-Build": "490",
+        "X-Wallet-Device-Model": "samsung SM-A125F",
+        "Signature-Input": "wp=(\"@method\" \"@target-uri\" \"content-digest\" \"x-wallet-unit-nonce\" \"x-wallet-unit-platform\" \"x-wallet-app-version\" \"x-wallet-app-build\" \"x-wallet-device-model\");created=1794556800;keyid=\"kc_AsxzLRyGU7LlE4hEDy7XLCYZvR77pyE6wfYqHbFI\";alg=\"ecdsa-p256-sha256\"",
+        "Signature": "wp=:lvKXiPAJGyoy3C6/DKcOMtix2087G/IQXlABmU0K0qa60YGQ/aOYmk5vfQR18Gbn55uA+Zj8mGUtQFv7O6H2EQ==:"
+      },
+      "coveredComponents": [
+        "@method",
+        "@target-uri",
+        "content-digest",
+        "x-wallet-unit-nonce",
+        "x-wallet-unit-platform",
+        "x-wallet-app-version",
+        "x-wallet-app-build",
+        "x-wallet-device-model"
+      ],
+      "created": 1794556800,
+      "signatureBase": "\"@method\": POST\n\"@target-uri\": https://wallet.example/organisation/6ae0f1a2-c4b6-4e7a-9c1d-2f3e4a5b6c7d/service/wallet-provider/wallet-unit/status\n\"content-digest\": sha-256=:RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=:\n\"x-wallet-unit-nonce\": n-7c1f0a9e2b\n\"x-wallet-unit-platform\": android\n\"x-wallet-app-version\": 2026.12.0\n\"x-wallet-app-build\": 490\n\"x-wallet-device-model\": samsung SM-A125F\n\"@signature-params\": (\"@method\" \"@target-uri\" \"content-digest\" \"x-wallet-unit-nonce\" \"x-wallet-unit-platform\" \"x-wallet-app-version\" \"x-wallet-app-build\" \"x-wallet-device-model\");created=1794556800;keyid=\"kc_AsxzLRyGU7LlE4hEDy7XLCYZvR77pyE6wfYqHbFI\";alg=\"ecdsa-p256-sha256\"",
+      "signatureRawBase64": "lvKXiPAJGyoy3C6/DKcOMtix2087G/IQXlABmU0K0qa60YGQ/aOYmk5vfQR18Gbn55uA+Zj8mGUtQFv7O6H2EQ=="
+    },
+    {
+      "name": "ios-registration",
+      "note": "On a registration the iOS app also binds the request key in the App Attest client data (CONTRACT.md section 2).",
+      "requestKeyPublicJwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "faEG3Kbj1y_SVWKX59GgL_bVttCjiH9URC8OV_3Yp68",
+        "y": "HkRfkmW_Yr5N9dc9lD8Hh26QngNaG0YJfNEnRin-1Lk"
+      },
+      "requestKeyPrivateScalarHex": "2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70819",
+      "keyid": "kSc7spBQECERrP8dgtToyyh8P5b00fg070Nww3UI3DY",
+      "method": "POST",
+      "targetUri": "https://wallet.example/organisation/6ae0f1a2-c4b6-4e7a-9c1d-2f3e4a5b6c7d/service/wallet-provider/wallet-unit/request",
+      "bodyUtf8": "{\"client_assertion\":\"eyJ0ZXN0IjoxfQ.e30.c2ln\",\"client_assertion_type\":\"urn:ietf:params:oauth:client-assertion-type:jwt-bearer\"}",
+      "headers": {
+        "Content-Type": "application/json",
+        "Content-Digest": "sha-256=:ykEqvRQ01qDR7wg6+ivS/+ZlCp5Wv1/Ie5VT5DM+V4I=:",
+        "X-Wallet-Unit-Nonce": "n-91d2e3f4a5",
+        "X-Wallet-Unit-Platform": "ios",
+        "X-Wallet-App-Version": "2026.12.0",
+        "X-Wallet-App-Build": "7",
+        "X-Wallet-Unit-Request-Key": "eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImZhRUczS2JqMXlfU1ZXS1g1OUdnTF9iVnR0Q2ppSDlVUkM4T1ZfM1lwNjgiLCJ5IjoiSGtSZmttV19ZcjVOOWRjOWxEOEhoMjZRbmdOYUcwWUpmTkVuUmluLTFMayJ9",
+        "Signature-Input": "wp=(\"@method\" \"@target-uri\" \"content-digest\" \"x-wallet-unit-nonce\" \"x-wallet-unit-platform\" \"x-wallet-app-version\" \"x-wallet-app-build\" \"x-wallet-unit-request-key\");created=1794556860;keyid=\"kSc7spBQECERrP8dgtToyyh8P5b00fg070Nww3UI3DY\";alg=\"ecdsa-p256-sha256\"",
+        "Signature": "wp=:W9LNQ4GjEm2VIP33Bq/SfH5j+KXqsadMGO1gGuERgHCks5oYISSK32mm3TRWw5c6+qdp/3/bZwiMURWebRJi7A==:"
+      },
+      "coveredComponents": [
+        "@method",
+        "@target-uri",
+        "content-digest",
+        "x-wallet-unit-nonce",
+        "x-wallet-unit-platform",
+        "x-wallet-app-version",
+        "x-wallet-app-build",
+        "x-wallet-unit-request-key"
+      ],
+      "created": 1794556860,
+      "signatureBase": "\"@method\": POST\n\"@target-uri\": https://wallet.example/organisation/6ae0f1a2-c4b6-4e7a-9c1d-2f3e4a5b6c7d/service/wallet-provider/wallet-unit/request\n\"content-digest\": sha-256=:ykEqvRQ01qDR7wg6+ivS/+ZlCp5Wv1/Ie5VT5DM+V4I=:\n\"x-wallet-unit-nonce\": n-91d2e3f4a5\n\"x-wallet-unit-platform\": ios\n\"x-wallet-app-version\": 2026.12.0\n\"x-wallet-app-build\": 7\n\"x-wallet-unit-request-key\": eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImZhRUczS2JqMXlfU1ZXS1g1OUdnTF9iVnR0Q2ppSDlVUkM4T1ZfM1lwNjgiLCJ5IjoiSGtSZmttV19ZcjVOOWRjOWxEOEhoMjZRbmdOYUcwWUpmTkVuUmluLTFMayJ9\n\"@signature-params\": (\"@method\" \"@target-uri\" \"content-digest\" \"x-wallet-unit-nonce\" \"x-wallet-unit-platform\" \"x-wallet-app-version\" \"x-wallet-app-build\" \"x-wallet-unit-request-key\");created=1794556860;keyid=\"kSc7spBQECERrP8dgtToyyh8P5b00fg070Nww3UI3DY\";alg=\"ecdsa-p256-sha256\"",
+      "signatureRawBase64": "W9LNQ4GjEm2VIP33Bq/SfH5j+KXqsadMGO1gGuERgHCks5oYISSK32mm3TRWw5c6+qdp/3/bZwiMURWebRJi7A=="
+    }
+  ]
+}

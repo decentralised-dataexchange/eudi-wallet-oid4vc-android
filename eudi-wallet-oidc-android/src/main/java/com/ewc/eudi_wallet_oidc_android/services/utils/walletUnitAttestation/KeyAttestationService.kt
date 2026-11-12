@@ -19,6 +19,11 @@ import com.nimbusds.jwt.SignedJWT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Response
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.protocol2.RetrofitWalletProviderTransport
+import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.protocol2.WalletProviderClient
+import com.google.gson.GsonBuilder
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 /**
  * ARF TS3 v1.5 Key Attestation (KA).
@@ -40,6 +45,8 @@ object KeyAttestationService {
     private const val KA_WATCH = "KaWatch"
 
     private const val KEY_POP_TYP = "key-pop+jwt"
+
+    private val SIGNED_BODY_GSON = GsonBuilder().disableHtmlEscaping().create()
 
     /**
      * Reads proof_types_supported.(jwt|attestation).key_attestations_required for the
@@ -192,7 +199,8 @@ object KeyAttestationService {
         nonce: String,
         attestedKeys: List<JWK>,
         keyPops: List<String>? = null,
-        androidKeyAttestationX5c: List<String>? = null
+        androidKeyAttestationX5c: List<String>? = null,
+        walletProvider: WalletProviderClient? = null
     ): KeyAttestationResponse? = sendKeyAttestation(
         baseUrl = baseUrl,
         walletUnitAttestationJWT = walletUnitAttestationJWT,
@@ -201,7 +209,8 @@ object KeyAttestationService {
         attestedKeys = attestedKeys,
         keyPops = keyPops,
         chains = androidKeyAttestationX5c?.let { listOf(it) },
-        anyStatus = false
+        anyStatus = false,
+        walletProvider = walletProvider
     ).response
 
     /**
@@ -225,7 +234,8 @@ object KeyAttestationService {
         nonce: String,
         attestedKeys: List<JWK>,
         keyPops: List<String>? = null,
-        androidKeyAttestationX5cChains: List<List<String>>? = null
+        androidKeyAttestationX5cChains: List<List<String>>? = null,
+        walletProvider: WalletProviderClient? = null
     ): KeyAttestationOutcome = sendKeyAttestation(
         baseUrl = baseUrl,
         walletUnitAttestationJWT = walletUnitAttestationJWT,
@@ -234,7 +244,8 @@ object KeyAttestationService {
         attestedKeys = attestedKeys,
         keyPops = keyPops,
         chains = androidKeyAttestationX5cChains,
-        anyStatus = true
+        anyStatus = true,
+        walletProvider = walletProvider
     )
 
     private suspend fun sendKeyAttestation(
@@ -245,7 +256,8 @@ object KeyAttestationService {
         attestedKeys: List<JWK>,
         keyPops: List<String>?,
         chains: List<List<String>>?,
-        anyStatus: Boolean
+        anyStatus: Boolean,
+        walletProvider: WalletProviderClient?
     ): KeyAttestationOutcome = withContext(Dispatchers.IO) {
         val headers = WalletUnitAttestationHeaders.build(
             walletUnitAttestationJWT,
@@ -269,12 +281,37 @@ object KeyAttestationService {
             "POST $baseUrl/wallet-provider/key-attestation " +
                 "keys=${attestedKeys.size} evidence=$evidence nonce=$nonce"
         )
-        val call: suspend () -> Response<KeyAttestationResponse>? = {
-            ApiManager.api.getService()?.sendKeyAttestationRequest(
-                url = "$baseUrl/wallet-provider/key-attestation",
-                headers = headers,
-                body = body
-            )
+        val url = "$baseUrl/wallet-provider/key-attestation"
+        // Protocol 2: the same body as exact bytes, signed with the request key of the wallet
+        // unit. Without a registered request key the request of protocol 1 goes.
+        val bodyBytes = SIGNED_BODY_GSON.toJson(body).toByteArray(Charsets.UTF_8)
+        val signedHeaders = walletProvider?.keyAttestationHeaders(url, bodyBytes, nonce, attestedKeys)
+        if (walletProvider != null && signedHeaders == null) {
+            Log.d(KA_WATCH, "no registered request key: key attestation request of protocol 1")
+        }
+        val call: suspend () -> Response<KeyAttestationResponse>? = if (signedHeaders != null) {
+            {
+                val answer = RetrofitWalletProviderTransport.post(url, headers + signedHeaders, bodyBytes)
+                when {
+                    answer.code == null -> throw java.io.IOException(answer.failure ?: "no answer")
+                    answer.isSuccessful -> Response.success(
+                        answer.code,
+                        SIGNED_BODY_GSON.fromJson(answer.body ?: "{}", KeyAttestationResponse::class.java)
+                    )
+                    else -> Response.error(
+                        answer.code,
+                        (answer.body ?: "").toResponseBody("application/json".toMediaType())
+                    )
+                }
+            }
+        } else {
+            {
+                ApiManager.api.getService()?.sendKeyAttestationRequest(
+                    url = url,
+                    headers = headers,
+                    body = body
+                )
+            }
         }
         val result = if (anyStatus) {
             SafeApiCall.safeApiCallAnyStatus(call)
