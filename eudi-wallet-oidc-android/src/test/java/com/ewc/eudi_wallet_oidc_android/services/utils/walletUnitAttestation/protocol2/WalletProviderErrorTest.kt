@@ -18,6 +18,7 @@ class WalletProviderErrorTest {
             "individual_wallet_unit.device_refused" to WalletProviderErrorAction.DEVICE_REFUSED,
             "individual_wallet_unit.request_signature_invalid" to WalletProviderErrorAction.RETRY_WITH_NEW_NONCE,
             "individual_wallet_unit.protocol_1_refused" to WalletProviderErrorAction.NOTHING,
+            "individual_wallet_unit.registered_on_other_device" to WalletProviderErrorAction.START_NEW_UNIT,
             "individual_wallet_unit.nonce_refused" to WalletProviderErrorAction.GENERAL,
             "kit.nonce_rate_limited" to WalletProviderErrorAction.GENERAL
         )

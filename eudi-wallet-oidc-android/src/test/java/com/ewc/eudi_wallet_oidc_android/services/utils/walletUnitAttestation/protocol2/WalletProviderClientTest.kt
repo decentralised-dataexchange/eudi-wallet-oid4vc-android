@@ -196,6 +196,21 @@ class WalletProviderClientTest {
     }
 
     @Test
+    fun `registered_on_other_device is not retried and deletes the new device key`() = runBlocking {
+        val server = FakeServer(mutableListOf(
+            HttpAnswer(409, "{\"error\":\"invalid_request\",\"error_id\":\"individual_wallet_unit.registered_on_other_device\"}")
+        ))
+        val keys = FakeKeys()
+        val outcome = client(server, keys).requestWalletUnitAttestation(cnfKey, "did:key:z1")
+
+        assertEquals(1, server.sent.size)
+        assertEquals(WalletProviderErrorAction.START_NEW_UNIT, outcome.error!!.action)
+        assertEquals(409, outcome.error!!.httpCode)
+        assertNull(keys.registered)
+        assertEquals(listOf(keys.made.single().second), keys.discarded)
+    }
+
+    @Test
     fun `without a Play Integrity token no WIA request goes`() = runBlocking {
         val server = FakeServer(mutableListOf())
         val keys = FakeKeys()

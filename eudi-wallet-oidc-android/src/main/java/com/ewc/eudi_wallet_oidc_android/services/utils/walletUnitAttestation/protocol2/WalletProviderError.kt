@@ -22,6 +22,13 @@ enum class WalletProviderErrorAction {
     /** `request_signature_invalid`: send the request again once with a new nonce, then a general error. */
     RETRY_WITH_NEW_NONCE,
 
+    /**
+     * `registered_on_other_device` (409, CONTRACT.md section 8 "One unit, one device"): the
+     * client id is registered with another request key. The app starts a new wallet unit: a new
+     * client id (new WIA identity key), a new device key and a new registration.
+     */
+    START_NEW_UNIT,
+
     /** `protocol_1_refused`: only a protocol 1 app gets it; nothing to show. */
     NOTHING,
 
@@ -57,6 +64,7 @@ data class WalletProviderError(
         const val PROTOCOL_1_REFUSED = "individual_wallet_unit.protocol_1_refused"
         const val UNIT_NOT_FOUND = "individual_wallet_unit.unit_not_found"
         const val REVOCATION_CODE_EXISTS = "individual_wallet_unit.revocation_code_exists"
+        const val REGISTERED_ON_OTHER_DEVICE = "individual_wallet_unit.registered_on_other_device"
 
         fun actionFor(errorId: String?): WalletProviderErrorAction = when (errorId) {
             APP_VERSION_TOO_OLD, APP_UNKNOWN -> WalletProviderErrorAction.UPDATE_APP
@@ -64,6 +72,7 @@ data class WalletProviderError(
             SUSPENDED -> WalletProviderErrorAction.SUSPENDED
             DEVICE_REFUSED -> WalletProviderErrorAction.DEVICE_REFUSED
             REQUEST_SIGNATURE_INVALID -> WalletProviderErrorAction.RETRY_WITH_NEW_NONCE
+            REGISTERED_ON_OTHER_DEVICE -> WalletProviderErrorAction.START_NEW_UNIT
             PROTOCOL_1_REFUSED -> WalletProviderErrorAction.NOTHING
             else -> WalletProviderErrorAction.GENERAL
         }
