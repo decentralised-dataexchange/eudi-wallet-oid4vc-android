@@ -97,7 +97,7 @@ object Logger {
             override fun log(message: String) {
                 // Routed through the host's sink rather than straight to logcat, so network lines
                 // land wherever the SDK's own messages do.
-                sink.log(Log.DEBUG, "SdkNetwork", message, null)
+                sink.log(Log.DEBUG, "SdkNetwork", hidingSecrets(message), null)
             }
         }).apply {
             setLevel(HttpLoggingInterceptor.Level.NONE)
@@ -105,6 +105,23 @@ object Logger {
             redactHeader("DPoP")
             redactHeader("Cookie")
             redactHeader("Set-Cookie")
+            // Wallet provider protocol 2: device evidence and the request signature.
+            redactHeader("X-Wallet-Unit-Integrity-Token")
+            redactHeader("X-Wallet-Unit-Device-Signature")
+            redactHeader("Signature")
+            redactHeader("Signature-Input")
+        }
+
+    /**
+     * Body members that are never logged, at any level: the wallet provider shows the
+     * revocation code once, and the user alone must hold it.
+     */
+    internal val secretBodyMembers = listOf("revocationCode")
+
+    /** [text] with the value of every [secretBodyMembers] member replaced. */
+    internal fun hidingSecrets(text: String): String =
+        secretBodyMembers.fold(text) { result, member ->
+            result.replace(Regex("\"$member\"\\s*:\\s*\"[^\"]*\""), "\"$member\":\"<hidden>\"")
         }
 
     /**

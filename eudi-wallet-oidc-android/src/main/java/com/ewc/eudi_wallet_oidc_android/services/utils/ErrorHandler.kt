@@ -42,6 +42,9 @@ object ErrorHandler {
                     ?.let { it.opt("error") as? String }?.takeIf { it.isNotBlank() }
         }
         val errorUri = jsonObject?.let { (it.opt("error_uri") as? String)?.takeIf(String::isNotBlank) }
+        // The wallet provider adds its own id, and a reason for some refusals.
+        val errorId = jsonObject?.let { (it.opt("error_id") as? String)?.takeIf(String::isNotBlank) }
+        val reason = jsonObject?.let { (it.opt("reason") as? String)?.takeIf(String::isNotBlank) }
 
         val result = try {
         val errorResponse = when {
@@ -165,6 +168,8 @@ object ErrorHandler {
             this.errorUri = errorUri
             this.httpStatus = httpStatus
             raw = err
+            this.errorId = errorId
+            this.reason = reason
         }
     }
 }

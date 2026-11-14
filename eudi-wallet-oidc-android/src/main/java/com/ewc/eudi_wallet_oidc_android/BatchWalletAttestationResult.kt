@@ -29,7 +29,12 @@ data class BatchWalletAttestationResult(
     val credentialOffer: String?,
     val credentialIssuer: String?,
     /** Same size and order as the keys generated for the request. */
-    val units: List<BatchWalletUnit>
+    val units: List<BatchWalletUnit>,
+    /**
+     * Protocol 2: the revocation code of the wallet unit, when this batch
+     * registered it. Show it once; never store it in plain text and never log it.
+     */
+    val revocationCode: String? = null
 ) {
     val attestations: List<String>
         get() = units.mapNotNull { it.walletUnitAttestation }
@@ -47,7 +52,8 @@ data class BatchWalletAttestationResult(
             clientAssertion = unit.clientAssertion,
             did = unit.did,
             ecKey = unit.ecKey,
-            credentialIssuer = credentialIssuer
+            credentialIssuer = credentialIssuer,
+            revocationCode = revocationCode
         )
     }
 }
