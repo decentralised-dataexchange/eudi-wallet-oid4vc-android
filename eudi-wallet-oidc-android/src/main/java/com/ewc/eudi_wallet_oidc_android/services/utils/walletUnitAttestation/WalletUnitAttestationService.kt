@@ -81,7 +81,7 @@ object WalletUnitAttestationService {
             Logger.d(TAG, "Integrity token received (${token.length} chars)")
 
             // TEST: the device key (made at the registration) signs the request binding.
-            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, requireNotNull(nonce))
+            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, did, requireNotNull(nonce))
             val deviceSignature = deviceKey.sign(requireNotNull(requestHash))
 
             // Step 6: Generate client assertion
@@ -97,7 +97,7 @@ object WalletUnitAttestationService {
             )
             // TEST: a registration that succeeded keeps its key; one that failed drops it.
             if (walletUnitAttestationCredential?.walletUnitAttestation != null) {
-                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, deviceKey)
+                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, did, deviceKey)
             } else {
                 WalletUnitDeviceKeys.discard(deviceKey)
             }
@@ -177,7 +177,7 @@ object WalletUnitAttestationService {
             Logger.d(TAG, "Integrity token received (${token.length} chars), requestHash=$requestHash")
 
             // TEST: one device signature for all the keys, over the request binding.
-            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, requireNotNull(nonce))
+            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, sharedClientId, requireNotNull(nonce))
             val deviceSignature = deviceKey.sign(requireNotNull(binding))
 
             val assertions = keys.mapIndexed { i, key ->
@@ -197,7 +197,7 @@ object WalletUnitAttestationService {
             val returned = wire.body?.walletUnitAttestations ?: emptyList()
             // TEST: a registration that succeeded keeps its key; one that failed drops it.
             if (returned.isNotEmpty()) {
-                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, deviceKey)
+                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, sharedClientId, deviceKey)
             } else {
                 WalletUnitDeviceKeys.discard(deviceKey)
             }

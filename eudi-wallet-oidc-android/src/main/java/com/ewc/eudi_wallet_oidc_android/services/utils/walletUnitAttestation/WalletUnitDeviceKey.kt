@@ -42,21 +42,23 @@ internal class WalletUnitDeviceKey(
 }
 
 /**
- * TEST: where the device keys live. One registered key per wallet provider
- * (base URL), so switching providers registers a new unit there and keeps the
- * other provider's key. Only the alias is stored, in the SDK's preferences; a
- * missing Keystore entry (a new install, a restored backup) means a new
- * registration.
+ * TEST: where the device keys live. One registered key per wallet unit: the
+ * wallet provider (base URL) and the client_id. A new client_id (the app
+ * started a new wallet unit, for example after removing the account) is a new
+ * registration with a new key and its chain. Only the alias is stored, in the
+ * SDK's preferences; a missing Keystore entry (a new install, a restored
+ * backup) also means a new registration.
  */
 internal object WalletUnitDeviceKeys {
     private const val TAG = "WalletUnitDeviceKey"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val PREFS = "eudi_wallet_unit_device_key"
     private const val ALIAS_PREFIX = "wallet_unit_device_key_"
+    private const val SEPARATOR = " "
 
-    /** The registered key of [baseUrl], or a new key with [nonce] as attestation challenge. */
-    fun forRequest(context: Context, baseUrl: String, nonce: String): WalletUnitDeviceKey {
-        prefs(context).getString(baseUrl, null)?.let { alias ->
+    /** The registered key of the wallet unit, or a new key with [nonce] as attestation challenge. */
+    fun forRequest(context: Context, baseUrl: String, clientId: String, nonce: String): WalletUnitDeviceKey {
+        prefs(context).getString(unit(baseUrl, clientId), null)?.let { alias ->
             load(alias, isNew = false)?.let {
                 Logger.d(TAG, "Using the registered device key $alias")
                 return it
@@ -70,18 +72,31 @@ internal object WalletUnitDeviceKeys {
         return key
     }
 
-    /** The wallet provider registered [key]: it becomes the device key of [baseUrl]. */
-    fun markRegistered(context: Context, baseUrl: String, key: WalletUnitDeviceKey) {
-        val previous = prefs(context).getString(baseUrl, null)
-        prefs(context).edit().putString(baseUrl, key.alias).apply()
-        if (previous != null && previous != key.alias) deleteEntry(previous)
-        Logger.d(TAG, "Device key ${key.alias} registered for $baseUrl")
+    /**
+     * The wallet provider registered [key]: it becomes the device key of the
+     * wallet unit. The keys of earlier wallet units at [baseUrl] are deleted.
+     */
+    fun markRegistered(context: Context, baseUrl: String, clientId: String, key: WalletUnitDeviceKey) {
+        val prefs = prefs(context)
+        val current = unit(baseUrl, clientId)
+        val editor = prefs.edit()
+        prefs.all.forEach { (name, alias) ->
+            // Earlier units of this provider, and the entry of the old one-key-per-provider shape.
+            if (name != current && (name == baseUrl || name.startsWith("$baseUrl$SEPARATOR"))) {
+                (alias as? String)?.takeIf { it != key.alias }?.let { deleteEntry(it) }
+                editor.remove(name)
+            }
+        }
+        editor.putString(current, key.alias).apply()
+        Logger.d(TAG, "Device key ${key.alias} registered for $clientId at $baseUrl")
     }
 
     /** Deletes a key made for a registration that did not succeed. */
     fun discard(key: WalletUnitDeviceKey) {
         if (key.isNew) deleteEntry(key.alias)
     }
+
+    private fun unit(baseUrl: String, clientId: String) = "$baseUrl$SEPARATOR$clientId"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
