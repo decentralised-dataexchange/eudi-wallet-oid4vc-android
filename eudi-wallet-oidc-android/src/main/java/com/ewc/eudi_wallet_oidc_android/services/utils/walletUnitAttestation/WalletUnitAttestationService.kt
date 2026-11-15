@@ -17,6 +17,7 @@ import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
 import com.ewc.eudi_wallet_oidc_android.services.utils.generateHash
 import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityTokenRequest
 import com.google.android.play.core.integrity.StandardIntegrityManager
 import com.google.gson.Gson
 import com.nimbusds.jose.JOSEObjectType
@@ -64,19 +65,24 @@ object WalletUnitAttestationService {
             val did = DIDService().createDID(ecKey)
             Logger.d(TAG, "Generated DID: $did")
             // Step 2: Prepare the integrity token provider
-            val tokenProvider = prepareIntegrityTokenProvider(context, cloudProjectNumber)
-            Logger.d(TAG, "Integrity token provider ready")
+            // TEST: classic Play Integrity instead of the Standard API.
 
             // Step 3: Fetch the nonce from the server
             val nonce = fetchNonceForDeviceIntegrityToken("$baseUrl/nonce")
 
             // Step 4: Generate a request hash from the nonce
 
-            val requestHash = nonce?.let { generateHash(it) }
+            // TEST: protocol 2 request binding b64u(SHA-256(nonce + "." + batch request hash)).
+            val batchHash = BatchRequestHash.compute(listOf(ecKey.toPublicJWK()))
+            val requestHash = nonce?.let { generateHash("$it.$batchHash") }
 
             // Step 5: Request an integrity token
-            val token = requestIntegrityToken(tokenProvider, requestHash)
+            val token = requestClassicIntegrityToken(context, cloudProjectNumber, requestHash)
             Logger.d(TAG, "Integrity token received (${token.length} chars)")
+
+            // TEST: the device key (made at the registration) signs the request binding.
+            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, requireNotNull(nonce))
+            val deviceSignature = deviceKey.sign(requireNotNull(requestHash))
 
             // Step 6: Generate client assertion
             clientAssertion = generateClientAssertion(ecKey, did, audience = baseUrl)
@@ -84,8 +90,17 @@ object WalletUnitAttestationService {
 
 
             // Step 7: Process the wallet unit attestation request
-            val walletUnitAttestationCredential =
-                processWalletUnitAttestationRequest(baseUrl, token, nonce, clientAssertion, profile)
+            val walletUnitAttestationCredential = processWalletUnitAttestationRequest(
+                baseUrl, token, nonce, clientAssertion, profile,
+                deviceSignature = deviceSignature,
+                x5c = deviceKey.x5c.takeIf { deviceKey.isNew }
+            )
+            // TEST: a registration that succeeded keeps its key; one that failed drops it.
+            if (walletUnitAttestationCredential?.walletUnitAttestation != null) {
+                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, deviceKey)
+            } else {
+                WalletUnitDeviceKeys.discard(deviceKey)
+            }
 
 
             // Step 8: Log and return both values
@@ -150,26 +165,42 @@ object WalletUnitAttestationService {
             val sharedClientId = clientId ?: dids[0]
             Logger.d(TAG, "Batch registration: $count keys, client_id=$sharedClientId")
 
-            val tokenProvider = prepareIntegrityTokenProvider(context, cloudProjectNumber)
-            Logger.d(TAG, "Integrity token provider ready")
+            // TEST: classic Play Integrity instead of the Standard API.
 
             val nonce = fetchWalletProviderNonce("$baseUrl/nonce")?.nonce
 
             // The batch hash binds the integrity verdict to the cnf keys, not to the nonce.
             val requestHash = BatchRequestHash.compute(keys.map { it.toPublicJWK() })
-            val token = requestIntegrityToken(tokenProvider, requestHash)
+            // TEST: protocol 2 request binding b64u(SHA-256(nonce + "." + batch request hash)).
+            val binding = nonce?.let { generateHash("$it.$requestHash") }
+            val token = requestClassicIntegrityToken(context, cloudProjectNumber, binding)
             Logger.d(TAG, "Integrity token received (${token.length} chars), requestHash=$requestHash")
+
+            // TEST: one device signature for all the keys, over the request binding.
+            val deviceKey = WalletUnitDeviceKeys.forRequest(context, baseUrl, requireNotNull(nonce))
+            val deviceSignature = deviceKey.sign(requireNotNull(binding))
 
             val assertions = keys.mapIndexed { i, key ->
                 generateClientAssertion(key, dids[i], audience = baseUrl, clientId = sharedClientId)
             }
             if (assertions.any { it.isEmpty() }) {
                 Logger.e(TAG, "Batch registration: could not sign every client assertion")
+                WalletUnitDeviceKeys.discard(deviceKey)
                 return null
             }
 
-            val wire = processBatchWalletUnitAttestationRequest(baseUrl, token, nonce, assertions, profile)
+            val wire = processBatchWalletUnitAttestationRequest(
+                baseUrl, token, nonce, assertions, profile,
+                deviceSignature = deviceSignature,
+                x5c = deviceKey.x5c.takeIf { deviceKey.isNew }
+            )
             val returned = wire.body?.walletUnitAttestations ?: emptyList()
+            // TEST: a registration that succeeded keeps its key; one that failed drops it.
+            if (returned.isNotEmpty()) {
+                if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, deviceKey)
+            } else {
+                WalletUnitDeviceKeys.discard(deviceKey)
+            }
             if (returned.size != count) {
                 Logger.e(
                     TAG,
@@ -222,6 +253,30 @@ object WalletUnitAttestationService {
                 }
         }
 
+    // TEST: classic token (IntegrityManager.requestIntegrityToken), nonce = requestHash.
+    private suspend fun requestClassicIntegrityToken(
+        context: Context,
+        cloudProjectNumber: Long,
+        nonce: String?
+    ): String = suspendCancellableCoroutine { cont ->
+        try {
+            IntegrityManagerFactory.create(context.applicationContext)
+                .requestIntegrityToken(
+                    IntegrityTokenRequest.builder()
+                        .setNonce(requireNotNull(nonce) { "no nonce for the classic integrity token" })
+                        .setCloudProjectNumber(cloudProjectNumber)
+                        .build()
+                )
+                .addOnSuccessListener { response ->
+                    Logger.d(TAG, "Classic integrity token received, nonce=$nonce")
+                    if (cont.isActive) cont.resume(response.token())
+                }
+                .addOnFailureListener { e -> if (cont.isActive) cont.resumeWithException(e) }
+        } catch (e: Exception) {
+            if (cont.isActive) cont.resumeWithException(e)
+        }
+    }
+
     private suspend fun requestIntegrityToken(
         tokenProvider: StandardIntegrityManager.StandardIntegrityTokenProvider,
         requestHash: String?
@@ -248,13 +303,16 @@ object WalletUnitAttestationService {
         token: String?,
         nonce: String?,
         clientAssertionValue: String?,
-        profile: String? = null
+        profile: String? = null,
+        deviceSignature: String? = null,
+        x5c: List<String>? = null
     ): CredentialOfferResponse? = withContext(Dispatchers.IO) {
 
         val clientAssertion = ClientAssertion(
             clientAssertion = clientAssertionValue,
             clientAssertionType = CLIENT_ASSERTION_TYPE,
-            profile = profile
+            profile = profile,
+            androidKeyAttestationX5c = x5c
         )
 
         val result = SafeApiCall.safeApiCallResponse {
@@ -263,6 +321,7 @@ object WalletUnitAttestationService {
                 deviceIntegrityToken = token ?: "",
                 devicePlatform = PLATFORM,
                 nonce = nonce ?: "",
+                deviceSignature = deviceSignature,
                 body = clientAssertion
             )
         }
@@ -296,12 +355,15 @@ object WalletUnitAttestationService {
         token: String?,
         nonce: String?,
         clientAssertions: List<String>,
-        profile: String?
+        profile: String?,
+        deviceSignature: String? = null,
+        x5c: List<String>? = null
     ): BatchWire = withContext(Dispatchers.IO) {
         val body = BatchClientAssertion(
             clientAssertions = clientAssertions,
             clientAssertionType = CLIENT_ASSERTION_TYPE,
-            profile = profile
+            profile = profile,
+            androidKeyAttestationX5c = x5c
         )
         val result = SafeApiCall.safeApiCallAnyStatus {
             ApiManager.api.getService()?.sendBatchWUARequest(
@@ -309,6 +371,7 @@ object WalletUnitAttestationService {
                 deviceIntegrityToken = token ?: "",
                 devicePlatform = PLATFORM,
                 nonce = nonce ?: "",
+                deviceSignature = deviceSignature,
                 body = body
             )
         }

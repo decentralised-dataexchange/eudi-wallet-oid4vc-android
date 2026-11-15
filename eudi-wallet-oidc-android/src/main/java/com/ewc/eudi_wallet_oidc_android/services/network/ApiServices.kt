@@ -223,6 +223,7 @@ interface ApiService {
         @Header("X-Wallet-Unit-Integrity-Token") deviceIntegrityToken: String,
         @Header("X-Wallet-Unit-Platform") devicePlatform: String,
         @Header("X-Wallet-Unit-Nonce") nonce: String,
+        @Header("X-Wallet-Unit-Device-Signature") deviceSignature: String?,
         @Body body: ClientAssertion
     ): Response<CredentialOfferResponse>
 
@@ -233,6 +234,7 @@ interface ApiService {
         @Header("X-Wallet-Unit-Integrity-Token") deviceIntegrityToken: String,
         @Header("X-Wallet-Unit-Platform") devicePlatform: String,
         @Header("X-Wallet-Unit-Nonce") nonce: String,
+        @Header("X-Wallet-Unit-Device-Signature") deviceSignature: String?,
         @Body body: BatchClientAssertion
     ): Response<BatchCredentialOfferResponse>
 

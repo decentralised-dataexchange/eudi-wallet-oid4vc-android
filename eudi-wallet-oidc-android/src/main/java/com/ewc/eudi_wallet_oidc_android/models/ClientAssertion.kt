@@ -7,5 +7,7 @@ data class ClientAssertion(
     @SerializedName("client_assertion_type") var clientAssertionType: String? = null,
     // ARF TS3 v1.5 opt-in: "ts3" requests a TS3-shaped WIA (x5c identity,
     // client_status). Null keeps the legacy EWC shape and is omitted on the wire.
-    @SerializedName("profile") var profile: String? = null
+    @SerializedName("profile") var profile: String? = null,
+    // TEST: the Key Attestation chain of the device key, at the registration only.
+    @SerializedName("android_key_attestation_x5c") var androidKeyAttestationX5c: List<String>? = null
 )
