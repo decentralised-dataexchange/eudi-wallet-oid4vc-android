@@ -14,7 +14,7 @@ import java.util.Base64
 import java.util.UUID
 
 /**
- * TEST: the device key of a wallet unit. A P-256 key in the hardware Android
+ * The device key of a wallet unit. A P-256 key in the hardware Android
  * Keystore, made at the registration (the first WIA request of the unit) with
  * the wallet provider nonce as its attestation challenge, and kept for the
  * life of the unit. It is not a cnf key: it signs the request binding (the
@@ -42,7 +42,7 @@ internal class WalletUnitDeviceKey(
 }
 
 /**
- * TEST: where the device keys live. One registered key per wallet unit: the
+ * Where the device keys live. One registered key per wallet unit: the
  * wallet provider (base URL) and the client_id. A new client_id (the app
  * started a new wallet unit, for example after removing the account) is a new
  * registration with a new key and its chain. Only the alias is stored, in the

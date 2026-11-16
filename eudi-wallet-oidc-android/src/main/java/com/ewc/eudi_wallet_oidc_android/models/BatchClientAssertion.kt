@@ -11,6 +11,6 @@ data class BatchClientAssertion(
     @SerializedName("client_assertions") var clientAssertions: List<String>? = null,
     @SerializedName("client_assertion_type") var clientAssertionType: String? = null,
     @SerializedName("profile") var profile: String? = null,
-    // TEST: the Key Attestation chain of the device key, at the registration only.
+    // The Key Attestation chain of the device key, at the registration only.
     @SerializedName("android_key_attestation_x5c") var androidKeyAttestationX5c: List<String>? = null
 )
