@@ -91,6 +91,17 @@ internal object WalletUnitDeviceKeys {
         Logger.d(TAG, "Device key ${key.alias} registered for $clientId at $baseUrl")
     }
 
+    /**
+     * The wallet provider refused the registered key of the wallet unit: delete
+     * it, so the next request registers a new wallet unit with a new key.
+     */
+    fun forget(context: Context, baseUrl: String, clientId: String) {
+        val prefs = prefs(context)
+        val name = unit(baseUrl, clientId)
+        prefs.getString(name, null)?.let { deleteEntry(it) }
+        prefs.edit().remove(name).apply()
+    }
+
     /** Deletes a key made for a registration that did not succeed. */
     fun discard(key: WalletUnitDeviceKey) {
         if (key.isNew) deleteEntry(key.alias)

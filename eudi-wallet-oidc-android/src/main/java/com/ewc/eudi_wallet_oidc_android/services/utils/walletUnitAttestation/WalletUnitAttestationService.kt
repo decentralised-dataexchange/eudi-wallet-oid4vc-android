@@ -30,6 +30,8 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -50,6 +52,10 @@ object WalletUnitAttestationService {
     private const val CLIENT_ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
     private const val PLATFORM = "android"
 
+    // Wallet unit requests run one after the other: each carries a fresh
+    // nonce and the device key signs them in order.
+    private val requests = Mutex()
+
 
     suspend fun initiateWalletUnitAttestation(
         context: Context,
@@ -57,6 +63,17 @@ object WalletUnitAttestationService {
         baseUrl: String,
         inputEcKey: ECKey? = null,
         profile: String? = null
+    ): WalletAttestationResult? = requests.withLock {
+        requestWalletUnitAttestation(context, cloudProjectNumber, baseUrl, inputEcKey, profile, retryRefused = true)
+    }
+
+    private suspend fun requestWalletUnitAttestation(
+        context: Context,
+        cloudProjectNumber: Long,
+        baseUrl: String,
+        inputEcKey: ECKey?,
+        profile: String?,
+        retryRefused: Boolean
     ): WalletAttestationResult? {
         var clientAssertion: String? = null
         return try {
@@ -90,16 +107,25 @@ object WalletUnitAttestationService {
 
 
             // Step 7: Process the wallet unit attestation request
-            val walletUnitAttestationCredential = processWalletUnitAttestationRequest(
+            val wire = processWalletUnitAttestationRequest(
                 baseUrl, token, nonce, clientAssertion, profile,
                 deviceSignature = deviceSignature,
                 x5c = deviceKey.x5c.takeIf { deviceKey.isNew }
             )
+            val walletUnitAttestationCredential = wire.body
             // TEST: a registration that succeeded keeps its key; one that failed drops it.
             if (walletUnitAttestationCredential?.walletUnitAttestation != null) {
                 if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, did, deviceKey)
             } else {
                 WalletUnitDeviceKeys.discard(deviceKey)
+                if (!deviceKey.isNew && wire.refused && retryRefused) {
+                    // The wallet provider refused the registered device key: register a
+                    // new wallet unit (new cnf key, so a new client_id) with a new device
+                    // key, once. No answer keeps the key.
+                    Logger.d(TAG, "Registered device key refused (HTTP ${wire.httpCode}): registering a new wallet unit")
+                    WalletUnitDeviceKeys.forget(context, baseUrl, did)
+                    return requestWalletUnitAttestation(context, cloudProjectNumber, baseUrl, null, profile, retryRefused = false)
+                }
             }
 
 
@@ -156,7 +182,7 @@ object WalletUnitAttestationService {
         clientId: String? = null,
         firstKey: ECKey? = null,
         keys: List<ECKey>? = null
-    ): BatchWalletAttestationResult? {
+    ): BatchWalletAttestationResult? = requests.withLock {
         require(count >= 1) { "count must be at least 1" }
         require(keys == null || keys.size == count) { "keys must hold count keys" }
         return try {
@@ -200,6 +226,12 @@ object WalletUnitAttestationService {
                 if (deviceKey.isNew) WalletUnitDeviceKeys.markRegistered(context, baseUrl, sharedClientId, deviceKey)
             } else {
                 WalletUnitDeviceKeys.discard(deviceKey)
+                val refused = wire.httpCode != null && wire.httpCode !in 200..299
+                if (!deviceKey.isNew && refused) {
+                    // Refused registered device key: the next request registers a new unit.
+                    Logger.d(TAG, "Registered device key refused (HTTP ${wire.httpCode}): the next request registers a new wallet unit")
+                    WalletUnitDeviceKeys.forget(context, baseUrl, sharedClientId)
+                }
             }
             if (returned.size != count) {
                 Logger.e(
@@ -306,7 +338,7 @@ object WalletUnitAttestationService {
         profile: String? = null,
         deviceSignature: String? = null,
         x5c: List<String>? = null
-    ): CredentialOfferResponse? = withContext(Dispatchers.IO) {
+    ): SingleWire = withContext(Dispatchers.IO) {
 
         val clientAssertion = ClientAssertion(
             clientAssertion = clientAssertionValue,
@@ -328,19 +360,23 @@ object WalletUnitAttestationService {
 
         result.onSuccess { response ->
             if (response.isSuccessful) {
-                val credentialOfferResponse = response.body()
                 Logger.d(TAG, "Wallet unit request succeeded")
-                return@withContext credentialOfferResponse
+                return@withContext SingleWire(response.code(), response.body())
             } else {
                 Logger.e(TAG, "Wallet unit request failed: ${response.code()}")
-                return@withContext null
+                return@withContext SingleWire(response.code(), null)
             }
         }.onFailure { e ->
             Logger.e(TAG, "Error sending request: ${e.message}")
-            return@withContext null
+            return@withContext SingleWire(null, null)
         }
 
-        return@withContext null // fallback
+        return@withContext SingleWire(null, null) // fallback
+    }
+
+    /** [httpCode] is null when the wallet provider did not answer. */
+    private data class SingleWire(val httpCode: Int?, val body: CredentialOfferResponse?) {
+        val refused: Boolean get() = httpCode != null && httpCode !in 200..299
     }
 
     private data class BatchWire(
