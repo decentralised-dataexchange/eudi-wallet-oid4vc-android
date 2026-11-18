@@ -49,7 +49,12 @@ data class KeyAttestationOutcome(
     /** Null when the request never reached the server (transport error). */
     val httpCode: Int?,
     val response: KeyAttestationResponse?,
-    val errorBody: String?
+    val errorBody: String?,
+    /**
+     * Protocol 2: the refusal of the wallet provider with its `errorId` and `reason`,
+     * or the reason the request could not be made. Null on success and on protocol 1.
+     */
+    val error: ErrorResponse? = null
 ) {
     val isSuccessful: Boolean
         get() = httpCode != null && httpCode in 200..299 && response?.keyAttestation != null

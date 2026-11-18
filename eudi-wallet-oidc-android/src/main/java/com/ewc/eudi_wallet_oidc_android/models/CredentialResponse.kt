@@ -32,6 +32,19 @@ data class ErrorResponse(
 
     /** The unparsed body, kept for diagnostics when none of the known shapes matched. */
     var raw: String? = null,
+
+    /**
+     * The wallet provider's `error_id`, for example `individual_wallet_unit.revoked`. The
+     * wallet provider names every refusal with one, and the app acts on it alone:
+     * `error_description` is prose for the logs.
+     */
+    var errorId: String? = null,
+
+    /**
+     * The wallet provider's `reason` of a refusal, where the error has one (`revoked`,
+     * `suspended`, `device_refused`).
+     */
+    var reason: String? = null,
 )
 
 data class CredentialResponse(

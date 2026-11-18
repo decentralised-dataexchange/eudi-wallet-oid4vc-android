@@ -8,6 +8,7 @@ import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationRequest
 import com.ewc.eudi_wallet_oidc_android.models.KeyAttestationResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.google.gson.Gson
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -192,7 +193,8 @@ object KeyAttestationService {
         nonce: String,
         attestedKeys: List<JWK>,
         keyPops: List<String>? = null,
-        androidKeyAttestationX5c: List<String>? = null
+        androidKeyAttestationX5c: List<String>? = null,
+        walletProvider: WalletUnitAttestationProvider? = null
     ): KeyAttestationResponse? = sendKeyAttestation(
         baseUrl = baseUrl,
         walletUnitAttestationJWT = walletUnitAttestationJWT,
@@ -201,7 +203,8 @@ object KeyAttestationService {
         attestedKeys = attestedKeys,
         keyPops = keyPops,
         chains = androidKeyAttestationX5c?.let { listOf(it) },
-        anyStatus = false
+        anyStatus = false,
+        walletProvider = walletProvider
     ).response
 
     /**
@@ -217,6 +220,13 @@ object KeyAttestationService {
      * != key count) is reported in the outcome, not swallowed. No client-side
      * alignment check is done on purpose, so the wallet provider's own
      * validation can be exercised.
+     *
+     * [walletProvider]: with a protocol 2 client ([WalletProviderClient]) whose
+     * wallet unit is registered, the request goes as protocol 2 (signed with
+     * the device key, with device evidence over the issuer nonce and the
+     * attested keys). The body stays the same. Without one, with a
+     * [Protocol1WalletProviderClient], or before the registration, it goes as
+     * before.
      */
     suspend fun requestBatchKeyAttestation(
         baseUrl: String,
@@ -225,7 +235,8 @@ object KeyAttestationService {
         nonce: String,
         attestedKeys: List<JWK>,
         keyPops: List<String>? = null,
-        androidKeyAttestationX5cChains: List<List<String>>? = null
+        androidKeyAttestationX5cChains: List<List<String>>? = null,
+        walletProvider: WalletUnitAttestationProvider? = null
     ): KeyAttestationOutcome = sendKeyAttestation(
         baseUrl = baseUrl,
         walletUnitAttestationJWT = walletUnitAttestationJWT,
@@ -234,7 +245,8 @@ object KeyAttestationService {
         attestedKeys = attestedKeys,
         keyPops = keyPops,
         chains = androidKeyAttestationX5cChains,
-        anyStatus = true
+        anyStatus = true,
+        walletProvider = walletProvider
     )
 
     private suspend fun sendKeyAttestation(
@@ -245,8 +257,19 @@ object KeyAttestationService {
         attestedKeys: List<JWK>,
         keyPops: List<String>?,
         chains: List<List<String>>?,
-        anyStatus: Boolean
+        anyStatus: Boolean,
+        walletProvider: WalletUnitAttestationProvider?
     ): KeyAttestationOutcome = withContext(Dispatchers.IO) {
+        val body = KeyAttestationRequest(
+            attestedKeys = attestedKeys.map { it.toPublicJWK().toJSONObject() },
+            androidKeyAttestationX5c = KeyAttestationRequest.x5cWire(chains),
+            keyPops = keyPops
+        )
+        if (walletProvider is WalletProviderClient && walletProvider.isRegistered) {
+            return@withContext sendProtocol2KeyAttestation(
+                walletProvider, walletUnitAttestationJWT, walletUnitProofOfPossession, nonce, attestedKeys, body
+            )
+        }
         val headers = WalletUnitAttestationHeaders.build(
             walletUnitAttestationJWT,
             walletUnitProofOfPossession
@@ -254,11 +277,6 @@ object KeyAttestationService {
             this["X-Wallet-Unit-Nonce"] = nonce
             this["X-Wallet-Unit-Platform"] = "android"
         }
-        val body = KeyAttestationRequest(
-            attestedKeys = attestedKeys.map { it.toPublicJWK().toJSONObject() },
-            androidKeyAttestationX5c = KeyAttestationRequest.x5cWire(chains),
-            keyPops = keyPops
-        )
         val evidence = when {
             chains != null && chains.size == 1 -> "android_x5c(${chains[0].size} certs)"
             chains != null -> "android_x5c_chains(${chains.size} chains, lens=${chains.map { it.size }})"
@@ -267,7 +285,7 @@ object KeyAttestationService {
         Log.d(
             KA_WATCH,
             "POST $baseUrl/wallet-provider/key-attestation " +
-                "keys=${attestedKeys.size} evidence=$evidence nonce=$nonce"
+                "keys=${attestedKeys.size} evidence=$evidence"
         )
         val call: suspend () -> Response<KeyAttestationResponse>? = {
             ApiManager.api.getService()?.sendKeyAttestationRequest(
@@ -309,5 +327,38 @@ object KeyAttestationService {
                 KeyAttestationOutcome(null, null, e.message)
             }
         )
+    }
+
+    /**
+     * The protocol 2 key attestation request: the same body and OAuth client
+     * attestation headers, sent by the wallet provider client, which signs it
+     * and adds the device evidence.
+     */
+    private suspend fun sendProtocol2KeyAttestation(
+        walletProvider: WalletProviderClient,
+        walletUnitAttestationJWT: String,
+        walletUnitProofOfPossession: String,
+        nonce: String,
+        attestedKeys: List<JWK>,
+        body: KeyAttestationRequest
+    ): KeyAttestationOutcome {
+        val headers = WalletUnitAttestationHeaders.build(walletUnitAttestationJWT, walletUnitProofOfPossession)
+        Log.d(KA_WATCH, "POST ${walletProvider.baseUrl}/key-attestation (protocol 2) keys=${attestedKeys.size}")
+        return when (val result = walletProvider.keyAttestation(body, nonce, attestedKeys, headers)) {
+            is WalletProviderClient.Sent.Ok -> {
+                val ka = try {
+                    Gson().fromJson(result.answer.body, KeyAttestationResponse::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+                Log.d(KA_WATCH, "WP KA (protocol 2) response ${result.answer.status}: attestationType=${ka?.attestationType}")
+                KeyAttestationOutcome(result.answer.status, ka, if (ka == null) result.answer.body else null)
+            }
+            is WalletProviderClient.Sent.Err -> {
+                val error = result.error.asErrorResponse()
+                Log.e(KA_WATCH, "WP KA (protocol 2) refused: ${error.httpStatus ?: "-"} ${error.errorId ?: error.errorDescription ?: ""}")
+                KeyAttestationOutcome(error.httpStatus, null, error.raw ?: error.errorDescription, error)
+            }
+        }
     }
 }

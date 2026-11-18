@@ -11,4 +11,9 @@ data class WalletAttestationResult(
     @SerializedName("did") var did: String? = null,
     @SerializedName("ecKey") var ecKey:  ECKey? = null,
     @SerializedName("credentialIssuer") var credentialIssuer: String? = null,
+    /**
+     * Protocol 2: the revocation code of the wallet unit, in the answer of its
+     * registration only. Show it once; never store it in plain text and never log it.
+     */
+    @SerializedName("revocationCode") var revocationCode: String? = null,
 )
