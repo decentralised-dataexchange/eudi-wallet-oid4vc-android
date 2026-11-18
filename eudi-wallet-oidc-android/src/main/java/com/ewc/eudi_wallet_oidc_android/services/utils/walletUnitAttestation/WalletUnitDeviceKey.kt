@@ -62,7 +62,9 @@ internal class JcaSigningKey(
 
 /**
  * A device key and its Key Attestation chain (leaf first, standard base64 of
- * each DER certificate). The chain is sent once, at the registration.
+ * each DER certificate). The chain of the device key is sent at the
+ * registration; later WIA requests send the chain of a new key when one is
+ * due (see [WalletProviderClient]).
  */
 internal class DeviceKey(
     val alias: String,
@@ -95,6 +97,14 @@ internal interface WalletUnitDeviceKeys {
 
     /** Forgets the registered key: the next WIA request registers a new unit. */
     fun reset()
+
+    /**
+     * When the wallet provider last accepted a Key Attestation chain of this
+     * device (epoch seconds): the registration, a fresh chain of a later WIA
+     * request, or a key attestation request with chains. Null when unknown.
+     * [reset] clears it.
+     */
+    var chainAcceptedAt: Long?
 }
 
 /**
@@ -142,8 +152,16 @@ internal class KeystoreDeviceKeys(context: Context) : WalletUnitDeviceKeys {
 
     override fun reset() {
         prefs.getString(REGISTERED_ALIAS, null)?.let { deleteEntry(it) }
-        prefs.edit().remove(REGISTERED_ALIAS).apply()
+        prefs.edit().remove(REGISTERED_ALIAS).remove(CHAIN_ACCEPTED_AT).apply()
     }
+
+    override var chainAcceptedAt: Long?
+        get() = if (prefs.contains(CHAIN_ACCEPTED_AT)) prefs.getLong(CHAIN_ACCEPTED_AT, 0) else null
+        set(value) {
+            prefs.edit().apply {
+                if (value == null) remove(CHAIN_ACCEPTED_AT) else putLong(CHAIN_ACCEPTED_AT, value)
+            }.apply()
+        }
 
     private fun generate(alias: String, challenge: String, strongBox: Boolean) {
         val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
@@ -188,6 +206,7 @@ internal class KeystoreDeviceKeys(context: Context) : WalletUnitDeviceKeys {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val PREFS = "eudi_wallet_unit_device_key"
         private const val REGISTERED_ALIAS = "registered_alias"
+        private const val CHAIN_ACCEPTED_AT = "chain_accepted_at"
         private const val ALIAS_PREFIX = "wallet_unit_device_key_"
     }
 }
