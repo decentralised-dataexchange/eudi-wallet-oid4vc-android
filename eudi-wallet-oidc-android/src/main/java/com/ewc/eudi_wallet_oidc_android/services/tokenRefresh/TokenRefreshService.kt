@@ -4,6 +4,7 @@ import com.ewc.eudi_wallet_oidc_android.models.ErrorResponse
 import com.ewc.eudi_wallet_oidc_android.models.WrappedRefreshTokenResponse
 import com.ewc.eudi_wallet_oidc_android.services.network.ApiManager
 import com.ewc.eudi_wallet_oidc_android.services.network.SafeApiCall
+import com.ewc.eudi_wallet_oidc_android.services.utils.ErrorHandler
 import com.ewc.eudi_wallet_oidc_android.services.utils.DPoPProofService
 import com.ewc.eudi_wallet_oidc_android.services.utils.walletUnitAttestation.WalletUnitAttestationHeaders
 import com.nimbusds.jose.jwk.ECKey
@@ -98,15 +99,13 @@ class TokenRefreshService : TokenRefreshInterface {
             if (response.isSuccessful) {
                 tokenResponse = WrappedRefreshTokenResponse(tokenResponse = response.body())
             } else {
+                val body = try {
+                    response.errorBody()?.string()
+                } catch (e: Exception) {
+                    null
+                }
                 tokenResponse = WrappedRefreshTokenResponse(
-                    errorResponse = ErrorResponse(
-                        error = response.code(),
-                        errorDescription = try {
-                            response.errorBody()?.string()
-                        } catch (e: Exception) {
-                            null
-                        } ?: response.message()
-                    )
+                    errorResponse = refusal(response.code(), body, response.message())
                 )
             }
         }.onFailure { e ->
@@ -116,5 +115,24 @@ class TokenRefreshService : TokenRefreshInterface {
         }
 
         return tokenResponse
+    }
+
+    companion object {
+        /**
+         * A refused refresh: [ErrorResponse.error] keeps the HTTP status as before, and the OAuth
+         * error of the body (RFC 6749 §5.2) is set on [ErrorResponse.errorCode], so the app can
+         * tell `invalid_grant` (the refresh token never works again) from other failures.
+         */
+        internal fun refusal(status: Int, body: String?, message: String?): ErrorResponse {
+            val parsed = ErrorHandler.processError(body, status)
+            return ErrorResponse(
+                error = status,
+                errorDescription = body ?: message,
+                errorCode = parsed?.errorCode,
+                errorUri = parsed?.errorUri,
+                httpStatus = status,
+                raw = body
+            )
+        }
     }
 }
