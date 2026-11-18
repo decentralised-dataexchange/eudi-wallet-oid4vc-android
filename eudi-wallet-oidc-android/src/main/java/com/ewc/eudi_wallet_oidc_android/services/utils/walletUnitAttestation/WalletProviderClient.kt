@@ -42,6 +42,12 @@ import java.util.concurrent.TimeUnit
  *   challenge, and its Key Attestation chain in the body
  *   (`android_key_attestation_x5c`). The answer gives the revocation code once.
  * - Every later request is signed with the same key.
+ * - The wallet provider needs a fresh Key Attestation chain of the device
+ *   each hour: a later WIA request sends the chain of a new Keystore key,
+ *   with the nonce as its challenge, when the last accepted chain is older
+ *   than [CHAIN_DUE_AFTER_SECONDS] (or unknown). The new key only carries
+ *   the chain and is deleted after the answer; the request is still signed
+ *   with the device key.
  *
  * The requests of the unit go one at a time (a [Mutex]): a nonce is single
  * use, and a registration must finish before the next request decides whether
@@ -50,7 +56,8 @@ import java.util.concurrent.TimeUnit
  * Refusals the SDK can fix are sent again once here: `request_signature_invalid`
  * (a new nonce), `device_registered_before` (send as a registered unit),
  * `request_key_in_use` (a new device key) and, on a WIA request,
- * `device_key_attestation_missing` (register again). Every other refusal comes
+ * `device_key_attestation_missing` (register again) and
+ * `device_attestation_due` (a new nonce and a fresh chain). Every other refusal comes
  * back in the outcome with `errorId` and `reason`, for the app to act on.
  */
 class WalletProviderClient internal constructor(
@@ -310,9 +317,15 @@ class WalletProviderClient internal constructor(
         headers: Map<String, String>
     ): Sent = locked {
         if (deviceKeys.registered() == null) return@locked Sent.Err(WalletProviderError.KeyLost)
-        send("/key-attestation", attestedKeys, Evidence.DEVICE, givenNonce = cNonce, extraHeaders = headers) {
-            gson.toJsonTree(body) as? JsonObject
+        var carriesChains = false
+        val result = send("/key-attestation", attestedKeys, Evidence.DEVICE, givenNonce = cNonce, extraHeaders = headers) {
+            (gson.toJsonTree(body) as? JsonObject)?.also { json ->
+                carriesChains = (json.get(X5C) as? JsonArray)?.size()?.let { it > 0 } == true
+            }
         }
+        // The wallet provider counts the chains of a key attestation request as a fresh chain.
+        if (result is Sent.Ok && carriesChains) deviceKeys.chainAcceptedAt = clock()
+        result
     }
 
     // MARK: - The request cycle
@@ -346,7 +359,11 @@ class WalletProviderClient internal constructor(
         NONE
     }
 
-    private class Prepared(val request: Request, val madeKey: DeviceKey?)
+    /**
+     * [madeKey]: the device key of a registration. [chainKey]: a new key that
+     * only carries a fresh Key Attestation chain; deleted after the answer.
+     */
+    private class Prepared(val request: Request, val madeKey: DeviceKey?, val chainKey: DeviceKey?)
 
     /**
      * Gets a nonce (unless [givenNonce]), prepares, signs and sends the
@@ -364,14 +381,16 @@ class WalletProviderClient internal constructor(
         var handledRegisteredBefore = false
         var replacedDeviceKey = false
         var registeredAgain = false
+        var forceChain = false
 
         while (true) {
             val nonce = givenNonce ?: fetchNonce() ?: return Sent.Err(WalletProviderError.NonceUnavailable)
-            val prepared = when (val p = prepare(path, nonce, cnfKeys, evidence, extraHeaders, body)) {
+            val prepared = when (val p = prepare(path, nonce, cnfKeys, evidence, extraHeaders, forceChain, body)) {
                 is Prep.Err -> return Sent.Err(p.error)
                 is Prep.Ok -> p.prepared
             }
             val madeKey = prepared.madeKey
+            val chainKey = prepared.chainKey
 
             val status: Int
             val text: String
@@ -381,12 +400,15 @@ class WalletProviderClient internal constructor(
                     text = response.body?.string() ?: ""
                 }
             } catch (e: Exception) {
+                chainKey?.let { deviceKeys.discard(it) }
                 // The wallet provider may have registered the key before the answer was lost.
                 if (madeKey != null) unconfirmedKey = madeKey
                 return Sent.Err(WalletProviderError.Transport(e.message))
             }
+            chainKey?.let { deviceKeys.discard(it) }
 
             if (status in 200..299) {
+                if (madeKey != null || chainKey != null) deviceKeys.chainAcceptedAt = clock()
                 if (madeKey != null) {
                     deviceKeys.markRegistered(madeKey)
                     unconfirmedKey?.takeIf { it !== madeKey }?.let { deviceKeys.discard(it) }
@@ -409,6 +431,8 @@ class WalletProviderClient internal constructor(
                 handledRegisteredBefore = true
                 val known = unconfirmedKey ?: madeKey
                 deviceKeys.markRegistered(known)
+                // That registration sent its chain moments ago.
+                deviceKeys.chainAcceptedAt = clock()
                 if (known !== madeKey) deviceKeys.discard(madeKey)
                 unconfirmedKey = null
                 continue
@@ -428,6 +452,14 @@ class WalletProviderClient internal constructor(
                 deviceKeys.reset()
                 continue
             }
+            if (madeKey == null && evidence == Evidence.WIA && !forceChain &&
+                errorId == WalletProviderErrorId.DEVICE_ATTESTATION_DUE
+            ) {
+                // The last chain of the device is too old for the wallet provider
+                // (a clock out of step, a lost time): send again with a fresh chain.
+                forceChain = true
+                continue
+            }
             madeKey?.let { deviceKeys.discard(it) }
             Logger.e(TAG, "refused: HTTP $status ${errorId ?: ""}")
             return Sent.Err(WalletProviderError.Refused(error))
@@ -445,6 +477,7 @@ class WalletProviderClient internal constructor(
         cnfKeys: List<JWK>,
         evidence: Evidence,
         extraHeaders: Map<String, String>,
+        forceChain: Boolean,
         body: () -> JsonObject?
     ): Prep {
         val registeredKey = deviceKeys.registered()
@@ -462,8 +495,19 @@ class WalletProviderClient internal constructor(
             null
         }
         val key = (madeKey ?: registeredKey)!!
+
+        val chainKey = if (!registering && evidence == Evidence.WIA && (forceChain || chainDue())) {
+            try {
+                deviceKeys.make(challenge = nonce)
+            } catch (e: Exception) {
+                return Prep.Err(WalletProviderError.DeviceKey(e))
+            }
+        } else {
+            null
+        }
         fun fail(error: WalletProviderError): Prep {
             madeKey?.let { deviceKeys.discard(it) }
+            chainKey?.let { deviceKeys.discard(it) }
             return Prep.Err(error)
         }
 
@@ -490,8 +534,8 @@ class WalletProviderClient internal constructor(
         }
 
         val bodyObject = body() ?: return fail(WalletProviderError.BodyNotSerialisable)
-        if (registering) {
-            bodyObject.add(X5C, JsonArray().apply { key.x5c.forEach { add(it) } })
+        (if (registering) key else chainKey)?.let { attested ->
+            bodyObject.add(X5C, JsonArray().apply { attested.x5c.forEach { add(it) } })
         }
         val bodyBytes = gson.toJson(bodyObject).toByteArray(Charsets.UTF_8)
         val url = baseUrl + path
@@ -527,7 +571,13 @@ class WalletProviderClient internal constructor(
         } catch (e: Exception) {
             return fail(WalletProviderError.Transport("Invalid wallet provider URL"))
         }
-        return Prep.Ok(Prepared(request, madeKey))
+        return Prep.Ok(Prepared(request, madeKey, chainKey))
+    }
+
+    /** True when the last accepted chain is older than [CHAIN_DUE_AFTER_SECONDS], or unknown. */
+    private fun chainDue(): Boolean {
+        val acceptedAt = deviceKeys.chainAcceptedAt ?: return true
+        return clock() - acceptedAt >= CHAIN_DUE_AFTER_SECONDS
     }
 
     /** `POST {base}/nonce`, unsigned: `c_nonce`, else `nonce`. Null when there is none. */
@@ -555,6 +605,13 @@ class WalletProviderClient internal constructor(
         private const val PLATFORM = "android"
         private const val CONTENT_TYPE = "application/json"
         private const val X5C = "android_key_attestation_x5c"
+
+        /**
+         * The wallet provider needs a fresh chain when the last one is older
+         * than 60 minutes; sent from 50, so a clock out of step does not cost
+         * a refusal.
+         */
+        internal const val CHAIN_DUE_AFTER_SECONDS = 50 * 60L
         internal const val CLIENT_ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
         /** The covered components of an Android request, in the order the wallet provider requires. */

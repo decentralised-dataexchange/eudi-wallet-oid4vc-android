@@ -53,7 +53,10 @@ internal class SoftwareDeviceKeys : WalletUnitDeviceKeys {
     override fun reset() {
         registeredKey = null
         registeredAlias = null
+        chainAcceptedAt = null
     }
+
+    override var chainAcceptedAt: Long? = null
 }
 
 /** A Play Integrity token that names the binding it was made for. */
@@ -108,7 +111,8 @@ internal fun verifiesDeviceSignature(request: RecordedRequest, binding: String, 
 internal fun testClient(
     server: MockWebServer,
     keys: SoftwareDeviceKeys = SoftwareDeviceKeys(),
-    integrity: FakeIntegrity = FakeIntegrity()
+    integrity: FakeIntegrity = FakeIntegrity(),
+    clock: () -> Long = { 1794556800L }
 ) = WalletProviderClient(
     baseUrl = server.url("/organisation/1/service").toString(),
     appVersion = "2026.12.0",
@@ -117,5 +121,5 @@ internal fun testClient(
     deviceKeys = keys,
     integrity = integrity,
     httpClient = OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
-    clock = { 1794556800L }
+    clock = clock
 )

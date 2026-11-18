@@ -23,6 +23,7 @@ object WalletProviderErrorId {
     internal const val DEVICE_REGISTERED_BEFORE = "individual_wallet_unit.device_registered_before"
     internal const val REQUEST_KEY_IN_USE = "individual_wallet_unit.request_key_in_use"
     internal const val DEVICE_KEY_ATTESTATION_MISSING = "individual_wallet_unit.device_key_attestation_missing"
+    internal const val DEVICE_ATTESTATION_DUE = "individual_wallet_unit.device_attestation_due"
 }
 
 /**
